@@ -1,0 +1,38 @@
+name: flutter_getx_kiosk
+description: A Flutter application using GetX for state management and routing, designed for kiosk use.
+
+publish_to: 'none' # Remove this line if you wish to publish to pub.dev
+
+version: 1.0.0+1
+
+environment:
+  sdk: ">=2.12.0 <3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  get: ^4.6.1
+  get_storage: ^2.1.1
+  flutter_inappwebview: ^6.1.5
+  media_kit: ^1.2.0
+  media_kit_video: ^1.2.5
+  media_kit_libs_video: ^1.0.5 # Native video dependencies for Linux/Windows
+  media_kit_libs_macos_video: ^1.1.0 # Native video dependencies for macOS
+  mediasfu_mediasoup_client: ^0.0.7
+  flutter_webrtc: ^0.12.0
+  battery_plus: ^4.1.0
+  sensors_plus: ^4.0.2
+  device_info_plus: ^9.1.1
+  mqtt_client: ^10.8.0
+  web_socket_channel: ^2.4.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/fonts/
+    - assets/images/

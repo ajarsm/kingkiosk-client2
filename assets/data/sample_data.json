@@ -1,0 +1,52 @@
+{
+  "version": "1.0.0",
+  "appName": "Flutter GetX Kiosk",
+  "settings": {
+    "defaultTheme": "light",
+    "defaultLanguage": "en",
+    "refreshInterval": 30
+  },
+  "mediaItems": [
+    {
+      "id": "1",
+      "name": "Big Buck Bunny",
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "type": "video",
+      "description": "Big Buck Bunny tells the story of a giant rabbit with a heart bigger than himself."
+    },
+    {
+      "id": "2",
+      "name": "Elephant Dream",
+      "url": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4",
+      "type": "video",
+      "description": "The first Blender Open Movie from 2006."
+    },
+    {
+      "id": "3",
+      "name": "Sample Audio",
+      "url": "https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3",
+      "type": "audio",
+      "description": "A sample audio file"
+    }
+  ],
+  "webItems": [
+    {
+      "id": "1",
+      "name": "Google",
+      "url": "https://www.google.com",
+      "description": "Search engine"
+    },
+    {
+      "id": "2",
+      "name": "Flutter Dev",
+      "url": "https://flutter.dev",
+      "description": "Flutter development website"
+    },
+    {
+      "id": "3",
+      "name": "GitHub",
+      "url": "https://github.com",
+      "description": "Code hosting platform"
+    }
+  ]
+}

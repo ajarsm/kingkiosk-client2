@@ -1,0 +1,59 @@
+# ---------- Flutter / Dart ----------
+.dart_tool/
+.packages
+.pub-cache/
+.flutter-plugins
+.flutter-plugins-dependencies
+.flutter-version
+.generated_plugin_registrant.dart
+
+# Build outputs
+build/
+build/web/
+
+# Lockfile (optional: for apps you usually commit this)
+# pubspec.lock
+
+# ---------- iOS ----------
+ios/Flutter/Flutter.framework/
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Pods/
+ios/Runner/GeneratedPluginRegistrant.*
+
+# ---------- Android ----------
+android/.gradle/
+android/app/build/
+android/build/
+android/key.properties
+android/local.properties
+*.keystore
+
+# ---------- macOS ----------
+macos/Flutter/ephemeral/
+macos/Pods/
+macos/Runner/GeneratedPluginRegistrant.*
+
+# ---------- Windows ----------
+windows/flutter/ephemeral/
+windows/runner/Debug/
+windows/runner/Release/
+
+# ---------- Linux ----------
+linux/flutter/ephemeral/
+linux/build/
+
+# ---------- Web (if you host a web directory) ----------
+web/.dart_tool/
+web/build/
+
+# ---------- IDE / Editor ----------
+.idea/
+*.iml
+.vscode/
+
+# ---------- OS / Misc ----------
+.DS_Store
+Thumbs.db
+*.swp
+*~
