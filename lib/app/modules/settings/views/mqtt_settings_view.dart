@@ -1,12 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../controllers/settings_controller.dart';
+import '../controllers/settings_controller_compat.dart';
 
-class MqttSettingsView extends GetView<SettingsController> {
+/// MQTT settings view with proper connection handling and sensor republishing
+class MqttSettingsView extends GetView<SettingsControllerFixed> {
   const MqttSettingsView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Ensure controller exists but don't reinitialize it
+    if (!Get.isRegistered<SettingsControllerFixed>()) {
+      Get.put(SettingsControllerFixed(), permanent: true);
+    }
+    
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       child: Padding(
@@ -14,78 +20,106 @@ class MqttSettingsView extends GetView<SettingsController> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Header
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Icon(Icons.cloud_outlined),
-                SizedBox(width: 8),
                 Text(
                   'MQTT Settings',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  style: Theme.of(context).textTheme.titleMedium,
                 ),
               ],
             ),
-            Divider(),
+            const SizedBox(height: 16.0),
+            
             // Enable MQTT
             _buildMqttEnabledSwitch(),
             
             // MQTT Configuration (only shown when enabled)
             Obx(() {
               if (!controller.mqttEnabled.value) {
-                return SizedBox.shrink();
+                return const SizedBox.shrink();
               }
               
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  SizedBox(height: 16),
-                  _buildTextField(
-                    label: 'Broker URL',
-                    hint: 'e.g. broker.emqx.io',
+                  const SizedBox(height: 16.0),
+                  
+                  // Broker URL
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'MQTT Broker URL',
+                      hintText: 'e.g., broker.emqx.io',
+                      border: OutlineInputBorder(),
+                    ),
                     initialValue: controller.mqttBrokerUrl.value,
                     onChanged: controller.saveMqttBrokerUrl,
                   ),
-                  SizedBox(height: 8),
-                  _buildPortTextField(
-                    label: 'Broker Port',
-                    hint: '1883',
+                  const SizedBox(height: 8.0),
+                  
+                  // Broker Port
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'MQTT Broker Port',
+                      hintText: 'e.g., 1883',
+                      border: OutlineInputBorder(),
+                    ),
                     initialValue: controller.mqttBrokerPort.value.toString(),
+                    keyboardType: TextInputType.number,
                     onChanged: (value) {
                       final port = int.tryParse(value) ?? 1883;
                       controller.saveMqttBrokerPort(port);
                     },
                   ),
-                  SizedBox(height: 16),
-                  Text(
-                    'Authentication (optional)',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  SizedBox(height: 8),
-                  _buildTextField(
-                    label: 'Username',
-                    hint: 'MQTT username (if required)',
+                  const SizedBox(height: 8.0),
+                  
+                  // Username
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'MQTT Username',
+                      hintText: 'MQTT username (if required)',
+                      border: OutlineInputBorder(),
+                    ),
                     initialValue: controller.mqttUsername.value,
                     onChanged: controller.saveMqttUsername,
                   ),
-                  SizedBox(height: 8),
-                  _buildPasswordTextField(
-                    label: 'Password',
-                    hint: 'MQTT password (if required)',
+                  const SizedBox(height: 8.0),
+                  
+                  // Password
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'MQTT Password',
+                      hintText: 'MQTT password (if required)',
+                      border: OutlineInputBorder(),
+                    ),
                     initialValue: controller.mqttPassword.value,
+                    obscureText: true,
                     onChanged: controller.saveMqttPassword,
                   ),
-                  SizedBox(height: 16),
-                  _buildTextField(
-                    label: 'Device Name',
-                    hint: 'Unique identifier for this device',
+                  const SizedBox(height: 8.0),
+                  
+                  // Device Name
+                  TextFormField(
+                    decoration: const InputDecoration(
+                      labelText: 'Device Name',
+                      hintText: 'Name used for MQTT topics',
+                      border: OutlineInputBorder(),
+                    ),
                     initialValue: controller.deviceName.value,
                     onChanged: controller.saveDeviceName,
                   ),
-                  SizedBox(height: 16),
-                  // Home Assistant Auto-Discovery
-                  _buildHaDiscoverySwitch(),
-                  SizedBox(height: 16),
-                  // Connect/Disconnect Button
-                  _buildConnectionButton(),
+                  const SizedBox(height: 16.0),
+                  
+                  // Home Assistant Discovery
+                  _buildHomeAssistantSwitch(),
+                  const SizedBox(height: 16.0),
+                  
+                  // Connection buttons
+                  _buildConnectionButtons(),
+                  
+                  // Republish sensors button
+                  _buildRepublishSensorsButton(),
                 ],
               );
             }),
@@ -96,109 +130,84 @@ class MqttSettingsView extends GetView<SettingsController> {
   }
   
   Widget _buildMqttEnabledSwitch() {
-    return Row(
+    return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text('Enable MQTT'),
-        Obx(() => Switch(
+        Switch(
           value: controller.mqttEnabled.value,
           onChanged: controller.toggleMqttEnabled,
-        )),
+        ),
       ],
-    );
+    ));
   }
   
-  Widget _buildHaDiscoverySwitch() {
-    return Row(
+  Widget _buildHomeAssistantSwitch() {
+    return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text('Home Assistant Auto-Discovery'),
-            Text(
-              'Publish sensors to Home Assistant',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-            ),
-          ],
-        ),
-        Obx(() => Switch(
+        Text('Home Assistant Discovery'),
+        Switch(
           value: controller.mqttHaDiscovery.value,
           onChanged: controller.toggleMqttHaDiscovery,
-        )),
-      ],
-    );
-  }
-  
-  Widget _buildTextField({
-    required String label,
-    required String hint,
-    required String initialValue,
-    required ValueChanged<String> onChanged,
-  }) {
-    return TextField(
-      controller: TextEditingController(text: initialValue),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        border: OutlineInputBorder(),
-      ),
-      onChanged: onChanged,
-    );
-  }
-  
-  Widget _buildPortTextField({
-    required String label,
-    required String hint,
-    required String initialValue,
-    required ValueChanged<String> onChanged,
-  }) {
-    return TextField(
-      controller: TextEditingController(text: initialValue),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        border: OutlineInputBorder(),
-      ),
-      keyboardType: TextInputType.number,
-      onChanged: onChanged,
-    );
-  }
-  
-  Widget _buildPasswordTextField({
-    required String label,
-    required String hint,
-    required String initialValue,
-    required ValueChanged<String> onChanged,
-  }) {
-    return TextField(
-      controller: TextEditingController(text: initialValue),
-      decoration: InputDecoration(
-        labelText: label,
-        hintText: hint,
-        border: OutlineInputBorder(),
-      ),
-      obscureText: true,
-      onChanged: onChanged,
-    );
-  }
-  
-  Widget _buildConnectionButton() {
-    return Obx(() {
-      final isConnected = controller.mqttConnected.value;
-      
-      return ElevatedButton.icon(
-        onPressed: isConnected 
-            ? controller.disconnectMqtt 
-            : controller.connectMqtt,
-        icon: Icon(isConnected ? Icons.link_off : Icons.link),
-        label: Text(isConnected ? 'Disconnect' : 'Connect'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: isConnected ? Colors.red : Colors.green,
-          foregroundColor: Colors.white,
-          minimumSize: Size(double.infinity, 48),
         ),
-      );
-    });
+      ],
+    ));
+  }
+  
+  Widget _buildConnectionButtons() {
+    return Obx(() => Row(
+      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+      children: [
+        ElevatedButton.icon(
+          icon: const Icon(Icons.link),
+          label: const Text('Connect'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.green[700],
+            foregroundColor: Colors.white,
+          ),
+          onPressed: controller.mqttConnected.value ? null : controller.connectMqtt,
+        ),
+        const SizedBox(width: 16.0),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.link_off),
+          label: const Text('Disconnect'),
+          style: ElevatedButton.styleFrom(
+            backgroundColor: Colors.red[700],
+            foregroundColor: Colors.white,
+          ),
+          onPressed: controller.mqttConnected.value ? controller.disconnectMqtt : null,
+        ),
+        const SizedBox(width: 16.0),
+        // Connection status indicator
+        _buildConnectionIndicator(),
+      ],
+    ));
+  }
+  
+  Widget _buildConnectionIndicator() {
+    return Obx(() => Container(
+      width: 12,
+      height: 12,
+      decoration: BoxDecoration(
+        shape: BoxShape.circle,
+        color: controller.mqttConnected.value ? Colors.green : Colors.red,
+      ),
+    ));
+  }
+  
+  Widget _buildRepublishSensorsButton() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 16.0),
+      child: Obx(() => ElevatedButton.icon(
+        icon: const Icon(Icons.refresh),
+        label: const Text('Republish All Sensors'),
+        style: ElevatedButton.styleFrom(
+          backgroundColor: Colors.blue[700],
+          foregroundColor: Colors.white,
+        ),
+        onPressed: controller.mqttConnected.value ? controller.forceRepublishSensors : null,
+      )),
+    );
   }
 }

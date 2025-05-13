@@ -256,57 +256,63 @@ class TilingWindowViewState extends State<TilingWindowView> {
   Widget _buildToolbar(BuildContext context) {
     return Container(
       height: 50,
+      constraints: BoxConstraints.tightFor(height: 50), // Enforce strict height
       color: Theme.of(context).primaryColor,
-      child: Row(
-        children: [
-          // Add web view button
-          _buildToolbarButton(
-            icon: Icons.web,
-            label: 'Web',
-            onPressed: () => _showAddWebViewDialog(context),
-          ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          children: [
+            // Add web view button
+            _buildToolbarButton(
+              icon: Icons.web,
+              label: 'Web',
+              onPressed: () => _showAddWebViewDialog(context),
+            ),
 
-          // Add video button
-          _buildToolbarButton(
-            icon: Icons.video_file,
-            label: 'Video',
-            onPressed: () => _showAddMediaDialog(context, isAudio: false),
-          ),
+            // Add video button
+            _buildToolbarButton(
+              icon: Icons.video_file,
+              label: 'Video',
+              onPressed: () => _showAddMediaDialog(context, isAudio: false),
+            ),
 
-          // Add audio button
-          _buildToolbarButton(
-            icon: Icons.audio_file,
-            label: 'Audio',
-            onPressed: () => _showAddMediaDialog(context, isAudio: true),
-          ),
+            // Add audio button
+            _buildToolbarButton(
+              icon: Icons.audio_file,
+              label: 'Audio',
+              onPressed: () => _showAddMediaDialog(context, isAudio: true),
+            ),
 
-          // Toggle tiling/floating mode
-          _buildToolbarButton(
-            icon: controller.tilingMode.value ? Icons.view_quilt : Icons.view_carousel,
-            label: controller.tilingMode.value ? 'Tiling' : 'Floating',
-            onPressed: () => controller.toggleWindowMode(),
-          ),
+            // Toggle tiling/floating mode
+            _buildToolbarButton(
+              icon: controller.tilingMode.value ? Icons.view_quilt : Icons.view_carousel,
+              label: controller.tilingMode.value ? 'Tiling' : 'Floating',
+              onPressed: () => controller.toggleWindowMode(),
+            ),
 
-          // Compact system info display
-          _buildCompactSystemInfo(),
+            // Compact system info display
+            _buildCompactSystemInfo(),
 
-          // Flexible spacer
-          Spacer(),
+            // Flexible spacer with minimum width
+            SizedBox(width: 20),
 
-          // System Info button
-          _buildToolbarButton(
-            icon: Icons.dashboard,
-            label: 'System Info',
-            onPressed: () => _showSystemInfoDialog(context),
-          ),
+            // System Info button
+            _buildToolbarButton(
+              icon: Icons.dashboard,
+              label: 'System Info',
+              onPressed: () => _showSystemInfoDialog(context),
+            ),
 
-          // Settings button
-          _buildToolbarButton(
-            icon: Icons.settings,
-            label: 'Settings',
-            onPressed: () => _navigateToSettings(),
-          ),
-        ],
+            // Settings button
+            _buildToolbarButton(
+              icon: Icons.settings,
+              label: 'Settings',
+              onPressed: () => _navigateToSettings(),
+            ),
+            // Add some padding at the end
+            SizedBox(width: 8),
+          ],
+        ),
       ),
     );
   }
@@ -316,16 +322,26 @@ class TilingWindowViewState extends State<TilingWindowView> {
     required String label,
     required VoidCallback onPressed,
   }) {
+    // Fixed-height container to prevent overflow in various states
     return InkWell(
       onTap: onPressed,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16.0),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(icon, color: Colors.white),
-            Text(label, style: TextStyle(color: Colors.white, fontSize: 12)),
-          ],
+      child: Container(
+        height: 46, // Fixed height that fits within the toolbar
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(icon, color: Colors.white, size: 18), // Slightly smaller icon
+              const SizedBox(height: 1), // Minimal spacing
+              Text(
+                label, 
+                style: TextStyle(color: Colors.white, fontSize: 10),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -592,11 +608,11 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
           },
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
-            height: _isVisible ? 50 : 5,
+            height: _isVisible ? 50 : 8,  // Increased minimum height
             child: _isVisible
                 // When visible, show the full toolbar
                 ? widget.child
-                // When hidden, just show the handle (no Column to avoid overflow)
+                // When hidden, just show the handle (simplified to avoid overflow)
                 : Container(
                     decoration: BoxDecoration(
                       color: Theme.of(context).primaryColor.withOpacity(0.7),
@@ -605,7 +621,9 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
                         topRight: Radius.circular(5),
                       ),
                     ),
-                    child: Center(
+                    // Use a direct container with alignment rather than nested Columns/Centers
+                    child: Align(
+                      alignment: Alignment.center,
                       child: Container(
                         height: 2,
                         width: 40,

@@ -6,7 +6,6 @@ import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
 import '../../../services/storage_service.dart';
-import '../../../core/utils/app_constants.dart';
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys

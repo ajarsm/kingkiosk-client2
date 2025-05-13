@@ -1,0 +1,247 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import '../controllers/settings_controller.dart';
+import 'web_url_settings_view_fixed.dart';
+import 'mqtt_settings_view.dart';
+
+class SettingsViewFixed extends GetView<SettingsController> {
+  const SettingsViewFixed({Key? key}) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    // Ensure controller is registered
+    if (!Get.isRegistered<SettingsController>()) {
+      Get.put(SettingsController());
+    }
+    
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Settings'),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.refresh),
+            onPressed: controller.resetAllSettings,
+            tooltip: 'Reset All Settings',
+          ),
+        ],
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // App Settings
+            _buildSection(
+              title: 'App Settings',
+              children: [
+                _buildThemeToggle(),
+                _buildKioskModeToggle(),
+                _buildSystemInfoToggle(),
+              ],
+            ),
+            
+            // Web URLs
+            _buildSection(
+              title: 'Web URLs',
+              children: [
+                WebUrlSettingsViewFixed(),
+              ],
+            ),
+            
+            // MQTT
+            _buildSection(
+              title: 'IoT & Integrations',
+              children: [
+                MqttSettingsView(),
+              ],
+            ),
+            
+            // Other connection settings
+            _buildSection(
+              title: 'Advanced Connection Settings',
+              children: [
+                _buildWebSocketSettings(),
+                _buildMediaServerSettings(),
+              ],
+            ),
+            
+            // App info
+            Padding(
+              padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+              child: Center(
+                child: Text(
+                  'Flutter GetX Kiosk v1.0.0',
+                  style: TextStyle(
+                    color: Colors.grey,
+                    fontSize: 12.0,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildSection({required String title, required List<Widget> children}) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 8.0),
+          child: Text(
+            title,
+            style: TextStyle(
+              fontSize: 20.0,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+        ...children,
+        SizedBox(height: 16.0),
+      ],
+    );
+  }
+  
+  Widget _buildThemeToggle() {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.brightness_6),
+        title: Text('Dark Mode'),
+        subtitle: Text('Toggle application theme'),
+        trailing: Obx(() => Switch(
+          value: controller.isDarkMode.value,
+          onChanged: (_) => controller.toggleDarkMode(),
+        )),
+        onTap: () => controller.toggleDarkMode(),
+      ),
+    );
+  }
+  
+  Widget _buildKioskModeToggle() {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.tv),
+        title: Text('Kiosk Mode'),
+        subtitle: Text('Fullscreen display mode'),
+        trailing: Obx(() => Switch(
+          value: controller.kioskMode.value,
+          onChanged: (_) => controller.toggleKioskMode(),
+        )),
+        onTap: () => controller.toggleKioskMode(),
+      ),
+    );
+  }
+  
+  Widget _buildSystemInfoToggle() {
+    return Card(
+      child: ListTile(
+        leading: Icon(Icons.info_outline),
+        title: Text('System Info'),
+        subtitle: Text('Show system information'),
+        trailing: Obx(() => Switch(
+          value: controller.showSystemInfo.value,
+          onChanged: (_) => controller.toggleShowSystemInfo(),
+        )),
+        onTap: () => controller.toggleShowSystemInfo(),
+      ),
+    );
+  }
+  
+  Widget _buildWebSocketSettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.swap_horiz),
+                SizedBox(width: 8),
+                Text(
+                  'WebSocket Settings',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Divider(),
+            SizedBox(height: 8),
+            _buildWebSocketUrlField(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildWebSocketUrlField() {
+    return Obx(() {
+      // Create controller with text and place cursor at the end
+      final textController = TextEditingController(text: controller.websocketUrl.value);
+      textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: textController.text.length)
+      );
+      
+      return TextField(
+        controller: textController,
+        decoration: InputDecoration(
+          labelText: 'WebSocket URL',
+          hintText: 'wss://example.com/ws',
+          border: OutlineInputBorder(),
+        ),
+        textDirection: TextDirection.ltr, // Force left-to-right text direction
+        onSubmitted: controller.saveWebsocketUrl,
+        onChanged: controller.saveWebsocketUrl,
+      );
+    });
+  }
+  
+  Widget _buildMediaServerSettings() {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.video_library),
+                SizedBox(width: 8),
+                Text(
+                  'Media Server Settings',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Divider(),
+            SizedBox(height: 8),
+            _buildMediaServerUrlField(),
+          ],
+        ),
+      ),
+    );
+  }
+  
+  Widget _buildMediaServerUrlField() {
+    return Obx(() {
+      // Create controller with text and place cursor at the end
+      final textController = TextEditingController(text: controller.mediaServerUrl.value);
+      textController.selection = TextSelection.fromPosition(
+        TextPosition(offset: textController.text.length)
+      );
+      
+      return TextField(
+        controller: textController,
+        decoration: InputDecoration(
+          labelText: 'Media Server URL',
+          hintText: 'https://example.com/media',
+          border: OutlineInputBorder(),
+        ),
+        textDirection: TextDirection.ltr, // Force left-to-right text direction
+        onSubmitted: controller.saveMediaServerUrl,
+        onChanged: controller.saveMediaServerUrl,
+      );
+    });
+  }
+}

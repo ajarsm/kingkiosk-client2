@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'webview_manager.dart';
 
+
 class WebViewTile extends StatefulWidget {
   final String url;
   
@@ -20,17 +21,19 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
   bool _hasError = false;
   String _errorMessage = '';
   final GlobalKey webViewKey = GlobalKey();
-  
+
   @override
   bool get wantKeepAlive => true; // Keep state alive when widget is not visible
   
   @override
+  @override
   void initState() {
     super.initState();
+    // Disable WebView debug logging
+    PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
     WidgetsBinding.instance.addObserver(this);
     _webViewData = WebViewManager().getWebViewFor(widget.url);
   }
-  
   @override
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);
@@ -120,8 +123,10 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
               _errorMessage = error.description;
             });
           },
+          // Console messages are disabled to reduce noise
           onConsoleMessage: (controller, consoleMessage) {
-            print("WebView Console: ${consoleMessage.message}");
+            // Uncomment the line below if you need to debug web content
+            // print("WebView Console: ${consoleMessage.message}");
           },
         ),
         

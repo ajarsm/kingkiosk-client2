@@ -1,41 +1,51 @@
+import 'package:flutter_getx_kiosk/app/services/websocket_service.dart';
 import 'package:get/get.dart';
-
-import '../../services/websocket_service.dart';
-import '../../services/mediasoup_service.dart';
-import '../../services/platform_sensor_service.dart';
 import '../../services/storage_service.dart';
-import '../../services/navigation_service.dart';
+import '../../services/platform_sensor_service.dart';
 import '../../services/theme_service.dart';
-import '../../services/mqtt_service.dart';
-import '../../services/background_media_service.dart';
+import '../../services/mqtt_service_consolidated.dart';
+import '../../services/app_lifecycle_service.dart';
+import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
 
 class InitialBinding extends Bindings {
   @override
   void dependencies() {
-    // Register services as singletons
+    // Core services first - order matters!
     Get.put<StorageService>(StorageService().init(), permanent: true);
-    Get.put<WebSocketService>(WebSocketService().init(), permanent: true);
-    Get.put<MediasoupService>(MediasoupService().init(), permanent: true);
-    Get.put<PlatformSensorService>(PlatformSensorService().init(), permanent: true);
-    Get.put<NavigationService>(NavigationService().init(), permanent: true);
     Get.put<ThemeService>(ThemeService().init(), permanent: true);
-    // Register BackgroundMediaService
-    final backgroundMediaService = BackgroundMediaService();
-    backgroundMediaService.init().then((_) {
-      Get.put<BackgroundMediaService>(backgroundMediaService, permanent: true);
-      
-      // MQTT Service needs to be initialized after other services
+    Get.put<PlatformSensorService>(PlatformSensorService().init(), permanent: true);
+    
+    // Core controllers
+    Get.put(AppStateController(), permanent: true);
+    
+    // Additional services
+    Get.put<WebSocketService>(WebSocketService().init(), permanent: true);
+    Get.put<AppLifecycleService>(AppLifecycleService().init(), permanent: true);
+    Get.put<NavigationService>(NavigationService().init(), permanent: true);
+
+    // MQTT service with 60-second update interval and proper stats
+    _initMqttService();
+  }
+  
+  /// Initialize the MQTT service with the proper dependencies
+  void _initMqttService() {
+    try {
       final storageService = Get.find<StorageService>();
       final sensorService = Get.find<PlatformSensorService>();
-      final mqttService = MqttService(storageService, sensorService);
       
-      mqttService.init().then((_) {
-        Get.put<MqttService>(mqttService, permanent: true);
+      // Create and register the consolidated MQTT service
+      final mqttService = MqttService(storageService, sensorService);
+      // Initialize and make service available to the app
+      mqttService.init().then((service) {
+        Get.put<MqttService>(service, permanent: true);
+        print('MQTT service initialized successfully');
+        
+        // We don't connect here - we let the AppLifecycleService handle the connection
+        // based on the user's settings
       });
-    });
-    
-    // Register controllers - use lazyPut to avoid build-time issues
-    Get.lazyPut<AppStateController>(() => AppStateController(), fenix: true);
+    } catch (e) {
+      print('Error initializing MQTT service: $e');
+    }
   }
 }

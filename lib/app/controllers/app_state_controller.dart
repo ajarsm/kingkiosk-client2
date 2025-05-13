@@ -1,4 +1,5 @@
 import 'package:get/get.dart';
+import 'dart:developer' as developer;
 import '../services/storage_service.dart';
 import '../services/theme_service.dart';
 import '../core/utils/app_constants.dart';
@@ -22,11 +23,26 @@ class AppStateController extends GetxController {
   // Loading state
   final RxBool isLoading = false.obs;
   final RxString loadingMessage = ''.obs;
+
+  // App status
+  final RxBool isInitialized = false.obs;
+  final RxBool isOnline = false.obs;
+  final RxString currentPage = ''.obs;
+  
+  // Error state
+  final RxBool hasError = false.obs;
+  final RxString errorMessage = ''.obs;
+  
+  // App lifecycle
+  final RxBool isInForeground = true.obs;
   
   @override
   void onInit() {
     super.onInit();
+    developer.log('AppStateController initialized');
     _loadSettings();
+    // Mark as initialized
+    isInitialized.value = true;
   }
   
   void _loadSettings() {
@@ -80,5 +96,31 @@ class AppStateController extends GetxController {
   void setConnectionStatus(bool isConnected, {String error = ''}) {
     this.isConnected.value = isConnected;
     connectionError.value = error;
+    if (isConnected) {
+      clearError();
+    }
+  }
+  
+  void setOnlineStatus(bool online) {
+    isOnline.value = online;
+  }
+  
+  void setCurrentPage(String page) {
+    currentPage.value = page;
+  }
+  
+  void setError(String message) {
+    hasError.value = true;
+    errorMessage.value = message;
+    developer.log('AppStateController error: $message');
+  }
+  
+  void clearError() {
+    hasError.value = false;
+    errorMessage.value = '';
+  }
+  
+  void setForegroundState(bool isInForeground) {
+    this.isInForeground.value = isInForeground;
   }
 }

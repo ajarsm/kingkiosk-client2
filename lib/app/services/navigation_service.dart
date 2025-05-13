@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../routes/app_pages.dart';
 
 /// Service to handle navigation throughout the app
 class NavigationService extends GetxService {
@@ -31,7 +30,7 @@ class NavigationService extends GetxService {
   
   /// Return whether the navigator can go back
   bool canGoBack() {
-    return Get.currentRoute != AppPages.INITIAL;
+    return Get.currentRoute != '/home'; // Use string instead of AppPages.INITIAL
   }
   
   /// Show a snackbar notification

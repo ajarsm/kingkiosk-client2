@@ -30,11 +30,20 @@ class SplashView extends GetView<SplashController> {
                 color: Colors.white,
               ),
             ),
-            const SizedBox(height: 50),
+            const SizedBox(height: 40),
             // Loading indicator
             CircularProgressIndicator(
               valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
             ),
+            const SizedBox(height: 20),
+            // Status message
+            Obx(() => Text(
+              controller.initStatus.value,
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.white70,
+              ),
+            )),
           ],
         ),
       ),
