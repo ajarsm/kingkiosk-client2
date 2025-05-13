@@ -6,6 +6,7 @@ import 'package:media_kit/media_kit.dart';
 import 'app/core/theme/app_theme.dart';
 import 'app/core/bindings/initial_binding.dart';
 import 'app/routes/app_pages_fixed.dart';
+import 'app/core/utils/platform_utils.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -16,6 +17,9 @@ void main() async {
   
   // Initialize MediaKit for media playback
   MediaKit.ensureInitialized();
+
+  // Initialize window_manager for desktop
+  await PlatformUtils.ensureWindowManagerInitialized();
   
   runApp(const KioskApp());
 }

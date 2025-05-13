@@ -12,6 +12,8 @@ import '../../../services/navigation_service.dart';
 import '../../../widgets/system_info_dashboard.dart';
 import '../../../services/platform_sensor_service.dart';
 import '../../../controllers/app_state_controller.dart';
+import '../../../modules/settings/controllers/settings_controller.dart';
+import '../../../core/utils/platform_utils.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -25,7 +27,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
   late final TilingWindowController controller;
   late final AppStateController appStateController;
   late final PlatformSensorService sensorService;
-  
+  late final SettingsController settingsController;
+  late final StreamSubscription kioskModeSub;
+
   @override
   void initState() {
     super.initState();
@@ -33,6 +37,21 @@ class TilingWindowViewState extends State<TilingWindowView> {
     controller = Get.find<TilingWindowController>();
     appStateController = Get.find<AppStateController>();
     sensorService = Get.find<PlatformSensorService>();
+    settingsController = Get.find<SettingsController>();
+
+    // Listen to kioskMode changes
+    kioskModeSub = settingsController.kioskMode.listen((enabled) {
+      if (enabled) {
+        PlatformUtils.enableKioskMode();
+      } else {
+        PlatformUtils.disableKioskMode();
+      }
+    });
+
+    // Initial apply
+    if (settingsController.kioskMode.value) {
+      PlatformUtils.enableKioskMode();
+    }
   }
 
   @override
@@ -44,6 +63,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
     controller.setContainerBoundsIfChanged(
       Rect.fromLTWH(0, 0, screenSize.width, screenSize.height),
     );
+  }
+
+  @override
+  void dispose() {
+    kioskModeSub.cancel();
+    super.dispose();
   }
 
   @override

@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get/get.dart';
+import 'package:flutter/services.dart';
+import 'package:window_manager/window_manager.dart';
 
 class PlatformUtils {
   /// Checks if the current platform is a desktop platform (Windows, macOS, Linux)
@@ -34,4 +36,40 @@ class PlatformUtils {
   
   /// Returns true if the platform can support WebRTC
   static bool get supportsWebRTC => GetPlatform.isMobile || GetPlatform.isDesktop || kIsWeb;
+
+  /// Call this early in main() for desktop to initialize window_manager
+  static Future<void> ensureWindowManagerInitialized() async {
+    if (isDesktop) {
+      await windowManager.ensureInitialized();
+    }
+  }
+
+  /// Enable kiosk/fullscreen mode (mobile: immersive, desktop: fullscreen+always-on-top)
+  static Future<void> enableKioskMode() async {
+    if (isMobile) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+    } else if (isDesktop) {
+      await windowManager.setFullScreen(true);
+      await windowManager.setAlwaysOnTop(true);
+      await windowManager.setPreventClose(true);
+      // Only skip taskbar on Windows/Linux, not macOS
+      if (GetPlatform.isWindows || GetPlatform.isLinux) {
+        await windowManager.setSkipTaskbar(true);
+      }
+    }
+  }
+
+  /// Disable kiosk/fullscreen mode (mobile: restore UI, desktop: exit fullscreen)
+  static Future<void> disableKioskMode() async {
+    if (isMobile) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+    } else if (isDesktop) {
+      await windowManager.setFullScreen(false);
+      await windowManager.setAlwaysOnTop(false);
+      await windowManager.setPreventClose(false);
+      if (GetPlatform.isWindows || GetPlatform.isLinux) {
+        await windowManager.setSkipTaskbar(false);
+      }
+    }
+  }
 }

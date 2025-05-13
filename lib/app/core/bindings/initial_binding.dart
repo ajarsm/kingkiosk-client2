@@ -8,6 +8,7 @@ import '../../services/app_lifecycle_service.dart';
 import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
 import '../../services/background_media_service.dart';
+import '../../modules/settings/controllers/settings_controller.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -19,6 +20,8 @@ class InitialBinding extends Bindings {
     
     // Core controllers
     Get.put(AppStateController(), permanent: true);
+    // Register SettingsController after StorageService is ready
+    Get.put(SettingsController(), permanent: true);
     
     // Additional services
     Get.put<WebSocketService>(WebSocketService().init(), permanent: true);
