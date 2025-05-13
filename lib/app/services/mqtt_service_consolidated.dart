@@ -10,6 +10,7 @@ import 'storage_service.dart';
 import 'platform_sensor_service.dart';
 import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
+import '../services/window_manager_service.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -35,6 +36,31 @@ class MqttService extends GetxService {
   
   // Constructor
   MqttService(this._storageService, this._sensorService);
+
+  @override
+  void onInit() {
+    super.onInit();
+    // Subscribe to window command topics
+    final device = deviceName.value;
+    final topic = 'kiosk/$device/window/+/command';
+    subscribe(topic, (String topic, String payload) {
+      // Parse window name from topic
+      final parts = topic.split('/');
+      final windowName = parts.length > 3 ? parts[3] : null;
+      if (windowName != null) {
+        try {
+          final data = json.decode(payload) as Map<String, dynamic>;
+          final action = data['action'] as String?;
+          if (action != null) {
+            final wm = Get.find<WindowManagerService>();
+            wm.handleWindowCommand(windowName, action, data);
+          }
+        } catch (e) {
+          print('Failed to parse window command payload: $e');
+        }
+      }
+    });
+  }
   
   // Connection callbacks
   void onConnected() {
@@ -787,12 +813,24 @@ class MqttService extends GetxService {
   }
   
   /// Subscribe to a custom MQTT topic
-  void subscribe(String topic) {
+  void subscribe(String topic, Function(String, String) onMessage) {
     if (!isConnected.value || _client == null) return;
     
     try {
       print('Subscribing to topic: $topic');
       _client!.subscribe(topic, MqttQos.atLeastOnce);
+      _client!.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? messages) {
+        if (messages == null || messages.isEmpty) return;
+        for (final message in messages) {
+          if (message.payload is MqttPublishMessage) {
+            final publishMessage = message.payload as MqttPublishMessage;
+            final payloadString = MqttPublishPayload.bytesToStringAsString(
+              publishMessage.payload.message,
+            );
+            onMessage(message.topic, payloadString);
+          }
+        }
+      });
     } catch (e) {
       print('Error subscribing to $topic: $e');
     }

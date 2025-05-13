@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
+import 'dart:io' show Platform;
 import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
@@ -10,6 +11,18 @@ class SettingsController extends GetxController {
   // Services
   final StorageService _storageService = Get.find<StorageService>();
   late MqttService? _mqttService;
+
+  // Robust getter for MqttService to handle late registration
+  MqttService? get mqttService {
+    if (_mqttService == null) {
+      try {
+        _mqttService = Get.find<MqttService>();
+      } catch (_) {
+        // Still not available
+      }
+    }
+    return _mqttService;
+  }
   
   // Theme settings
   final RxBool isDarkMode = false.obs;
@@ -59,8 +72,8 @@ class SettingsController extends GetxController {
     }
     
     // Safely load settings on the next event loop
-    Future.microtask(() {
-      _loadSettings();
+    Future.microtask(() async {
+      await _loadSettingsWithHostname();
       _initControllerValues();
       
       // Auto-connect to MQTT if it was enabled (after a short delay)
@@ -81,7 +94,7 @@ class SettingsController extends GetxController {
     super.onClose();
   }
 
-  void _loadSettings() {
+  Future<void> _loadSettingsWithHostname() async {
     // Load theme settings
     isDarkMode.value = _storageService.read<bool>(AppConstants.keyIsDarkMode) ?? false;
     
@@ -104,14 +117,33 @@ class SettingsController extends GetxController {
     mqttBrokerPort.value = _storageService.read<int>(AppConstants.keyMqttBrokerPort) ?? AppConstants.defaultMqttBrokerPort;
     mqttUsername.value = _storageService.read<String>(AppConstants.keyMqttUsername) ?? '';
     mqttPassword.value = _storageService.read<String>(AppConstants.keyMqttPassword) ?? '';
-    deviceName.value = _storageService.read<String>(AppConstants.keyDeviceName) ?? '';
     mqttHaDiscovery.value = _storageService.read<bool>(AppConstants.keyMqttHaDiscovery) ?? false;
+
+    // Device name: if not set, use hostname
+    String? storedDeviceName = _storageService.read<String>(AppConstants.keyDeviceName);
+    if (storedDeviceName == null || storedDeviceName.isEmpty) {
+      String hostname = await _getHostname();
+      deviceName.value = hostname;
+      _storageService.write(AppConstants.keyDeviceName, hostname);
+    } else {
+      deviceName.value = storedDeviceName;
+    }
     
     // Apply theme
     _applyTheme();
     
     // Initialize MQTT connection status
     _initMqttStatus();
+  }
+
+  Future<String> _getHostname() async {
+    try {
+      if (Platform.isMacOS || Platform.isLinux || Platform.isWindows) {
+        return Platform.localHostname;
+      }
+    } catch (_) {}
+    // Fallback for mobile/web
+    return 'kiosk-device';
   }
 
   void _initControllerValues() {
@@ -154,24 +186,24 @@ class SettingsController extends GetxController {
 
   void autoConnectMqttIfEnabled() {
     // Check if MQTT should auto-connect
-    if (mqttEnabled.value && _mqttService != null && !_mqttService!.isConnected.value) {
+    if (mqttEnabled.value && mqttService != null && !mqttService!.isConnected.value) {
       print('MQTT is enabled and not connected, auto-connecting...');
       // Use a short delay to ensure all dependencies are ready
       Future.delayed(Duration(milliseconds: 500), () {
         connectMqtt();
       });
-    } else if (_mqttService != null && _mqttService!.isConnected.value) {
+    } else if (mqttService != null && mqttService!.isConnected.value) {
       print('MQTT is already connected, skipping auto-connect');
     }
   }
 
   void _initMqttStatus() {
     // Initialize MQTT connection status
-    if (_mqttService != null) {
-      mqttConnected.value = _mqttService!.isConnected.value;
+    if (mqttService != null) {
+      mqttConnected.value = mqttService!.isConnected.value;
       
       // Listen to connection status changes
-      ever(_mqttService!.isConnected, (bool connected) {
+      ever(mqttService!.isConnected, (bool connected) {
         mqttConnected.value = connected;
       });
     }
@@ -297,21 +329,36 @@ class SettingsController extends GetxController {
     );
   }
 
+  void saveDeviceName(String name) {
+    // Sanitize: all whitespace to dashes, remove underscores, remove special chars except dash, collapse multiple dashes
+    String sanitized = name
+        .replaceAll(RegExp(r'\s+'), '-') // all whitespace to dash
+        .replaceAll('_', '')
+        .replaceAll(RegExp(r'[^A-Za-z0-9-]'), '') // only alphanum and dash
+        .replaceAll(RegExp(r'-+'), '-') // collapse multiple dashes
+        .replaceAll(RegExp(r'^-+|-+$'), '') // trim leading/trailing dashes
+        .toLowerCase();
+    deviceName.value = sanitized;
+    _storageService.write(AppConstants.keyDeviceName, sanitized);
+    if (mqttService != null) {
+      mqttService!.deviceName.value = sanitized;
+    }
+  }
+
   void connectMqtt() {
-    if (_mqttService == null) {
+    if (mqttService == null) {
       print('MQTT Service not available');
       return;
     }
-    
+    // Always update the MQTT service device name before connecting
+    mqttService!.deviceName.value = deviceName.value;
     // Only attempt to connect if not already connected
-    if (_mqttService!.isConnected.value) {
+    if (mqttService!.isConnected.value) {
       print('MQTT already connected, skipping connection attempt');
       return;
     }
-    
     print('Attempting to connect to MQTT broker: ${mqttBrokerUrl.value}:${mqttBrokerPort.value}');
-    
-    _mqttService!.connect(
+    mqttService!.connect(
       brokerUrl: mqttBrokerUrl.value,
       port: mqttBrokerPort.value,
       username: mqttUsername.value.isNotEmpty ? mqttUsername.value : null,
@@ -340,8 +387,8 @@ class SettingsController extends GetxController {
   }
 
   void disconnectMqtt() {
-    if (_mqttService != null) {
-      _mqttService!.disconnect().then((_) {
+    if (mqttService != null) {
+      mqttService!.disconnect().then((_) {
         mqttConnected.value = false;
         Get.snackbar(
           'MQTT Disconnected',
@@ -354,7 +401,7 @@ class SettingsController extends GetxController {
 
   /// Force republish all sensors to Home Assistant
   void forceRepublishSensors() {
-    if (_mqttService == null) {
+    if (mqttService == null) {
       print('MQTT Service not available');
       Get.snackbar(
         'MQTT Error',
@@ -366,7 +413,7 @@ class SettingsController extends GetxController {
       return;
     }
     
-    if (!_mqttService!.isConnected.value) {
+    if (!mqttService!.isConnected.value) {
       print('MQTT not connected');
       Get.snackbar(
         'MQTT Error',
@@ -379,7 +426,7 @@ class SettingsController extends GetxController {
     }
     
     // Call the debug function to force republish all sensors
-    _mqttService!.forcePublishAllSensors();
+    mqttService!.forcePublishAllSensors();
     
     Get.snackbar(
       'MQTT Sensors',
@@ -392,7 +439,7 @@ class SettingsController extends GetxController {
 
   void resetAllSettings() {
     // First disconnect MQTT if connected
-    if (mqttConnected.value && _mqttService != null) {
+    if (mqttConnected.value && mqttService != null) {
       disconnectMqtt();
     }
     

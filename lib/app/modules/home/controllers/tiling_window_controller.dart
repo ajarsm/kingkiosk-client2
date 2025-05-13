@@ -6,6 +6,8 @@ import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
 import '../../../services/storage_service.dart';
+import '../../../services/window_manager_service.dart';
+import 'media_window_controller.dart';
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -266,13 +268,27 @@ class TilingWindowController extends GetxController {
       position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
       size: Size(600, 400),
     );
-    
     tiles.add(newTile);
     if (tilingMode.value) {
       _layout.addTile(newTile, targetTile: selectedTile.value);
       _layout.applyLayout(_containerBounds);
     }
     selectedTile.value = newTile;
+
+    // --- Register MediaWindowController for MQTT/media control ---
+    final playerData = MediaPlayerManager().getPlayerFor(url);
+    final controller = MediaWindowController(
+      windowName: newTile.id, // Use unique tile ID for MQTT routing
+      playerData: playerData,
+      onClose: () {
+        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+      },
+    );
+    Get.find<WindowManagerService>().registerWindow(controller);
+    // ------------------------------------------------------------
+
+    // Save window state after adding tile
+    _saveWindowState();
   }
   
   /// Creates an audio window tile
@@ -303,22 +319,18 @@ class TilingWindowController extends GetxController {
   void closeTile(WindowTile tile) {
     final index = tiles.indexOf(tile);
     if (index >= 0) {
-      // Stop media playback if it's an audio or media tile
+      // Stop media playback and dispose player if it's an audio or media tile
       if (tile.type == TileType.audio || tile.type == TileType.media) {
-        // Get MediaPlayerManager instance and find the player for this URL
-        final playerManager = MediaPlayerManager();
-        final playerData = playerManager.getPlayerFor(tile.url);
-        // Pause the player
-        playerData.player.pause();
+        // Unregister and dispose the window controller for this tile (kills player)
+        final wm = Get.find<WindowManagerService>();
+        wm.getWindow(tile.id)?.disposeWindow();
+        wm.unregisterWindow(tile.id);
       }
-      
       if (tilingMode.value) {
         _layout.removeTile(tile);
         _layout.applyLayout(_containerBounds);
       }
-      
       tiles.removeAt(index);
-      
       if (selectedTile.value?.id == tile.id) {
         selectedTile.value = tiles.isNotEmpty ? tiles.last : null;
       }

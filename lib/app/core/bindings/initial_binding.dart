@@ -9,6 +9,7 @@ import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
 import '../../services/background_media_service.dart';
 import '../../modules/settings/controllers/settings_controller.dart';
+import '../../services/window_manager_service.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -28,29 +29,15 @@ class InitialBinding extends Bindings {
     Get.put<AppLifecycleService>(AppLifecycleService().init(), permanent: true);
     Get.put<NavigationService>(NavigationService().init(), permanent: true);
     Get.put<BackgroundMediaService>(BackgroundMediaService(), permanent: true);
+    Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
 
-    // MQTT service with 60-second update interval and proper stats
-    _initMqttService();
-  }
-  
-  /// Initialize the MQTT service with the proper dependencies
-  void _initMqttService() {
-    try {
-      final storageService = Get.find<StorageService>();
-      final sensorService = Get.find<PlatformSensorService>();
-      
-      // Create and register the consolidated MQTT service
-      final mqttService = MqttService(storageService, sensorService);
-      // Initialize and make service available to the app
-      mqttService.init().then((service) {
-        Get.put<MqttService>(service, permanent: true);
-        print('MQTT service initialized successfully');
-        
-        // We don't connect here - we let the AppLifecycleService handle the connection
-        // based on the user's settings
-      });
-    } catch (e) {
-      print('Error initializing MQTT service: $e');
-    }
+    // Eagerly register MQTT service after dependencies are ready
+    final storageService = Get.find<StorageService>();
+    final sensorService = Get.find<PlatformSensorService>();
+    final mqttService = MqttService(storageService, sensorService);
+    mqttService.init().then((service) {
+      Get.put<MqttService>(service, permanent: true);
+      print('MQTT service initialized successfully');
+    });
   }
 }
