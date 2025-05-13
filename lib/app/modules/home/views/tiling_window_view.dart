@@ -315,6 +315,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
               onPressed: () => controller.toggleWindowMode(),
             ),
 
+            // Show Window IDs button
+            _buildToolbarButton(
+              icon: Icons.info,
+              label: 'IDs',
+              onPressed: () => _showWindowIdsDialog(context),
+            ),
+
             // Compact system info display
             _buildCompactSystemInfo(),
 
@@ -340,6 +347,48 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       ),
     );
+  }
+
+  void _showWindowIdsDialog(BuildContext context) {
+    final tiles = controller.tiles;
+    Future.microtask(() {
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.info_outline),
+              SizedBox(width: 10),
+              Text('Window IDs'),
+            ],
+          ),
+          content: Container(
+            width: 400,
+            child: Obx(() => ListView(
+              shrinkWrap: true,
+              children: tiles.map((tile) => ListTile(
+                title: Text(tile.name),
+                subtitle: Text('ID: ${tile.id}\nType: ${tile.type.toString().split('.').last}\nURL: ${tile.url}'),
+                dense: true,
+                trailing: IconButton(
+                  icon: Icon(Icons.copy),
+                  tooltip: 'Copy ID',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: tile.id));
+                    Get.snackbar('Copied', 'Window ID copied to clipboard', snackPosition: SnackPosition.BOTTOM);
+                  },
+                ),
+              )).toList(),
+            )),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('Close'),
+            ),
+          ],
+        ),
+      );
+    });
   }
 
   Widget _buildToolbarButton({
@@ -603,8 +652,6 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
 
   void _showToolbar() {
     setState(() => _isVisible = true);
-
-    // Reset any pending hide timer
     _hideTimer?.cancel();
   }
 
@@ -623,21 +670,26 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
       left: 0,
       right: 0,
       bottom: 0,
-      child: MouseRegion(
-        onEnter: (_) => _showToolbar(),
-        onExit: (_) => _startHideTimer(),
-        child: GestureDetector(
-          onTap: () {
+      child: GestureDetector(
+        onVerticalDragUpdate: (details) {
+          if (details.delta.dy < -10) {
+            // Swipe up to show toolbar
             _showToolbar();
             _startHideTimer();
-          },
+          }
+        },
+        onTap: () {
+          _showToolbar();
+          _startHideTimer();
+        },
+        child: MouseRegion(
+          onEnter: (_) => _showToolbar(),
+          onExit: (_) => _startHideTimer(),
           child: AnimatedContainer(
             duration: const Duration(milliseconds: 200),
             height: _isVisible ? 50 : 8,  // Increased minimum height
             child: _isVisible
-                // When visible, show the full toolbar
                 ? widget.child
-                // When hidden, just show the handle (simplified to avoid overflow)
                 : Container(
                     decoration: BoxDecoration(
                       color: Theme.of(context).primaryColor.withOpacity(0.7),
@@ -646,15 +698,14 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
                         topRight: Radius.circular(5),
                       ),
                     ),
-                    // Use a direct container with alignment rather than nested Columns/Centers
                     child: Align(
                       alignment: Alignment.center,
                       child: Container(
-                        height: 2,
-                        width: 40,
+                        height: 8, // Make the hot area larger for touch
+                        width: 60,
                         decoration: BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(1),
+                          borderRadius: BorderRadius.circular(2),
                         ),
                       ),
                     ),

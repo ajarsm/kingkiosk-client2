@@ -157,6 +157,14 @@ class MqttService extends GetxService {
     String? username,
     String? password,
   }) async {
+    // Prevent multiple simultaneous connection attempts
+    if (_client != null &&
+        (_client!.connectionStatus?.state == MqttConnectionState.connecting ||
+         _client!.connectionStatus?.state == MqttConnectionState.connected)) {
+      print('MQTT already connected or connecting, skipping new connect attempt');
+      return isConnected.value;
+    }
+
     // Check if already connecting or connected
     if (_client != null && _client!.connectionStatus!.state != MqttConnectionState.disconnected) {
       print('MQTT already connected or connecting, disconnecting first');
@@ -317,6 +325,23 @@ class MqttService extends GetxService {
         retain: true,
       );
     }
+  }
+
+  /// Publish a JSON payload to an arbitrary topic (for diagnostics, etc.)
+  void publishJsonToTopic(String topic, Map<String, dynamic> payload, {bool retain = true}) {
+    if (!isConnected.value || _client == null) {
+      print('MQTT not connected, cannot publish to $topic');
+      return;
+    }
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(jsonEncode(payload));
+    _client!.publishMessage(
+      topic,
+      MqttQos.atLeastOnce,
+      builder.payload!,
+      retain: retain,
+    );
+    print('MQTT: Published JSON to $topic: ${jsonEncode(payload)}');
   }
 
   /// Start timer to periodically update device stats

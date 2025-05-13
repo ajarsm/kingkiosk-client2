@@ -2,12 +2,16 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
+import '../../../services/mqtt_service_consolidated.dart';
+import '../../settings/controllers/settings_controller.dart';
 import 'media_window_controller.dart';
+import 'web_window_controller.dart';
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -236,8 +240,31 @@ class TilingWindowController extends GetxController {
     }
   }
   
+  /// Publishes the list of open windows to MQTT for Home Assistant diagnostics
+  void publishOpenWindowsToMqtt() {
+    try {
+      final mqttService = Get.find<MqttService>();
+      final deviceName = Get.find<SettingsController>().deviceName.value;
+      final List<Map<String, dynamic>> windowList = tiles.map((tile) => {
+        'id': tile.id,
+        'name': tile.name,
+        'type': tile.type.toString().split('.').last,
+        'url': tile.url,
+      }).toList();
+      final topic = 'kiosk/$deviceName/diagnostics/windows';
+      if (mqttService.isConnected.value) {
+        // Use a helper on the service to publish to an arbitrary topic
+        mqttService.publishJsonToTopic(topic, {'windows': windowList});
+      } else {
+        print('MQTT not connected, cannot publish open windows diagnostics');
+      }
+    } catch (e) {
+      print('Failed to publish open windows to MQTT: $e');
+    }
+  }
+
   /// Creates a WebView window tile
-  void addWebViewTile(String name, String url) {
+  void addWebViewTile(String name, String url, {InAppWebViewController? webViewController}) {
     final newTile = WindowTile(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -246,16 +273,29 @@ class TilingWindowController extends GetxController {
       position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
       size: Size(600, 400),
     );
-    
     tiles.add(newTile);
     if (tilingMode.value) {
       _layout.addTile(newTile, targetTile: selectedTile.value);
       _layout.applyLayout(_containerBounds);
     }
     selectedTile.value = newTile;
-    
+
+    // --- Register WebWindowController for MQTT/web control ---
+    if (webViewController != null) {
+      final controller = WebWindowController(
+        windowName: newTile.id, // Use unique tile ID for MQTT routing
+        webViewController: webViewController,
+        onClose: () {
+          Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+        },
+      );
+      Get.find<WindowManagerService>().registerWindow(controller);
+    }
+    // --------------------------------------------------------
+
     // Save window state after adding tile
     _saveWindowState();
+    publishOpenWindowsToMqtt();
   }
   
   /// Creates a media (video) window tile
@@ -289,6 +329,7 @@ class TilingWindowController extends GetxController {
 
     // Save window state after adding tile
     _saveWindowState();
+    publishOpenWindowsToMqtt();
   }
   
   /// Creates an audio window tile
@@ -308,6 +349,7 @@ class TilingWindowController extends GetxController {
       _layout.applyLayout(_containerBounds);
     }
     selectedTile.value = newTile;
+    publishOpenWindowsToMqtt();
   }
   
   /// Selects a tile and brings it to the front
@@ -319,9 +361,8 @@ class TilingWindowController extends GetxController {
   void closeTile(WindowTile tile) {
     final index = tiles.indexOf(tile);
     if (index >= 0) {
-      // Stop media playback and dispose player if it's an audio or media tile
-      if (tile.type == TileType.audio || tile.type == TileType.media) {
-        // Unregister and dispose the window controller for this tile (kills player)
+      // Stop media/web/audio playback and dispose controller if needed
+      if (tile.type == TileType.audio || tile.type == TileType.media || tile.type == TileType.webView) {
         final wm = Get.find<WindowManagerService>();
         wm.getWindow(tile.id)?.disposeWindow();
         wm.unregisterWindow(tile.id);
@@ -334,6 +375,7 @@ class TilingWindowController extends GetxController {
       if (selectedTile.value?.id == tile.id) {
         selectedTile.value = tiles.isNotEmpty ? tiles.last : null;
       }
+      publishOpenWindowsToMqtt();
     }
   }
   
