@@ -14,6 +14,7 @@ import '../../../services/platform_sensor_service.dart';
 import '../../../controllers/app_state_controller.dart';
 import '../../../modules/settings/controllers/settings_controller.dart';
 import '../../../core/utils/platform_utils.dart';
+import '../../../widgets/settings_lock_pin_pad.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -77,100 +78,103 @@ class TilingWindowViewState extends State<TilingWindowView> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Stack(
-        children: [
-          // Background image for root window (faded, smaller)
-          Positioned.fill(
-            child: Center(
-              child: Opacity(
-                opacity: 0.18, // Faint background
-                child: FractionallySizedBox(
-                  widthFactor: 0.5, // Half the width
-                  heightFactor: 0.5, // Half the height
-                  child: Image.asset(
-                    'assets/images/Royal Kiosk with Wi-Fi Waves.png',
-                    fit: BoxFit.contain,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          // Windows and overlays
-          Obx(() => Stack(
-                children: controller.tiles.map((tile) => _buildWindowTile(tile)).toList(),
-              )),
-          // Edge handle for toolbar/appbar reveal (mobile and desktop)
-          if (PlatformUtils.isMobile)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: GestureDetector(
-                behavior: HitTestBehavior.translucent,
-                onDoubleTap: () {
-                  _autoHidingToolbarKey.currentState?.showToolbar();
-                },
-                onLongPress: () {
-                  _autoHidingToolbarKey.currentState?.showToolbar();
-                },
-                child: Container(
-                  height: 24,
-                  alignment: Alignment.topCenter,
-                  color: Colors.transparent,
-                  child: Center(
-                    child: Container(
-                      width: 60,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
+      body: Obx(() {
+        final locked = settingsController.isSettingsLocked.value;
+        return Stack(
+          children: [
+            // Background image for root window (faded, smaller)
+            Positioned.fill(
+              child: Center(
+                child: Opacity(
+                  opacity: 0.18, // Faint background
+                  child: FractionallySizedBox(
+                    widthFactor: 0.5, // Half the width
+                    heightFactor: 0.5, // Half the height
+                    child: Image.asset(
+                      'assets/images/Royal Kiosk with Wi-Fi Waves.png',
+                      fit: BoxFit.contain,
                     ),
                   ),
                 ),
               ),
             ),
-          if (PlatformUtils.isDesktop)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: MouseRegion(
-                cursor: SystemMouseCursors.click,
+            // Windows and overlays
+            Obx(() => Stack(
+                  children: controller.tiles.map((tile) => _buildWindowTile(tile, locked)).toList(),
+                )),
+            // Edge handle for toolbar/appbar reveal (mobile and desktop)
+            if (PlatformUtils.isMobile)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
                 child: GestureDetector(
                   behavior: HitTestBehavior.translucent,
-                  onTap: () {
+                  onDoubleTap: () {
+                    _autoHidingToolbarKey.currentState?.showToolbar();
+                  },
+                  onLongPress: () {
                     _autoHidingToolbarKey.currentState?.showToolbar();
                   },
                   child: Container(
-                    height: 16,
+                    height: 24,
                     alignment: Alignment.topCenter,
                     color: Colors.transparent,
                     child: Center(
                       child: Container(
                         width: 60,
-                        height: 4,
+                        height: 6,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.5),
-                          borderRadius: BorderRadius.circular(2),
+                          color: Colors.white.withOpacity(0.7),
+                          borderRadius: BorderRadius.circular(3),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
+            if (PlatformUtils.isDesktop)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.translucent,
+                    onTap: () {
+                      _autoHidingToolbarKey.currentState?.showToolbar();
+                    },
+                    child: Container(
+                      height: 16,
+                      alignment: Alignment.topCenter,
+                      color: Colors.transparent,
+                      child: Center(
+                        child: Container(
+                          width: 60,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.5),
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            // Auto-hiding toolbar at the bottom
+            _AutoHidingToolbar(
+              key: _autoHidingToolbarKey,
+              child: _buildToolbar(context, locked),
             ),
-          // Auto-hiding toolbar at the bottom
-          _AutoHidingToolbar(
-            key: _autoHidingToolbarKey,
-            child: _buildToolbar(context),
-          ),
-        ],
-      ),
+          ],
+        );
+      }),
     );
   }
 
-  Widget _buildWindowTile(WindowTile tile) {
+  Widget _buildWindowTile(WindowTile tile, bool locked) {
     return Positioned(
       left: tile.position.dx,
       top: tile.position.dy,
@@ -178,45 +182,45 @@ class TilingWindowViewState extends State<TilingWindowView> {
       height: tile.size.height,
       child: Obx(() {
         final isSelected = controller.selectedTile.value?.id == tile.id;
-
         return GestureDetector(
-          onTap: () => controller.selectTile(tile),
-          child: Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: isSelected ? Colors.blue : Colors.grey,
-                width: isSelected ? 2 : 1,
+          onTap: locked ? null : () => controller.selectTile(tile),
+          child: AbsorbPointer(
+            absorbing: locked,
+            child: Container(
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: isSelected ? Colors.blue : Colors.grey,
+                  width: isSelected ? 2 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: isSelected
+                        ? Colors.blue.withOpacity(0.3)
+                        : Colors.black.withOpacity(0.1),
+                    blurRadius: 5,
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: isSelected
-                      ? Colors.blue.withOpacity(0.3)
-                      : Colors.black.withOpacity(0.1),
-                  blurRadius: 5,
-                  spreadRadius: 1,
-                ),
-              ],
-              borderRadius: BorderRadius.circular(4),
-              color: Get.isDarkMode ? Colors.grey[800] : Colors.white,
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Window title bar
-                _buildTitleBar(tile),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Window title bar
+                  _buildTitleBar(tile),
 
-                // Window content
-                Expanded(
-                  child: _buildTileContent(tile),
-                ),
+                  // Window content
+                  Expanded(
+                    child: _buildTileContent(tile),
+                  ),
 
-                // Only show resize handle in floating mode
-                if (!controller.tilingMode.value) _buildResizeHandle(tile),
-              ],
+                  // Only show resize handle in floating mode
+                  if (!controller.tilingMode.value && !locked) _buildResizeHandle(tile),
+                ],
+              ),
             ),
           ),
           // Only allow dragging in floating mode
-          onPanUpdate: controller.tilingMode.value
+          onPanUpdate: (locked || controller.tilingMode.value)
               ? null
               : (details) {
                   controller.updateTilePosition(
@@ -355,152 +359,125 @@ class TilingWindowViewState extends State<TilingWindowView> {
     );
   }
 
-  Widget _buildToolbar(BuildContext context) {
+  Widget _buildToolbar(BuildContext context, bool locked) {
     return Container(
       height: 50,
-      constraints: BoxConstraints.tightFor(height: 50), // Enforce strict height
+      constraints: BoxConstraints.tightFor(height: 50),
       color: Theme.of(context).primaryColor,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            // Add web view button
-            _buildToolbarButton(
-              icon: Icons.web,
-              label: 'Web',
-              onPressed: () => _showAddWebViewDialog(context),
+      child: Row(
+        children: [
+          // Left-side toolbar buttons
+          _buildToolbarButton(
+            icon: Icons.web,
+            label: 'Web',
+            onPressed: locked ? null : () => _showAddWebViewDialog(context),
+            locked: locked,
+          ),
+          _buildToolbarButton(
+            icon: Icons.video_file,
+            label: 'Video',
+            onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: false),
+            locked: locked,
+          ),
+          _buildToolbarButton(
+            icon: Icons.audio_file,
+            label: 'Audio',
+            onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: true),
+            locked: locked,
+          ),
+          _buildToolbarButton(
+            icon: controller.tilingMode.value ? Icons.view_quilt : Icons.view_carousel,
+            label: controller.tilingMode.value ? 'Tiling' : 'Floating',
+            onPressed: locked ? null : () => controller.toggleWindowMode(),
+            locked: locked,
+          ),
+          _buildToolbarButton(
+            icon: Icons.info,
+            label: 'IDs',
+            onPressed: locked ? null : () => _showWindowIdsDialog(context),
+            locked: locked,
+          ),
+          _buildToolbarButton(
+            icon: Icons.dashboard,
+            label: 'System Info',
+            onPressed: locked ? null : () => _showSystemInfoDialog(context),
+            locked: locked,
+          ),
+          // Spacer before center lock icon
+          Spacer(),
+          // Centered lock icon
+          IconButton(
+            icon: AnimatedSwitcher(
+              duration: Duration(milliseconds: 300),
+              child: locked
+                  ? Icon(Icons.lock, key: ValueKey('locked'), color: Colors.redAccent)
+                  : Icon(Icons.lock_open, key: ValueKey('unlocked'), color: Colors.greenAccent),
             ),
-
-            // Add video button
-            _buildToolbarButton(
-              icon: Icons.video_file,
-              label: 'Video',
-              onPressed: () => _showAddMediaDialog(context, isAudio: false),
-            ),
-
-            // Add audio button
-            _buildToolbarButton(
-              icon: Icons.audio_file,
-              label: 'Audio',
-              onPressed: () => _showAddMediaDialog(context, isAudio: true),
-            ),
-
-            // Toggle tiling/floating mode
-            _buildToolbarButton(
-              icon: controller.tilingMode.value ? Icons.view_quilt : Icons.view_carousel,
-              label: controller.tilingMode.value ? 'Tiling' : 'Floating',
-              onPressed: () => controller.toggleWindowMode(),
-            ),
-
-            // Show Window IDs button
-            _buildToolbarButton(
-              icon: Icons.info,
-              label: 'IDs',
-              onPressed: () => _showWindowIdsDialog(context),
-            ),
-
-            // Compact system info display
-            _buildCompactSystemInfo(),
-
-            // Flexible spacer with minimum width
-            SizedBox(width: 20),
-
-            // System Info button
-            _buildToolbarButton(
-              icon: Icons.dashboard,
-              label: 'System Info',
-              onPressed: () => _showSystemInfoDialog(context),
-            ),
-
-            // Settings button
-            _buildToolbarButton(
-              icon: Icons.settings,
-              label: 'Settings',
-              onPressed: () => _navigateToSettings(),
-            ),
-            // Add some padding at the end
-            SizedBox(width: 8),
-          ],
-        ),
+            tooltip: locked ? 'Unlock' : 'Lock',
+            onPressed: () async {
+              if (locked) {
+                final result = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text('Unlock Kiosk'),
+                    content: SettingsLockPinPad(
+                      onPinEntered: (pin) {
+                        if (pin == settingsController.settingsPin.value) {
+                          settingsController.unlockSettings();
+                          Navigator.of(context).pop(true);
+                        }
+                      },
+                      pinLength: 4,
+                    ),
+                  ),
+                );
+                if (result == true) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Unlocked!')),
+                  );
+                }
+              } else {
+                settingsController.lockSettings();
+              }
+            },
+          ),
+          // Spacer after center lock icon
+          Spacer(),
+          // System stats display (compact system info) immediately left of settings
+          _buildCompactSystemInfo(),
+          // Settings button (rightmost)
+          _buildToolbarButton(
+            icon: Icons.settings,
+            label: 'Settings',
+            onPressed: () async {
+              // Prompt for PIN before navigating to settings
+              final result = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Enter PIN to Access Settings'),
+                  content: SettingsLockPinPad(
+                    onPinEntered: (pin) {
+                      if (pin == settingsController.settingsPin.value) {
+                        Navigator.of(context).pop(true);
+                      }
+                    },
+                    pinLength: 4,
+                  ),
+                ),
+              );
+              if (result == true) {
+                _navigateToSettings();
+              }
+            },
+            locked: false, // Always allow settings button (PIN required)
+          ),
+          SizedBox(width: 8),
+        ],
       ),
     );
   }
 
-  void _showWindowIdsDialog(BuildContext context) {
-    final tiles = controller.tiles;
-    Future.microtask(() {
-      Get.dialog(
-        AlertDialog(
-          title: Row(
-            children: [
-              Icon(Icons.info_outline),
-              SizedBox(width: 10),
-              Text('Window IDs'),
-            ],
-          ),
-          content: Container(
-            width: 400,
-            child: Obx(() => ListView(
-              shrinkWrap: true,
-              children: tiles.map((tile) => ListTile(
-                title: Text(tile.name),
-                subtitle: Text('ID: ${tile.id}\nType: ${tile.type.toString().split('.').last}\nURL: ${tile.url}'),
-                dense: true,
-                trailing: IconButton(
-                  icon: Icon(Icons.copy),
-                  tooltip: 'Copy ID',
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: tile.id));
-                    Get.snackbar('Copied', 'Window ID copied to clipboard', snackPosition: SnackPosition.BOTTOM);
-                  },
-                ),
-              )).toList(),
-            )),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Get.back(),
-              child: Text('Close'),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  Widget _buildToolbarButton({
-    required IconData icon,
-    required String label,
-    required VoidCallback onPressed,
-  }) {
-    // Fixed-height container to prevent overflow in various states
-    return InkWell(
-      onTap: onPressed,
-      child: Container(
-        height: 46, // Fixed height that fits within the toolbar
-        constraints: BoxConstraints(minHeight: 46),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.vertical,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(icon, color: Colors.white, size: 18), // Slightly smaller icon
-                const SizedBox(height: 1), // Minimal spacing
-                Text(
-                  label, 
-                  style: TextStyle(color: Colors.white, fontSize: 10),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }  /// Builds a compact system info display for the toolbar
+  /// Builds a compact system info display for the toolbar
   Widget _buildCompactSystemInfo() {
     // Use cached controller and Obx for reactivity
     return Obx(() {
@@ -531,7 +508,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       );
     }); // Using Obx closure instead of Builder
-  }  /// Builds compact CPU and Memory stats display
+  }
+
+  /// Builds compact CPU and Memory stats display
   Widget _buildCompactStats(BuildContext context) {
     // Using the cached sensor service from initState
     
@@ -562,6 +541,44 @@ class TilingWindowViewState extends State<TilingWindowView> {
           );
         }),
       ],
+    );
+  }
+
+  // Toolbar button builder for the bottom toolbar
+  Widget _buildToolbarButton({
+    required IconData icon,
+    required String label,
+    required VoidCallback? onPressed,
+    bool locked = false,
+  }) {
+    return InkWell(
+      onTap: locked ? null : onPressed,
+      child: Opacity(
+        opacity: locked ? 0.4 : 1.0,
+        child: Container(
+          height: 46,
+          constraints: BoxConstraints(minHeight: 46),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12.0),
+            child: SingleChildScrollView(
+              scrollDirection: Axis.vertical,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, color: Colors.white, size: 18),
+                  const SizedBox(height: 1),
+                  Text(
+                    label,
+                    style: TextStyle(color: Colors.white, fontSize: 10),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 
@@ -695,6 +712,48 @@ class TilingWindowViewState extends State<TilingWindowView> {
             child: SingleChildScrollView(
               child: SystemInfoDashboard(compact: false),
             ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('Close'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  void _showWindowIdsDialog(BuildContext context) {
+    final tiles = controller.tiles;
+    Future.microtask(() {
+      Get.dialog(
+        AlertDialog(
+          title: Row(
+            children: [
+              Icon(Icons.info_outline),
+              SizedBox(width: 10),
+              Text('Window IDs'),
+            ],
+          ),
+          content: Container(
+            width: 400,
+            child: Obx(() => ListView(
+              shrinkWrap: true,
+              children: tiles.map((tile) => ListTile(
+                title: Text(tile.name),
+                subtitle: Text('ID: ${tile.id}\nType: ${tile.type.toString().split('.').last}\nURL: ${tile.url}'),
+                dense: true,
+                trailing: IconButton(
+                  icon: Icon(Icons.copy),
+                  tooltip: 'Copy ID',
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: tile.id));
+                    Get.snackbar('Copied', 'Window ID copied to clipboard', snackPosition: SnackPosition.BOTTOM);
+                  },
+                ),
+              )).toList(),
+            )),
           ),
           actions: [
             TextButton(

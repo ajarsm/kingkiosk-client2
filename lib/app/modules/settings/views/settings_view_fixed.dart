@@ -14,7 +14,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
     if (!Get.isRegistered<SettingsController>()) {
       Get.put(SettingsController());
     }
-    
+    final controller = Get.find<SettingsController>();
     return Scaffold(
       appBar: AppBar(
         title: Text('Settings'),
@@ -31,6 +31,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            _buildPinSettings(controller),
             // App Settings
             _buildSection(
               title: 'App Settings',
@@ -255,5 +256,45 @@ class SettingsViewFixed extends GetView<SettingsController> {
         onChanged: controller.saveMediaServerUrl,
       );
     });
+  }
+  
+  Widget _buildPinSettings(SettingsController controller) {
+    final pinController = TextEditingController(text: controller.settingsPin.value);
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.lock),
+                SizedBox(width: 8),
+                Text('Settings PIN', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Divider(),
+            SizedBox(height: 8),
+            TextField(
+              controller: pinController,
+              decoration: InputDecoration(
+                labelText: '4-digit PIN',
+                hintText: 'Enter new PIN',
+                border: OutlineInputBorder(),
+              ),
+              keyboardType: TextInputType.number,
+              maxLength: 4,
+              obscureText: true,
+              onChanged: (value) {
+                if (value.length == 4 && RegExp(r'^\d{4}$').hasMatch(value)) {
+                  controller.setSettingsPin(value);
+                }
+              },
+            ),
+            Text('Changing this PIN will be required to unlock settings.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ],
+        ),
+      ),
+    );
   }
 }

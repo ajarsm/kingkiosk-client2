@@ -49,6 +49,15 @@ class SettingsController extends GetxController {
   
   // Web URL settings
   final RxString kioskStartUrl = AppConstants.defaultKioskStartUrl.obs;
+
+  // Settings PIN (default 1234, persisted)
+  final RxString settingsPin = '1234'.obs;
+
+  // Settings lock state
+  final RxBool isSettingsLocked = true.obs;
+
+  void lockSettings() => isSettingsLocked.value = true;
+  void unlockSettings() => isSettingsLocked.value = false;
   
   // Form controllers for proper text direction
   final TextEditingController mqttBrokerUrlController = TextEditingController();
@@ -71,6 +80,9 @@ class SettingsController extends GetxController {
       _mqttService = null;
     }
     
+    // Load settings PIN from storage
+    settingsPin.value = _storageService.read<String>('settingsPin') ?? '1234';
+
     // Safely load settings on the next event loop
     Future.microtask(() async {
       await _loadSettingsWithHostname();
@@ -343,6 +355,11 @@ class SettingsController extends GetxController {
     if (mqttService != null) {
       mqttService!.deviceName.value = sanitized;
     }
+  }
+
+  void setSettingsPin(String pin) {
+    settingsPin.value = pin;
+    _storageService.write('settingsPin', pin);
   }
 
   void connectMqtt() {
