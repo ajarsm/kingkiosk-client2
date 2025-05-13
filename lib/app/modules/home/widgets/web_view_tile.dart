@@ -16,7 +16,7 @@ class WebViewTile extends StatefulWidget {
 }
 
 class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  late final WebViewData _webViewData;
+  late WebViewData _webViewData;
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
@@ -26,7 +26,6 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
   bool get wantKeepAlive => true; // Keep state alive when widget is not visible
   
   @override
-  @override
   void initState() {
     super.initState();
     // Disable WebView debug logging
@@ -34,6 +33,7 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
     WidgetsBinding.instance.addObserver(this);
     _webViewData = WebViewManager().getWebViewFor(widget.url);
   }
+
   @override
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);

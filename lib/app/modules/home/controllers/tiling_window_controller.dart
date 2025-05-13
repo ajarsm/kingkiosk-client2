@@ -254,12 +254,15 @@ class TilingWindowController extends GetxController {
       final topic = 'kiosk/$deviceName/diagnostics/windows';
       if (mqttService.isConnected.value) {
         // Use a helper on the service to publish to an arbitrary topic
-        mqttService.publishJsonToTopic(topic, {'windows': windowList});
+        mqttService.publishJsonToTopic(topic, {'windows': windowList}, retain: true);
+        // Also (re)publish discovery config in case device name changed
+        mqttService.publishWindowsDiscoveryConfig();
+        print('Published windows state to $topic (retain=true) and discovery config.');
       } else {
         print('MQTT not connected, cannot publish open windows diagnostics');
       }
     } catch (e) {
-      print('Failed to publish open windows to MQTT: $e');
+      print('Error publishing open windows to MQTT: $e');
     }
   }
 

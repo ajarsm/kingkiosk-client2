@@ -11,6 +11,7 @@ import 'platform_sensor_service.dart';
 import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
+import '../modules/home/controllers/tiling_window_controller.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -58,6 +59,19 @@ class MqttService extends GetxService {
         } catch (e) {
           print('Failed to parse window command payload: $e');
         }
+      }
+    });
+
+    // Clean up old windows discovery config on startup
+    ever(isConnected, (connected) {
+      if (connected == true) {
+        final deviceNameStr = deviceName.value;
+        final discoveryTopic = 'homeassistant/sensor/${deviceNameStr}_windows/config';
+        // Publish empty payload to delete old config
+        publishJsonToTopic(discoveryTopic, {}, retain: true);
+        print('MQTT DEBUG: Deleted discovery config for windows');
+        // Republish config
+        publishWindowsDiscoveryConfig();
       }
     });
   }
@@ -341,7 +355,7 @@ class MqttService extends GetxService {
       builder.payload!,
       retain: retain,
     );
-    print('MQTT: Published JSON to $topic: ${jsonEncode(payload)}');
+    print('MQTT: Published JSON to $topic: ${jsonEncode(payload)} (retain=$retain)');
   }
 
   /// Start timer to periodically update device stats
@@ -437,13 +451,14 @@ class MqttService extends GetxService {
   /// Process received commands
   void _processCommand(String command) {
     print('🎯 Processing command: "$command"');
-    // Try to decode as JSON for play_media, else fallback to string command
+    // Try to decode as JSON for play_media, open_browser, close_window, else fallback to string command
     dynamic cmdObj;
     try {
       cmdObj = jsonDecode(command);
     } catch (_) {
       cmdObj = null;
     }
+    // --- Existing play_media logic ---
     if (cmdObj is Map && cmdObj.containsKey('play_media')) {
       final playMedia = cmdObj['play_media'];
       String? type;
@@ -496,7 +511,40 @@ class MqttService extends GetxService {
       }
       return;
     }
-    // Fallback: handle as string command
+    // --- New: open_browser command ---
+    if (cmdObj is Map && cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
+      final url = cmdObj['url'] as String;
+      try {
+        final controller = Get.find<TilingWindowController>();
+        controller.addWebViewTile('MQTT Web', url);
+        print('🌐 [MQTT] Opened browser window for URL: $url');
+      } catch (e) {
+        print('❌ Error opening browser window: $e');
+      }
+      return;
+    }
+    // --- New: close_window command ---
+    if (cmdObj is Map && cmdObj['command']?.toString().toLowerCase() == 'close_window') {
+      final windowId = cmdObj['window_id'] as String?;
+      if (windowId != null && windowId.isNotEmpty) {
+        try {
+          final controller = Get.find<TilingWindowController>();
+          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          if (tile != null) {
+            controller.closeTile(tile);
+            print('🪟 [MQTT] Closed window with ID: $windowId');
+          } else {
+            print('⚠️ No window found with ID: $windowId');
+          }
+        } catch (e) {
+          print('❌ Error closing window: $e');
+        }
+      } else {
+        print('⚠️ close_window command missing window_id');
+      }
+      return;
+    }
+    // ...existing fallback string command logic...
     switch (command.trim().toLowerCase()) {
       case 'reboot':
         print('🎯 Command executed: Reboot');
@@ -671,7 +719,7 @@ class MqttService extends GetxService {
       "device": {
         "identifiers": ["${deviceName.value}"],
         "name": deviceName.value,
-        "model": "Kiosk App",
+        "model": "King Kiosk",
         "manufacturer": "King Kiosk"
       },
       "availability_topic": "kingkiosk/${deviceName.value}/status",
@@ -859,5 +907,37 @@ class MqttService extends GetxService {
     } catch (e) {
       print('Error subscribing to $topic: $e');
     }
+  }
+
+  /// Publish Home Assistant MQTT Discovery config for windows diagnostic entity
+  void publishWindowsDiscoveryConfig({String? friendlyNameOverride}) {
+    final deviceNameStr = deviceName.value;
+    final deviceFriendlyName = friendlyNameOverride ?? deviceNameStr;
+    final discoveryTopic = 'homeassistant/sensor/${deviceNameStr}_windows/config';
+    final stateTopic = 'kiosk/$deviceNameStr/diagnostics/windows';
+    final availabilityTopic = 'kingkiosk/$deviceNameStr/status';
+    final payload = {
+      "name": "Kiosk Windows",
+      "unique_id": "${deviceNameStr}_windows",
+      "state_topic": stateTopic,
+      "icon": "mdi:window-restore",
+      "entity_category": "diagnostic",
+      "device_class": "none",
+      "value_template": "{{ value_json.windows | length }}",
+      "json_attributes_topic": stateTopic,
+      "availability_topic": availabilityTopic,
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "device": {
+        "identifiers": ["kiosk_$deviceNameStr"],
+        "name": deviceFriendlyName,
+        "model": "Flutter GetX Kiosk",
+        "manufacturer": "KingKiosk"
+      }
+    };
+    print('MQTT DEBUG: Discovery payload for windows: ${jsonEncode(payload)}');
+    print('MQTT DEBUG: Publishing to topic: $discoveryTopic');
+    publishJsonToTopic(discoveryTopic, payload, retain: true);
+    print('MQTT DEBUG: Published discovery config for windows');
   }
 }

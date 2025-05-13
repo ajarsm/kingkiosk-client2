@@ -28,6 +28,14 @@ dependencies:
 dev_dependencies:
   flutter_test:
     sdk: flutter
+  flutter_native_splash: ^2.4.0
+
+flutter_native_splash:
+  image: assets/images/Royal Kiosk with Wi-Fi Waves.png
+  color: "#000000"
+  android: true
+  ios: true
+  web: false
 
 flutter:
   uses-material-design: true

@@ -3,6 +3,7 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller.dart';
 import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
+import '../../../controllers/app_state_controller.dart';
 
 class SettingsViewFixed extends GetView<SettingsController> {
   const SettingsViewFixed({Key? key}) : super(key: key);
@@ -142,9 +143,20 @@ class SettingsViewFixed extends GetView<SettingsController> {
         subtitle: Text('Show system information'),
         trailing: Obx(() => Switch(
           value: controller.showSystemInfo.value,
-          onChanged: (_) => controller.toggleShowSystemInfo(),
+          onChanged: (_) {
+            controller.toggleShowSystemInfo();
+            // Also update AppStateController to keep UI in sync
+            if (Get.isRegistered<AppStateController>()) {
+              Get.find<AppStateController>().showSystemInfo.value = controller.showSystemInfo.value;
+            }
+          },
         )),
-        onTap: () => controller.toggleShowSystemInfo(),
+        onTap: () {
+          controller.toggleShowSystemInfo();
+          if (Get.isRegistered<AppStateController>()) {
+            Get.find<AppStateController>().showSystemInfo.value = controller.showSystemInfo.value;
+          }
+        },
       ),
     );
   }

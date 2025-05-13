@@ -30,6 +30,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
   late final SettingsController settingsController;
   late final StreamSubscription kioskModeSub;
 
+  // Add a GlobalKey to control the toolbar from the handle
+  final GlobalKey<_AutoHidingToolbarState> _autoHidingToolbarKey = GlobalKey<_AutoHidingToolbarState>();
+
   @override
   void initState() {
     super.initState();
@@ -76,16 +79,90 @@ class TilingWindowViewState extends State<TilingWindowView> {
     return Scaffold(
       body: Stack(
         children: [
-          // Background
-          Container(color: Theme.of(context).scaffoldBackgroundColor),
-
-          // Windows
+          // Background image for root window (faded, smaller)
+          Positioned.fill(
+            child: Center(
+              child: Opacity(
+                opacity: 0.18, // Faint background
+                child: FractionallySizedBox(
+                  widthFactor: 0.5, // Half the width
+                  heightFactor: 0.5, // Half the height
+                  child: Image.asset(
+                    'assets/images/Royal Kiosk with Wi-Fi Waves.png',
+                    fit: BoxFit.contain,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          // Windows and overlays
           Obx(() => Stack(
                 children: controller.tiles.map((tile) => _buildWindowTile(tile)).toList(),
               )),
-
+          // Edge handle for toolbar/appbar reveal (mobile and desktop)
+          if (PlatformUtils.isMobile)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onDoubleTap: () {
+                  _autoHidingToolbarKey.currentState?.showToolbar();
+                },
+                onLongPress: () {
+                  _autoHidingToolbarKey.currentState?.showToolbar();
+                },
+                child: Container(
+                  height: 24,
+                  alignment: Alignment.topCenter,
+                  color: Colors.transparent,
+                  child: Center(
+                    child: Container(
+                      width: 60,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(3),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          if (PlatformUtils.isDesktop)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.click,
+                child: GestureDetector(
+                  behavior: HitTestBehavior.translucent,
+                  onTap: () {
+                    _autoHidingToolbarKey.currentState?.showToolbar();
+                  },
+                  child: Container(
+                    height: 16,
+                    alignment: Alignment.topCenter,
+                    color: Colors.transparent,
+                    child: Center(
+                      child: Container(
+                        width: 60,
+                        height: 4,
+                        decoration: BoxDecoration(
+                          color: Colors.white.withOpacity(0.5),
+                          borderRadius: BorderRadius.circular(2),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
           // Auto-hiding toolbar at the bottom
           _AutoHidingToolbar(
+            key: _autoHidingToolbarKey,
             child: _buildToolbar(context),
           ),
         ],
@@ -401,20 +478,24 @@ class TilingWindowViewState extends State<TilingWindowView> {
       onTap: onPressed,
       child: Container(
         height: 46, // Fixed height that fits within the toolbar
+        constraints: BoxConstraints(minHeight: 46),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(icon, color: Colors.white, size: 18), // Slightly smaller icon
-              const SizedBox(height: 1), // Minimal spacing
-              Text(
-                label, 
-                style: TextStyle(color: Colors.white, fontSize: 10),
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+          child: SingleChildScrollView(
+            scrollDirection: Axis.vertical,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(icon, color: Colors.white, size: 18), // Slightly smaller icon
+                const SizedBox(height: 1), // Minimal spacing
+                Text(
+                  label, 
+                  style: TextStyle(color: Colors.white, fontSize: 10),
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -644,15 +725,10 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   bool _isVisible = false;
   Timer? _hideTimer;
 
-  @override
-  void dispose() {
-    _hideTimer?.cancel();
-    super.dispose();
-  }
-
-  void _showToolbar() {
+  // Expose a method to show the toolbar from outside (e.g., from handle)
+  void showToolbar() {
     setState(() => _isVisible = true);
-    _hideTimer?.cancel();
+    _startHideTimer();
   }
 
   void _startHideTimer() {
@@ -665,52 +741,26 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   }
 
   @override
+  void dispose() {
+    _hideTimer?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Positioned(
       left: 0,
       right: 0,
       bottom: 0,
-      child: GestureDetector(
-        onVerticalDragUpdate: (details) {
-          if (details.delta.dy < -10) {
-            // Swipe up to show toolbar
-            _showToolbar();
-            _startHideTimer();
-          }
-        },
-        onTap: () {
-          _showToolbar();
-          _startHideTimer();
-        },
-        child: MouseRegion(
-          onEnter: (_) => _showToolbar(),
-          onExit: (_) => _startHideTimer(),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 200),
-            height: _isVisible ? 50 : 8,  // Increased minimum height
-            child: _isVisible
-                ? widget.child
-                : Container(
-                    decoration: BoxDecoration(
-                      color: Theme.of(context).primaryColor.withOpacity(0.7),
-                      borderRadius: BorderRadius.only(
-                        topLeft: Radius.circular(5),
-                        topRight: Radius.circular(5),
-                      ),
-                    ),
-                    child: Align(
-                      alignment: Alignment.center,
-                      child: Container(
-                        height: 8, // Make the hot area larger for touch
-                        width: 60,
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                  ),
-          ),
+      child: IgnorePointer(
+        ignoring: !_isVisible, // Only allow interaction when visible
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          height: _isVisible ? 50 : 0, // Fully hide when not visible
+          curve: Curves.easeInOut,
+          child: _isVisible
+              ? widget.child
+              : const SizedBox.shrink(),
         ),
       ),
     );
