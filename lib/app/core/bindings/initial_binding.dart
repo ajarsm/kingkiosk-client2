@@ -7,6 +7,7 @@ import '../../services/mqtt_service_consolidated.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
+import '../../services/background_media_service.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -23,6 +24,7 @@ class InitialBinding extends Bindings {
     Get.put<WebSocketService>(WebSocketService().init(), permanent: true);
     Get.put<AppLifecycleService>(AppLifecycleService().init(), permanent: true);
     Get.put<NavigationService>(NavigationService().init(), permanent: true);
+    Get.put<BackgroundMediaService>(BackgroundMediaService(), permanent: true);
 
     // MQTT service with 60-second update interval and proper stats
     _initMqttService();

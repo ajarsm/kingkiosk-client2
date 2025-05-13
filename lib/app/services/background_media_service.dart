@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import '../modules/home/controllers/tiling_window_controller.dart';
 
 /// Service to handle media playback in the background or fullscreen
 class BackgroundMediaService extends GetxService {
@@ -57,6 +58,17 @@ class BackgroundMediaService extends GetxService {
     }
   }
   
+  /// Play video in a windowed tile managed by the window manager
+  Future<void> playVideoWindowed(String url) async {
+    try {
+      // Use the window manager to add a media tile
+      final controller = Get.find<TilingWindowController>();
+      controller.addMediaTile('MQTT Video', url);
+    } catch (e) {
+      print('Error opening video in window manager: $e');
+    }
+  }
+
   /// Play video in fullscreen
   Future<void> playVideoFullscreen(String url) async {
     try {

@@ -9,6 +9,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import 'storage_service.dart';
 import 'platform_sensor_service.dart';
 import '../core/utils/app_constants.dart';
+import 'background_media_service.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -191,7 +192,7 @@ class MqttService extends GetxService {
       // Set connection message
       final connMess = MqttConnectMessage()
           .withClientIdentifier(clientId)
-          .withWillTopic('home/${deviceName.value}/status')
+          .withWillTopic('kingkiosk/${deviceName.value}/status')
           .withWillMessage('offline')
           .withWillQos(MqttQos.atLeastOnce)
           .withWillRetain()
@@ -284,7 +285,7 @@ class MqttService extends GetxService {
       builder.addString(status);
       
       _client!.publishMessage(
-        'home/${deviceName.value}/status',
+        'kingkiosk/${deviceName.value}/status',
         MqttQos.atLeastOnce,
         builder.payload!,
         retain: true,
@@ -416,14 +417,31 @@ class MqttService extends GetxService {
           type = 'audio';
         }
       }
-      if (type == 'audio') {
-        print('🔊 Playing audio: ${url ?? "(no url)"}');
-        // TODO: Implement audio playback logic
-      } else if (type == 'video') {
-        print('🎥 Playing video: ${url ?? "(no url)"}, style=$style');
-        // TODO: Implement video playback logic with style (background/fullscreen/window)
-      } else {
-        print('⚠️ Unknown play_media type or missing url');
+      if (url == null || url.isEmpty) {
+        print('⚠️ play_media command missing url');
+        return;
+      }
+      try {
+        final mediaService = Get.find<BackgroundMediaService>();
+        if (type == 'audio') {
+          print('🔊 [MQTT] Playing audio via BackgroundMediaService: $url');
+          mediaService.playAudio(url);
+        } else if (type == 'video') {
+          if (style == 'fullscreen') {
+            print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url');
+            mediaService.playVideoFullscreen(url);
+          } else if (style == 'window') {
+            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=$style');
+            mediaService.playVideoWindowed(url);
+          } else {
+            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background');
+            mediaService.playVideo(url);
+          }
+        } else {
+          print('⚠️ Unknown play_media type or missing url');
+        }
+      } catch (e) {
+        print('❌ Error calling BackgroundMediaService: $e');
       }
       return;
     }
@@ -454,7 +472,7 @@ class MqttService extends GetxService {
   void _publishDirectValue(String name, String value) {
     if (!isConnected.value) return;
     
-    final topic = 'home/${deviceName.value}/$name';
+    final topic = 'kingkiosk/${deviceName.value}/$name';
     final builder = MqttClientPayloadBuilder();
     
     // Directly publish the value as a string - Home Assistant expects this format
@@ -594,7 +612,7 @@ class MqttService extends GetxService {
     final Map<String, dynamic> payloadMap = {
       "name": displayName,
       "unique_id": "${deviceName.value}_$name",
-      "state_topic": "home/${deviceName.value}/$name",
+      "state_topic": "kingkiosk/${deviceName.value}/$name",
       "value_template": "{{ value }}", // Important for direct value parsing
       "icon": icon ?? "mdi:${deviceClass == 'battery' ? 'battery' : 
                        deviceClass == 'memory' ? 'memory' : 
@@ -605,7 +623,7 @@ class MqttService extends GetxService {
         "model": "Kiosk App",
         "manufacturer": "King Kiosk"
       },
-      "availability_topic": "home/${deviceName.value}/status",
+      "availability_topic": "kingkiosk/${deviceName.value}/status",
       "payload_available": "online",
       "payload_not_available": "offline"
     };
@@ -693,7 +711,7 @@ class MqttService extends GetxService {
   void _publishDirectValueWithDebug(String name, String value) {
     if (!isConnected.value) return;
     
-    final topic = 'home/${deviceName.value}/$name';
+    final topic = 'kingkiosk/${deviceName.value}/$name';
     final builder = MqttClientPayloadBuilder();
     
     // Directly publish the value as a string
