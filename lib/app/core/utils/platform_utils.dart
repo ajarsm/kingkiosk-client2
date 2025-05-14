@@ -49,12 +49,22 @@ class PlatformUtils {
     if (isMobile) {
       await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     } else if (isDesktop) {
-      await windowManager.setFullScreen(true);
-      await windowManager.setAlwaysOnTop(true);
-      await windowManager.setPreventClose(true);
-      // Only skip taskbar on Windows/Linux, not macOS
-      if (GetPlatform.isWindows || GetPlatform.isLinux) {
-        await windowManager.setSkipTaskbar(true);
+      if (GetPlatform.isWindows) {
+        await windowManager.setFullScreen(true);
+        await windowManager.setPreventClose(true);
+        // Do NOT call setAlwaysOnTop(true) on Windows when in fullscreen (causes crash)
+        //await windowManager.setSkipTaskbar(true); //this crashes windows with the other options
+        await windowManager.setClosable(false);
+      } else {
+        await windowManager.setFullScreen(true);
+        await windowManager.setAlwaysOnTop(true);
+        await windowManager.setPreventClose(true);
+        if (GetPlatform.isLinux) {
+          await windowManager.setSkipTaskbar(true);
+        }
+        if (GetPlatform.isMacOS) {
+          await windowManager.setClosable(false);
+        }
       }
     }
   }

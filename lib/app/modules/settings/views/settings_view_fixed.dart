@@ -10,10 +10,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
 
   @override
   Widget build(BuildContext context) {
-    // Ensure controller is registered
-    if (!Get.isRegistered<SettingsController>()) {
-      Get.put(SettingsController());
-    }
+    // Use the globally registered controller
     final controller = Get.find<SettingsController>();
     return Scaffold(
       appBar: AppBar(
