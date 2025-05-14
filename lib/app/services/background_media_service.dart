@@ -31,11 +31,11 @@ class BackgroundMediaService extends GetxService {
   }
 
   /// Play audio in the background
-  Future<void> playAudio(String url) async {
+  Future<void> playAudio(String url, {bool loop = false}) async {
     try {
       await _player.stop();
       await _player.open(Media(url));
-      
+      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
       isPlaying.value = true;
       currentMedia.value = url;
       mediaType.value = 'audio';
@@ -45,11 +45,11 @@ class BackgroundMediaService extends GetxService {
   }
   
   /// Play video in the background (no UI)
-  Future<void> playVideo(String url) async {
+  Future<void> playVideo(String url, {bool loop = false}) async {
     try {
       await _player.stop();
       await _player.open(Media(url));
-      
+      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
       isPlaying.value = true;
       currentMedia.value = url;
       mediaType.value = 'video';
@@ -59,21 +59,22 @@ class BackgroundMediaService extends GetxService {
   }
   
   /// Play video in a windowed tile managed by the window manager
-  Future<void> playVideoWindowed(String url) async {
+  Future<void> playVideoWindowed(String url, {bool loop = false}) async {
     try {
       // Use the window manager to add a media tile
       final controller = Get.find<TilingWindowController>();
-      controller.addMediaTile('MQTT Video', url);
+      controller.addMediaTile('MQTT Video', url, loop: loop);
     } catch (e) {
       print('Error opening video in window manager: $e');
     }
   }
 
   /// Play video in fullscreen
-  Future<void> playVideoFullscreen(String url) async {
+  Future<void> playVideoFullscreen(String url, {bool loop = false}) async {
     try {
       await _player.stop();
       await _player.open(Media(url));
+      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
       isPlaying.value = true;
       currentMedia.value = url;
       mediaType.value = 'video';

@@ -302,7 +302,7 @@ class TilingWindowController extends GetxController {
   }
   
   /// Creates a media (video) window tile
-  void addMediaTile(String name, String url) {
+  void addMediaTile(String name, String url, {bool loop = false}) {
     final newTile = WindowTile(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
@@ -310,6 +310,7 @@ class TilingWindowController extends GetxController {
       url: url,
       position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
       size: Size(600, 400),
+      loop: loop,
     );
     tiles.add(newTile);
     if (tilingMode.value) {
@@ -428,6 +429,36 @@ class TilingWindowController extends GetxController {
         );
         tiles[index] = tile;
         selectedTile.value = tile;
+      }
+    }
+  }
+  
+  /// Minimizes a tile (shrinks and moves to a minimized area in floating mode)
+  void minimizeTile(WindowTile tile) {
+    if (!tilingMode.value) {
+      final index = tiles.indexWhere((t) => t.id == tile.id);
+      if (index >= 0) {
+        // Move to bottom left and shrink to a small strip
+        final minimizedWidth = 180.0;
+        final minimizedHeight = 40.0;
+        final margin = 8.0;
+        // Stack minimized windows vertically
+        final minimizedTiles = tiles.where((t) => t.size.height == minimizedHeight).toList();
+        final minimizedY = _containerBounds.height - ((minimizedTiles.length + 1) * (minimizedHeight + margin));
+        tile.position = Offset(margin, minimizedY);
+        tile.size = Size(minimizedWidth, minimizedHeight);
+        tiles[index] = tile;
+        selectedTile.value = tile;
+      }
+    } else {
+      // In tiling mode, just remove the tile from the layout (optionally could hide instead)
+      final index = tiles.indexWhere((t) => t.id == tile.id);
+      if (index >= 0) {
+        _layout.removeTile(tile);
+        _layout.applyLayout(_containerBounds);
+        // Optionally: tiles[index].isMinimized = true; // if you want to keep in list
+        // For now, just remove from layout
+        tiles[index] = tile; // No-op, but keeps the tile in the list
       }
     }
   }

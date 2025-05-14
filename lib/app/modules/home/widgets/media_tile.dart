@@ -39,10 +39,12 @@ class PlayerWithController {
 
 class MediaTile extends StatefulWidget {
   final String url;
+  final bool loop;
   
   const MediaTile({
     Key? key,
     required this.url,
+    this.loop = false,
   }) : super(key: key);
 
   @override
@@ -64,6 +66,11 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _playerData = MediaPlayerManager().getPlayerFor(widget.url);
+    if (widget.loop) {
+      _playerData.player.setPlaylistMode(PlaylistMode.loop);
+    } else {
+      _playerData.player.setPlaylistMode(PlaylistMode.none);
+    }
     _initializePlayer();
   }
   

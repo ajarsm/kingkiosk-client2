@@ -154,7 +154,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
                           width: 60,
                           height: 4,
                           decoration: BoxDecoration(
-                            color: Colors.white.withOpacity(0.5),
+                            color: Get.isDarkMode
+                                ? Colors.white.withOpacity(0.5)
+                                : Colors.black.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(2),
                           ),
                         ),
@@ -433,7 +435,16 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 );
                 if (result == true) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Unlocked!')),
+                    SnackBar(
+                      content: Text(
+                        'Unlocked!',
+                        style: TextStyle(
+                          color: Get.isDarkMode ? Colors.black : Colors.white,
+                        ),
+                      ),
+                      backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                      behavior: SnackBarBehavior.floating,
+                    ),
                   );
                 }
               } else {
@@ -749,7 +760,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   tooltip: 'Copy ID',
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: tile.id));
-                    Get.snackbar('Copied', 'Window ID copied to clipboard', snackPosition: SnackPosition.BOTTOM);
+                    Get.snackbar(
+                      'Copied',
+                      'Window ID copied to clipboard',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                      colorText: Get.isDarkMode ? Colors.black : Colors.white,
+                    );
                   },
                 ),
               )).toList(),
@@ -792,7 +809,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
 
   void _startHideTimer() {
     _hideTimer?.cancel();
-    _hideTimer = Timer(const Duration(seconds: 3), () {
+    _hideTimer = Timer(const Duration(seconds: 6), () {
       if (mounted) {
         setState(() => _isVisible = false);
       }

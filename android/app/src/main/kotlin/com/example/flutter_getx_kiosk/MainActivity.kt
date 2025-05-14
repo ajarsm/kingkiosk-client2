@@ -1,4 +1,4 @@
-package com.example.flutter_getx_kiosk
+package com.ki.king_kiosk
 
 import io.flutter.embedding.android.FlutterActivity
 

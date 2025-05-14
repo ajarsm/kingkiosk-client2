@@ -1,4 +1,3 @@
-import 'package:flutter_getx_kiosk/app/services/websocket_service.dart';
 import 'package:get/get.dart';
 import '../../services/storage_service.dart';
 import '../../services/platform_sensor_service.dart';
@@ -10,6 +9,7 @@ import '../../controllers/app_state_controller.dart';
 import '../../services/background_media_service.dart';
 import '../../modules/settings/controllers/settings_controller.dart';
 import '../../services/window_manager_service.dart';
+import '../../services/websocket_service.dart';
 
 class InitialBinding extends Bindings {
   @override

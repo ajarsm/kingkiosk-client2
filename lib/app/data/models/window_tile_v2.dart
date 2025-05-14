@@ -13,6 +13,7 @@ class WindowTile {
   final String name;
   final TileType type;
   final String url;
+  final bool loop; // Whether to loop media playback
   
   // These properties need to be mutable for tiling layout
   Offset position;
@@ -25,6 +26,7 @@ class WindowTile {
     required this.url,
     required this.position,
     required this.size,
+    this.loop = false,
   });
   
   /// Creates a copy of this WindowTile with the given fields replaced
@@ -35,6 +37,7 @@ class WindowTile {
     String? url,
     Offset? position,
     Size? size,
+    bool? loop,
   }) {
     return WindowTile(
       id: id ?? this.id,
@@ -43,6 +46,7 @@ class WindowTile {
       url: url ?? this.url,
       position: position ?? this.position,
       size: size ?? this.size,
+      loop: loop ?? this.loop,
     );
   }
 

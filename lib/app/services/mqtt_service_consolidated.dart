@@ -12,6 +12,7 @@ import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
+import '../modules/home/controllers/media_window_controller.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -451,30 +452,24 @@ class MqttService extends GetxService {
   /// Process received commands
   void _processCommand(String command) {
     print('🎯 Processing command: "$command"');
-    // Try to decode as JSON for play_media, open_browser, close_window, else fallback to string command
     dynamic cmdObj;
     try {
       cmdObj = jsonDecode(command);
     } catch (_) {
       cmdObj = null;
     }
-    // --- Existing play_media logic ---
-    if (cmdObj is Map && cmdObj.containsKey('play_media')) {
-      final playMedia = cmdObj['play_media'];
-      String? type;
-      String? url;
-      String? style;
-      if (playMedia is String) {
-        url = playMedia;
-      } else if (playMedia is Map) {
-        type = playMedia['type']?.toString();
-        url = playMedia['url']?.toString();
-        style = playMedia['style']?.toString();
-      }
-      type ??= cmdObj['type']?.toString();
-      url ??= cmdObj['url']?.toString();
-      style ??= cmdObj['style']?.toString();
-      print('🎬 play_media command received: type=$type, url=$url, style=$style');
+    // --- Only handle commands that are JSON with a 'command' key ---
+    if (cmdObj is! Map || !cmdObj.containsKey('command')) {
+      print('🎯 Ignoring non-command MQTT message');
+      return;
+    }
+    // --- play_media command via {"command": "play_media", ...} ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'play_media') {
+      String? type = cmdObj['type']?.toString();
+      String? url = cmdObj['url']?.toString();
+      String? style = cmdObj['style']?.toString();
+      final bool loop = cmdObj['loop'] == true || cmdObj['loop']?.toString() == 'true';
+      print('🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop');
       if (type == null) {
         // Try to infer type from url
         if (url != null && (url.endsWith('.mp4') || url.endsWith('.webm'))) {
@@ -491,17 +486,17 @@ class MqttService extends GetxService {
         final mediaService = Get.find<BackgroundMediaService>();
         if (type == 'audio') {
           print('🔊 [MQTT] Playing audio via BackgroundMediaService: $url');
-          mediaService.playAudio(url);
+          mediaService.playAudio(url, loop: loop);
         } else if (type == 'video') {
           if (style == 'fullscreen') {
-            print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url');
-            mediaService.playVideoFullscreen(url);
+            print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url, loop=$loop');
+            mediaService.playVideoFullscreen(url, loop: loop);
           } else if (style == 'window') {
-            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=$style');
-            mediaService.playVideoWindowed(url);
+            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=$style, loop=$loop');
+            mediaService.playVideoWindowed(url, loop: loop);
           } else {
-            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background');
-            mediaService.playVideo(url);
+            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
+            mediaService.playVideo(url, loop: loop);
           }
         } else {
           print('⚠️ Unknown play_media type or missing url');
@@ -511,8 +506,8 @@ class MqttService extends GetxService {
       }
       return;
     }
-    // --- New: open_browser command ---
-    if (cmdObj is Map && cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
+    // --- open_browser command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
       final url = cmdObj['url'] as String;
       try {
         final controller = Get.find<TilingWindowController>();
@@ -523,8 +518,8 @@ class MqttService extends GetxService {
       }
       return;
     }
-    // --- New: close_window command ---
-    if (cmdObj is Map && cmdObj['command']?.toString().toLowerCase() == 'close_window') {
+    // --- close_window command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'close_window') {
       final windowId = cmdObj['window_id'] as String?;
       if (windowId != null && windowId.isNotEmpty) {
         try {
@@ -544,27 +539,79 @@ class MqttService extends GetxService {
       }
       return;
     }
-    // ...existing fallback string command logic...
-    switch (command.trim().toLowerCase()) {
-      case 'reboot':
-        print('🎯 Command executed: Reboot');
-        break;
-      case 'refresh':
-        print('🎯 Command executed: Refresh');
-        break;
-      case 'update_sensors':
-        print('🎯 Command executing: Update Sensors - manually updating all sensors');
-        _publishSensorValues();
-        print('🎯 Sensor update completed');
-        break;
-      case 'republish_all':
-        print('🎯 Command executing: Republish All - forcing rediscovery and republishing all sensors');
-        forcePublishAllSensors();
-        print('🎯 Force publish initiated');
-        break;
-      default:
-        print('🎯 Unknown command received: "$command"');
+    // --- maximize_window command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'maximize_window') {
+      final windowId = cmdObj['window_id'] as String?;
+      if (windowId != null && windowId.isNotEmpty) {
+        try {
+          final controller = Get.find<TilingWindowController>();
+          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          if (tile != null) {
+            controller.maximizeTile(tile);
+            print('🪟 [MQTT] Maximized window with ID: $windowId');
+          } else {
+            print('⚠️ No window found with ID: $windowId');
+          }
+        } catch (e) {
+          print('❌ Error maximizing window: $e');
+        }
+      } else {
+        print('⚠️ maximize_window command missing window_id');
+      }
+      return;
     }
+    // --- minimize_window command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'minimize_window') {
+      final windowId = cmdObj['window_id'] as String?;
+      if (windowId != null && windowId.isNotEmpty) {
+        try {
+          final controller = Get.find<TilingWindowController>();
+          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          if (tile != null) {
+            controller.minimizeTile(tile);
+            print('🪟 [MQTT] Minimized window with ID: $windowId');
+          } else {
+            print('⚠️ No window found with ID: $windowId');
+          }
+        } catch (e) {
+          print('❌ Error minimizing window: $e');
+        }
+      } else {
+        print('⚠️ minimize_window command missing window_id');
+      }
+      return;
+    }
+    // --- pause_media command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'pause_media') {
+      final windowId = cmdObj['window_id'] as String?;
+      if (windowId != null && windowId.isNotEmpty) {
+        try {
+          final controller = Get.find<TilingWindowController>();
+          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          if (tile != null && tile.type.toString().toLowerCase().contains('media')) {
+            // Try to pause the media via WindowManagerService
+            final wm = Get.find<WindowManagerService>();
+            final win = wm.getWindow(tile.id);
+            if (win != null && win is MediaWindowController) {
+              win.handleCommand('pause', null);
+              print('⏸️ [MQTT] Paused media for window ID: $windowId');
+            } else {
+              print('⚠️ Window found but not a MediaWindowController for ID: $windowId');
+            }
+          } else {
+            print('⚠️ No media window found with ID: $windowId');
+          }
+        } catch (e) {
+          print('❌ Error pausing media window: $e');
+        }
+      } else {
+        print('⚠️ pause_media command missing window_id');
+      }
+      return;
+    }
+    // ...existing fallback string command logic...
+    print('🎯 Unknown command received: "$command"');
+    return;
   }
 
   /// Publish a direct value to a sensor topic without wrapping it in JSON

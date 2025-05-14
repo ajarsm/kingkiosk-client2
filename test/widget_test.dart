@@ -8,7 +8,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:get/get.dart';
-import 'package:flutter_getx_kiosk/app/modules/splash/views/splash_view.dart';
+import 'package:king_kiosk/app/modules/splash/views/splash_view.dart';
 
 void main() {
   testWidgets('App launches with splash screen', (WidgetTester tester) async {
