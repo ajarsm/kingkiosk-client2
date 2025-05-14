@@ -503,4 +503,57 @@ class SettingsController extends GetxController {
       snackPosition: SnackPosition.BOTTOM,
     );
   }
+
+  // --- Methods for settings views compatibility ---
+  void toggleMqttEnabled(bool value) {
+    mqttEnabled.value = value;
+    _storageService.write(AppConstants.keyMqttEnabled, value);
+    if (!value && mqttConnected.value) {
+      disconnectMqtt();
+    }
+  }
+
+  void toggleMqttHaDiscovery(bool value) {
+    mqttHaDiscovery.value = value;
+    _storageService.write(AppConstants.keyMqttHaDiscovery, value);
+    if (mqttService != null) {
+      mqttService!.haDiscovery.value = value;
+    }
+    // Optionally reconnect if needed
+    if (value && mqttConnected.value) {
+      disconnectMqtt();
+      Future.delayed(Duration(milliseconds: 300), () {
+        connectMqtt();
+      });
+    }
+  }
+
+  void saveMqttBrokerUrl(String url) {
+    mqttBrokerUrl.value = url;
+    mqttBrokerUrlController.text = url;
+    _storageService.write(AppConstants.keyMqttBrokerUrl, url);
+  }
+
+  void saveMqttBrokerPort(int port) {
+    mqttBrokerPort.value = port;
+    _storageService.write(AppConstants.keyMqttBrokerPort, port);
+  }
+
+  void saveMqttUsername(String username) {
+    mqttUsername.value = username;
+    mqttUsernameController.text = username;
+    _storageService.write(AppConstants.keyMqttUsername, username);
+  }
+
+  void saveMqttPassword(String password) {
+    mqttPassword.value = password;
+    mqttPasswordController.text = password;
+    _storageService.write(AppConstants.keyMqttPassword, password);
+  }
+
+  void saveKioskStartUrl(String url) {
+    kioskStartUrl.value = url;
+    kioskStartUrlController.text = url;
+    _storageService.write(AppConstants.keyKioskStartUrl, url);
+  }
 }

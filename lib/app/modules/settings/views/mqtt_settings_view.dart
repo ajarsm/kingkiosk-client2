@@ -3,16 +3,13 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
 
 /// MQTT settings view with proper connection handling and sensor republishing
-class MqttSettingsView extends GetView<SettingsControllerFixed> {
+class MqttSettingsView extends GetView<SettingsController> {
   const MqttSettingsView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Ensure controller exists but don't reinitialize it
-    if (!Get.isRegistered<SettingsControllerFixed>()) {
-      Get.put(SettingsControllerFixed(), permanent: true);
-    }
-    
+    // Use the globally registered controller
+    final controller = Get.find<SettingsController>();
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       child: Padding(
@@ -33,7 +30,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
             const SizedBox(height: 16.0),
             
             // Enable MQTT
-            _buildMqttEnabledSwitch(),
+            _buildMqttEnabledSwitch(controller),
             
             // MQTT Configuration (only shown when enabled)
             Obx(() {
@@ -112,14 +109,14 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
                   const SizedBox(height: 16.0),
                   
                   // Home Assistant Discovery
-                  _buildHomeAssistantSwitch(),
+                  _buildHomeAssistantSwitch(controller),
                   const SizedBox(height: 16.0),
                   
                   // Connection buttons
-                  _buildConnectionButtons(),
+                  _buildConnectionButtons(controller),
                   
                   // Republish sensors button
-                  _buildRepublishSensorsButton(),
+                  _buildRepublishSensorsButton(controller),
                 ],
               );
             }),
@@ -129,7 +126,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
     );
   }
   
-  Widget _buildMqttEnabledSwitch() {
+  Widget _buildMqttEnabledSwitch(SettingsController controller) {
     return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -142,7 +139,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
     ));
   }
   
-  Widget _buildHomeAssistantSwitch() {
+  Widget _buildHomeAssistantSwitch(SettingsController controller) {
     return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
@@ -155,7 +152,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
     ));
   }
   
-  Widget _buildConnectionButtons() {
+  Widget _buildConnectionButtons(SettingsController controller) {
     return Obx(() => Row(
       mainAxisAlignment: MainAxisAlignment.spaceEvenly,
       children: [
@@ -180,12 +177,12 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
         ),
         const SizedBox(width: 16.0),
         // Connection status indicator
-        _buildConnectionIndicator(),
+        _buildConnectionIndicator(controller),
       ],
     ));
   }
   
-  Widget _buildConnectionIndicator() {
+  Widget _buildConnectionIndicator(SettingsController controller) {
     return Obx(() => Container(
       width: 12,
       height: 12,
@@ -196,7 +193,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
     ));
   }
   
-  Widget _buildRepublishSensorsButton() {
+  Widget _buildRepublishSensorsButton(SettingsController controller) {
     return Padding(
       padding: const EdgeInsets.only(top: 16.0),
       child: Obx(() => ElevatedButton.icon(

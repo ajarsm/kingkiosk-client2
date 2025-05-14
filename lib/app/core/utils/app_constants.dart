@@ -1,6 +1,6 @@
 class AppConstants {
   // App Info
-  static const String appName = 'Flutter GetX Kiosk';
+  static const String appName = 'King Kiosk';
   static const String appVersion = '1.0.0';
   
   // Storage Keys

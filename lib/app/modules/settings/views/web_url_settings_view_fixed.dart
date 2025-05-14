@@ -4,16 +4,13 @@ import '../controllers/settings_controller_compat.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../modules/home/controllers/tiling_window_controller.dart';
 
-class WebUrlSettingsViewFixed extends GetView<SettingsControllerFixed> {
+class WebUrlSettingsViewFixed extends GetView<SettingsController> {
   const WebUrlSettingsViewFixed({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Register the controller if not already registered
-    if (!Get.isRegistered<SettingsControllerFixed>()) {
-      Get.put(SettingsControllerFixed());
-    }
-
+    // Use the globally registered controller
+    final controller = Get.find<SettingsController>();
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -34,22 +31,22 @@ class WebUrlSettingsViewFixed extends GetView<SettingsControllerFixed> {
             SizedBox(height: 16),
             
             // Start URL
-            _buildUrlInput(),
+            _buildUrlInput(controller),
             SizedBox(height: 16),
             
             // Quick URL selection
-            _buildQuickUrlSelection(),
+            _buildQuickUrlSelection(controller),
             SizedBox(height: 16),
             
             // Open URL button
-            _buildOpenUrlButton(),
+            _buildOpenUrlButton(controller),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildUrlInput() {
+  Widget _buildUrlInput(SettingsController controller) {
     return Obx(() {
       // Create controller with text and place cursor at the end
       final textController = TextEditingController(text: controller.kioskStartUrl.value);
@@ -83,7 +80,7 @@ class WebUrlSettingsViewFixed extends GetView<SettingsControllerFixed> {
     });
   }
 
-  Widget _buildQuickUrlSelection() {
+  Widget _buildQuickUrlSelection(SettingsController controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -107,7 +104,7 @@ class WebUrlSettingsViewFixed extends GetView<SettingsControllerFixed> {
     );
   }
 
-  Widget _buildOpenUrlButton() {
+  Widget _buildOpenUrlButton(SettingsController controller) {
     return ElevatedButton.icon(
       onPressed: () {
         // Get the tiling window controller
