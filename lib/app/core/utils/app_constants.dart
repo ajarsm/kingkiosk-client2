@@ -20,6 +20,11 @@ class AppConstants {
   static const String keyDeviceName = 'deviceName';
   static const String keyMqttHaDiscovery = 'mqttHaDiscovery'; // Enable Home Assistant discovery
   
+  // Wyoming Satellite Keys
+  static const String keyWyomingHost = 'wyomingHost';
+  static const String keyWyomingPort = 'wyomingPort';
+  static const String keyWyomingEnabled = 'wyomingEnabled';
+  
   // Default values
   static const String defaultWebsocketUrl = 'wss://echo.websocket.org';
   static const String defaultMediaServerUrl = 'https://example.com';

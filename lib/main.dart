@@ -7,6 +7,7 @@ import 'app/core/theme/app_theme.dart';
 import 'app/core/bindings/initial_binding.dart';
 import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
+import 'app/services/wyoming_service.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -20,6 +21,9 @@ void main() async {
 
   // Initialize window_manager for desktop
   await PlatformUtils.ensureWindowManagerInitialized();
+  
+  // Register WyomingService
+  Get.put(WyomingService());
   
   runApp(const KioskApp());
 }

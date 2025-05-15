@@ -91,6 +91,14 @@ class SettingsController extends GetxController {
       // Auto-connect to MQTT if it was enabled (after a short delay)
       Future.delayed(Duration(seconds: 1), () => autoConnectMqttIfEnabled());
     });
+
+    // Ensure mqttConnected stays in sync with the actual service
+    if (mqttService != null) {
+      mqttConnected.value = mqttService!.isConnected.value;
+      ever(mqttService!.isConnected, (bool connected) {
+        mqttConnected.value = connected;
+      });
+    }
   }
   
   @override

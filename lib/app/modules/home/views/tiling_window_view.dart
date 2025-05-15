@@ -15,6 +15,8 @@ import '../../../controllers/app_state_controller.dart';
 import '../../../modules/settings/controllers/settings_controller.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
+import '../../../services/wyoming_service.dart';
+import 'package:king_kiosk/wyoming_satellite/wyoming_satellite.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -33,6 +35,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   // Add a GlobalKey to control the toolbar from the handle
   final GlobalKey<_AutoHidingToolbarState> _autoHidingToolbarKey = GlobalKey<_AutoHidingToolbarState>();
+
+  // Wyoming FAB state
+  final WyomingService wyomingService = Get.find<WyomingService>();
+  RxString wyomingFabState = 'idle'.obs; // idle, sending, processing, receiving
+  RxBool isRecording = false.obs;
+  WyomingAudioRecorder? _recorder;
 
   @override
   void initState() {
@@ -72,6 +80,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   @override
   void dispose() {
     kioskModeSub.cancel();
+    _recorder?.dispose();
     super.dispose();
   }
 
@@ -170,6 +179,14 @@ class TilingWindowViewState extends State<TilingWindowView> {
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),
             ),
+            // Overlay Wyoming FAB in top right
+            Obx(() => wyomingService.enabled.value
+                ? Positioned(
+                    top: 24,
+                    right: 24,
+                    child: _buildWyomingFab(),
+                  )
+                : SizedBox.shrink()),
           ],
         );
       }),
@@ -186,45 +203,60 @@ class TilingWindowViewState extends State<TilingWindowView> {
         final isSelected = controller.selectedTile.value?.id == tile.id;
         return GestureDetector(
           onTap: locked ? null : () => controller.selectTile(tile),
-          child: AbsorbPointer(
-            absorbing: locked,
-            child: Container(
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: isSelected ? Colors.blue : Colors.grey,
-                  width: isSelected ? 2 : 1,
+          child: Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: isSelected ? Colors.blue : Colors.grey,
+                width: isSelected ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: isSelected
+                      ? Colors.blue.withOpacity(0.3)
+                      : Colors.black.withOpacity(0.1),
+                  blurRadius: 5,
+                  spreadRadius: 1,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: isSelected
-                        ? Colors.blue.withOpacity(0.3)
-                        : Colors.black.withOpacity(0.1),
-                    blurRadius: 5,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  // Window title bar
-                  _buildTitleBar(tile),
-
-                  // Window content
-                  Expanded(
-                    child: _buildTileContent(tile),
-                  ),
-
-                  // Only show resize handle in floating mode
-                  if (!controller.tilingMode.value && !locked) _buildResizeHandle(tile),
-                ],
-              ),
+              ],
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                // Title bar and controls: lock pointer events when locked
+                _buildTitleBar(tile, locked),
+                // Window content: always interactive
+                Expanded(
+                  child: _buildTileContent(tile),
+                ),
+                // Only show resize handle in floating mode and when not locked
+                if (!controller.tilingMode.value && !locked) _buildResizeHandle(tile),
+                // Force rebuild on lock state change to ensure drag is re-enabled
+                if (locked) SizedBox.shrink(),
+              ],
             ),
           ),
-          // Only allow dragging in floating mode
-          onPanUpdate: (locked || controller.tilingMode.value)
-              ? null
-              : (details) {
+        );
+      }),
+    );
+  }
+
+  Widget _buildTitleBar(WindowTile tile, bool locked) {
+    return AbsorbPointer(
+      absorbing: locked,
+      child: Container(
+        height: 30,
+        color: Get.isDarkMode ? Colors.grey[800] : Colors.grey[200],
+        child: Row(
+          children: [
+            // Window icon
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8.0),
+              child: _getIconForTileType(tile.type),
+            ),
+            // Window title (drag area)
+            Expanded(
+              child: GestureDetector(
+                onPanUpdate: (details) {
                   controller.updateTilePosition(
                     tile,
                     Offset(
@@ -233,83 +265,72 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     ),
                   );
                 },
-        );
-      }),
-    );
-  }
-
-  Widget _buildTitleBar(WindowTile tile) {
-    return Container(
-      height: 30,
-      color: Get.isDarkMode ? Colors.grey[800] : Colors.grey[200],
-      child: Row(
-        children: [
-          // Window icon
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8.0),
-            child: _getIconForTileType(tile.type),
-          ),
-
-          // Window title
-          Expanded(
-            child: Text(
-              tile.name,
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                fontSize: 12,
+                child: Text(
+                  tile.name,
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    fontSize: 12,
+                  ),
+                  overflow: TextOverflow.ellipsis,
+                ),
               ),
-              overflow: TextOverflow.ellipsis,
             ),
-          ),
-
-          // Split buttons (only in tiling mode)
-          if (controller.tilingMode.value)
-            Row(
-              children: [
-                Tooltip(
-                  message: "Split Vertically (Top/Bottom)",
-                  child: IconButton(
-                    icon: Icon(Icons.vertical_split, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
-                    onPressed: () => controller.splitTileVertical(tile),
+            // Split buttons (only in tiling mode)
+            if (controller.tilingMode.value)
+              Row(
+                children: [
+                  Tooltip(
+                    message: "Split Vertically (Top/Bottom)",
+                    child: IconButton(
+                      icon: Icon(Icons.vertical_split, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(),
+                      onPressed: () => controller.splitTileVertical(tile),
+                    ),
                   ),
-                ),
-                Tooltip(
-                  message: "Split Horizontally (Left/Right)",
-                  child: IconButton(
-                    icon: Icon(Icons.horizontal_split, size: 16),
-                    padding: EdgeInsets.zero,
-                    constraints: BoxConstraints(),
-                    onPressed: () => controller.splitTileHorizontal(tile),
+                  Tooltip(
+                    message: "Split Horizontally (Left/Right)",
+                    child: IconButton(
+                      icon: Icon(Icons.horizontal_split, size: 16),
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(),
+                      onPressed: () => controller.splitTileHorizontal(tile),
+                    ),
                   ),
+                ],
+              ),
+            // Maximize/Restore button (only in floating mode)
+            if (!controller.tilingMode.value)
+              Tooltip(
+                message: tile.isMaximized ? "Restore Window" : "Maximize Window",
+                child: IconButton(
+                  icon: Icon(
+                    tile.isMaximized ? Icons.filter_none : Icons.crop_square,
+                    size: 16,
+                  ),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                  onPressed: () {
+                    if (tile.isMaximized) {
+                      controller.restoreTile(tile);
+                    } else {
+                      controller.maximizeTile(tile);
+                    }
+                  },
                 ),
-              ],
-            ),
-
-          // Maximize button (only in floating mode)
-          if (!controller.tilingMode.value)
+              ),
+            // Close button
             Tooltip(
-              message: "Maximize Window",
+              message: "Close Window",
               child: IconButton(
-                icon: Icon(Icons.crop_square, size: 16),
+                icon: Icon(Icons.close, size: 16),
                 padding: EdgeInsets.zero,
                 constraints: BoxConstraints(),
-                onPressed: () => controller.maximizeTile(tile),
+                onPressed: () => controller.closeTile(tile),
               ),
             ),
-
-          // Close button
-          Tooltip(
-            message: "Close Window",
-            child: IconButton(
-              icon: Icon(Icons.close, size: 16),
-              padding: EdgeInsets.zero,
-              constraints: BoxConstraints(),
-              onPressed: () => controller.closeTile(tile),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -781,6 +802,75 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       );
     });
+  }
+
+  Widget _buildWyomingFab() {
+    // Choose icon and color based on state
+    IconData icon;
+    Color color;
+    String tooltip;
+    switch (wyomingFabState.value) {
+      case 'sending':
+        icon = Icons.mic;
+        color = Colors.redAccent;
+        tooltip = 'Sending audio to Wyoming';
+        break;
+      case 'processing':
+        icon = Icons.sync;
+        color = Colors.orangeAccent;
+        tooltip = 'Processing...';
+        break;
+      case 'receiving':
+        icon = Icons.hearing;
+        color = Colors.green;
+        tooltip = 'Receiving Wyoming response';
+        break;
+      default:
+        icon = Icons.mic_none;
+        color = Colors.blueGrey;
+        tooltip = 'Push to talk (Wyoming)';
+    }
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTapDown: (details) async {
+          if (!wyomingService.enabled.value) {
+            Get.snackbar('Wyoming Disabled', 'Enable Wyoming Satellite in settings');
+            return;
+          }
+          if (!isRecording.value) {
+            wyomingFabState.value = 'sending';
+            isRecording.value = true;
+            _recorder = WyomingAudioRecorder();
+            await _recorder!.start(onAudio: (audio) async {
+              await wyomingService.sendAudio(audio);
+            });
+          }
+        },
+        onTapUp: (details) async {
+          if (isRecording.value) {
+            wyomingFabState.value = 'processing';
+            isRecording.value = false;
+            await _recorder?.stop();
+            wyomingFabState.value = 'idle';
+          }
+        },
+        onTapCancel: () async {
+          if (isRecording.value) {
+            isRecording.value = false;
+            await _recorder?.stop();
+            wyomingFabState.value = 'idle';
+          }
+        },
+        child: FloatingActionButton(
+          heroTag: 'wyoming-fab',
+          backgroundColor: color,
+          tooltip: tooltip,
+          child: Icon(icon, size: 32),
+          onPressed: null, // Use gesture events for push-to-talk
+        ),
+      ),
+    );
   }
 }
 

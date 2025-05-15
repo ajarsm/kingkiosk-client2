@@ -368,8 +368,17 @@ class TilingWindowController extends GetxController {
       // Stop media/web/audio playback and dispose controller if needed
       if (tile.type == TileType.audio || tile.type == TileType.media || tile.type == TileType.webView) {
         final wm = Get.find<WindowManagerService>();
-        wm.getWindow(tile.id)?.disposeWindow();
-        wm.unregisterWindow(tile.id);
+        final controller = wm.getWindow(tile.id);
+        if (controller != null) {
+          controller.disposeWindow();
+          wm.unregisterWindow(tile.id);
+        } else {
+          // If controller is missing, forcibly dispose the player for media/audio
+          if (tile.type == TileType.audio || tile.type == TileType.media) {
+            final playerData = MediaPlayerManager().getPlayerFor(tile.url);
+            playerData.player.dispose();
+          }
+        }
       }
       if (tilingMode.value) {
         _layout.removeTile(tile);
@@ -427,6 +436,21 @@ class TilingWindowController extends GetxController {
           _containerBounds.width - 2 * margin,
           _containerBounds.height - 2 * margin,
         );
+        tile.isMaximized = true; // <-- set maximized flag
+        tiles[index] = tile;
+        selectedTile.value = tile;
+      }
+    }
+  }
+
+  /// Restores a maximized tile to a default floating size and position
+  void restoreTile(WindowTile tile) {
+    if (!tilingMode.value) {
+      final index = tiles.indexWhere((t) => t.id == tile.id);
+      if (index >= 0) {
+        tile.size = Size(600, 400); // Default floating size
+        tile.position = _calculateNextPosition(); // Cascade position
+        tile.isMaximized = false;
         tiles[index] = tile;
         selectedTile.value = tile;
       }

@@ -4,6 +4,7 @@ import '../controllers/settings_controller.dart';
 import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
+import 'wyoming_settings_view.dart';
 
 class SettingsViewFixed extends GetView<SettingsController> {
   const SettingsViewFixed({Key? key}) : super(key: key);
@@ -52,6 +53,18 @@ class SettingsViewFixed extends GetView<SettingsController> {
               title: 'IoT & Integrations',
               children: [
                 MqttSettingsView(),
+              ],
+            ),
+            
+            // Wyoming Satellite
+            _buildSection(
+              title: 'Wyoming Satellite',
+              children: [
+                ListTile(
+                  title: Text('Wyoming Satellite'),
+                  trailing: Icon(Icons.settings_voice),
+                  onTap: () => Get.to(() => WyomingSettingsView()),
+                ),
               ],
             ),
             

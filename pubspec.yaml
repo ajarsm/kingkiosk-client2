@@ -1,4 +1,4 @@
-name: King_Kiosk
+name: king_kiosk
 description: A Flutter application using GetX for state management and routing, designed for kiosk use.
 
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
@@ -25,6 +25,7 @@ dependencies:
   mqtt_client: ^10.8.0
   window_manager: ^0.3.7
   number_pad_keyboard: ^0.0.6
+  record: ^6.0.0 # Cross-platform audio recording
 
 dev_dependencies:
   flutter_test:
