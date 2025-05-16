@@ -5,6 +5,7 @@ enum TileType {
   webView,
   media,
   audio,
+  image,  // Added image type
 }
 
 /// Represents a window tile in the tiling window manager

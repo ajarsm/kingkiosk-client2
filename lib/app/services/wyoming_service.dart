@@ -1,7 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:get/get.dart';
+import 'package:nsd/nsd.dart' as nsd;
 import '../../wyoming_satellite/wyoming_satellite.dart';
 import 'mqtt_service_consolidated.dart';
 
@@ -23,6 +25,9 @@ class WyomingService extends GetxService {
 
   final StreamController<WyomingMessage> _messageController = StreamController<WyomingMessage>.broadcast();
 
+  nsd.Registration? _nsdRegistration;
+  bool _nsdRegistered = false;
+
   @override
   void onInit() {
     super.onInit();
@@ -43,6 +48,24 @@ class WyomingService extends GetxService {
     ever(port, (int _) async {
       await _handleConfigChange();
     });
+  }
+
+  void _sendInfo(Socket client, String who) {
+    final response = {
+      'type': 'info',
+      'protocol': 'wyoming',
+      'version': '1.5.4',            // match client protocol version
+      // Advertise our capabilities: ASR events (audio, VAD, hotword, transcript)
+      'asr': ['audio_start', 'audio_stop', 'vad', 'hotword', 'transcript'],
+      // No TTS command support currently
+      'tts': [],
+      // We support wakeword detection via hotword events
+      'wake': ['hotword'],
+    };
+
+    final msg = jsonEncode(response) + '\n';
+    client.add(utf8.encode(msg));
+    print('[WyomingService] Sent info response to $who: $msg');
   }
 
   Future<void> _initializeService() async {
@@ -107,6 +130,9 @@ class WyomingService extends GetxService {
       _server = await ServerSocket.bind(actualBindHost, port.value);
       print('[WyomingService] Server listening on $actualBindHost:${port.value} (configured host: \'${host.value}\')');
 
+      // Zeroconf (Bonjour/mDNS) advertising
+      await _registerZeroconfService();
+
       // Announce discovery with up-to-date values
       final mqtt = Get.isRegistered<MqttService>() ? Get.find<MqttService>() : null;
       if (mqtt != null) {
@@ -138,21 +164,34 @@ class WyomingService extends GetxService {
         _buffers[client] = [];
 
         client.listen((data) {
+          // Human-readable debug: try to decode as UTF-8 string if printable
+          String dataPreview;
+          try {
+            dataPreview = utf8.decode(data);
+          } catch (_) {
+            dataPreview = data.toString();
+          }
+          print('[WyomingService] Received data from $clientDescription: $dataPreview (${data.length} bytes)');
           final buffer = _buffers[client]!;
           buffer.addAll(data);
-          while (buffer.length >= 4) {
-            final len = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
-            if (buffer.length < 4 + len) break;
-            final msgBytes = buffer.sublist(4, 4 + len);
-            buffer.removeRange(0, 4 + len);
-            // Try JSON
-            try {
+
+          while (buffer.isNotEmpty) {
+            // If raw JSON (newline-delimited) from debug/info clients, handle first
+            if (buffer.isNotEmpty && buffer[0] == 123) { // '{'
+              final newlineIndex = buffer.indexOf(10); // '\n'
+              if (newlineIndex < 0) break; // wait for full line
+              final msgBytes = buffer.sublist(0, newlineIndex);
+              buffer.removeRange(0, newlineIndex + 1);
               final str = utf8.decode(msgBytes);
-              if (str.trim().startsWith('{')) {
+              try {
                 final json = jsonDecode(str);
-                // dispatch by type
+                print('[WyomingService] JSON message from $clientDescription: $str');
                 final type = json['type']?.toString();
                 switch (type) {
+                  case 'describe':
+                      _sendInfo(client, clientDescription);
+
+                    break;
                   case 'audio_start': _messageController.add(WyomingAudioStart(sessionId: json['sessionId'] ?? '')); break;
                   case 'audio_stop': _messageController.add(WyomingAudioStop(sessionId: json['sessionId'] ?? '')); break;
                   case 'vad': _messageController.add(WyomingVad(sessionId: json['sessionId'] ?? '', active: json['active'] ?? false)); break;
@@ -162,10 +201,47 @@ class WyomingService extends GetxService {
                   default: _messageController.add(WyomingJsonMessage.fromJson(json));
                 }
                 continue;
+              } catch (_) {
+                // invalid JSON, fall through to prefix parsing
               }
-            } catch (_) {}
-            // binary
-            _messageController.add(WyomingBinaryMessage(msgBytes));
+            }
+            // Length-prefixed Wyoming protocol messages
+            if (buffer.length >= 4) {
+              final len = (buffer[0] << 24) | (buffer[1] << 16) | (buffer[2] << 8) | buffer[3];
+              if (buffer.length < 4 + len) {
+                print('[WyomingService] Incomplete Wyoming message from $clientDescription: need $len bytes, have ${buffer.length - 4}');
+                break;
+              }
+              final msgBytes = buffer.sublist(4, 4 + len);
+              buffer.removeRange(0, 4 + len);
+              // Try JSON content inside prefix
+              try {
+                final str = utf8.decode(msgBytes);
+                if (str.trim().startsWith('{')) {
+                  final json = jsonDecode(str);
+                  final type = json['type']?.toString();
+                  if (type == 'describe') {
+                    _sendDescribeResponse(client, clientDescription, asJson: false);
+                  } else {
+                    // existing event handling
+                    switch (type) {
+                      case 'audio_start': _messageController.add(WyomingAudioStart(sessionId: json['sessionId'] ?? '')); break;
+                      case 'audio_stop': _messageController.add(WyomingAudioStop(sessionId: json['sessionId'] ?? '')); break;
+                      case 'vad': _messageController.add(WyomingVad(sessionId: json['sessionId'] ?? '', active: json['active'] ?? false)); break;
+                      case 'hotword': _messageController.add(WyomingHotword(sessionId: json['sessionId'] ?? '', hotword: json['hotword'] ?? '')); break;
+                      case 'transcript': _messageController.add(WyomingTranscript(sessionId: json['sessionId'] ?? '', text: json['text'] ?? '')); break;
+                      case 'session': _messageController.add(WyomingSession(sessionId: json['sessionId'] ?? '', state: json['state'] ?? '')); break;
+                      default: _messageController.add(WyomingJsonMessage.fromJson(json));
+                    }
+                  }
+                  continue;
+                }
+              } catch (_) {}
+              // treat as binary
+              _messageController.add(WyomingBinaryMessage(msgBytes));
+            } else {
+              break;
+            }
           }
         }, 
         onDone: () {
@@ -189,6 +265,47 @@ class WyomingService extends GetxService {
     } catch (e) {
       print('[WyomingService] Server bind error: $e');
       _server = null; // Ensure server is null on error
+    }
+  }
+
+  // Zeroconf (Bonjour/mDNS) registration for Wyoming Satellite
+  Future<void> _registerZeroconfService() async {
+    if (_nsdRegistered) {
+      print('[WyomingService] Zeroconf service already registered.');
+      return;
+    }
+    try {
+      final txtRecords = <String, Uint8List?>{
+        'version': Uint8List.fromList('1.0'.codeUnits),
+      };
+      final service = nsd.Service(
+        name: 'Wyoming Satellite',
+        type: '_wyoming._tcp',
+        host: _advertiseHost.value,
+        port: port.value,
+        txt: txtRecords,
+      );
+      _nsdRegistration = await nsd.register(service);
+      _nsdRegistered = true;
+      print('[WyomingService] Zeroconf service registered: ${service.name}');
+    } catch (e) {
+      print('[WyomingService] Error registering Zeroconf service: $e');
+      _nsdRegistration = null;
+      _nsdRegistered = false;
+    }
+  }
+
+  // Unregister Zeroconf service when stopping server
+  Future<void> _unregisterZeroconfService() async {
+    if (!_nsdRegistered || _nsdRegistration == null) return;
+    try {
+      await nsd.unregister(_nsdRegistration!);
+      print('[WyomingService] Zeroconf service unregistered.');
+    } catch (e) {
+      print('[WyomingService] Error unregistering Zeroconf service: $e');
+    } finally {
+      _nsdRegistered = false;
+      _nsdRegistration = null;
     }
   }
 
@@ -228,10 +345,12 @@ class WyomingService extends GetxService {
   Future<void> stopServer() async {
     if (_server == null && _clients.isEmpty) {
       removeDiscovery(); // Attempt removal anyway, it has guards.
+      await _unregisterZeroconfService();
       return;
     }
     print('[WyomingService] Stopping server...');
     removeDiscovery(); // Remove Home Assistant discovery
+    await _unregisterZeroconfService();
 
     for (var client in List<Socket>.from(_clients)) { // Iterate over a copy
       try {
@@ -401,6 +520,32 @@ class WyomingService extends GetxService {
     this.host.value = host;
     this.port.value = port;
     this.enabled.value = enabled;
+  }
+
+  /// Send describe response in JSON or Wyoming protocol format
+  void _sendDescribeResponse(Socket client, String clientDescription, {bool asJson = true}) {
+    final response = {
+      'type': 'describe',
+      'protocol': 'wyoming',
+      'version': '1.0',
+      'implementation': 'kingkiosk',
+    };
+    final responseStr = jsonEncode(response);
+    if (asJson) {
+      client.add(utf8.encode(responseStr + '\n'));
+      print('[WyomingService] Sent describe response (raw JSON) to $clientDescription: $responseStr');
+    } else {
+      final respBytes = utf8.encode(responseStr);
+      final respLen = respBytes.length;
+      final lenPrefix = [
+        (respLen >> 24) & 0xFF,
+        (respLen >> 16) & 0xFF,
+        (respLen >> 8) & 0xFF,
+        respLen & 0xFF
+      ];
+      client.add(lenPrefix + respBytes);
+      print('[WyomingService] Sent describe response (Wyoming protocol) to $clientDescription: $responseStr');
+    }
   }
 
   // Add more methods as needed for Wyoming protocol events

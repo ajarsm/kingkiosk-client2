@@ -6,6 +6,7 @@ import '../controllers/tiling_window_controller.dart';
 import '../widgets/web_view_tile.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
+import '../widgets/image_tile.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -343,6 +344,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.video_file, size: 16);
       case TileType.audio:
         return Icon(Icons.audio_file, size: 16);
+      case TileType.image:
+        return Icon(Icons.image, size: 16);
     }
   }
 
@@ -354,6 +357,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return MediaTile(url: tile.url);
       case TileType.audio:
         return AudioTile(url: tile.url);
+      case TileType.image:
+        return ImageTile(url: tile.url, showControls: true);
     }
   }
 

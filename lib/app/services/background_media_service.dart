@@ -14,10 +14,14 @@ class BackgroundMediaService extends GetxService {
   // Observable values
   final isPlaying = false.obs;
   final currentMedia = Rx<String?>(null);
-  final mediaType = Rx<String>('none'); // 'none', 'audio', 'video'
+  final mediaType = Rx<String>('none'); // 'none', 'audio', 'video', 'image'
   
   // Fullscreen controller
   final isFullscreen = false.obs;
+  
+  // Image specific properties
+  final currentImage = Rx<String?>(null);
+  final isImageDisplayed = false.obs;
 
   BackgroundMediaService() {
     // Initialize player
@@ -63,9 +67,115 @@ class BackgroundMediaService extends GetxService {
     try {
       // Use the window manager to add a media tile
       final controller = Get.find<TilingWindowController>();
-      controller.addMediaTile('MQTT Video', url, loop: loop);
+      controller.addMediaTile('Kiosk Video', url, loop: loop);
     } catch (e) {
       print('Error opening video in window manager: $e');
+    }
+  }
+
+  /// Display an image in fullscreen
+  Future<void> displayImageFullscreen(String url) async {
+    try {
+      // Stop any current media playback
+      await stop();
+      
+      currentImage.value = url;
+      mediaType.value = 'image';
+      isImageDisplayed.value = true;
+      isFullscreen.value = true;
+      
+      // Show fullscreen image dialog
+      Get.dialog(
+        Dialog.fullscreen(
+          child: Stack(
+            children: [
+              // Image viewer with loading indicator
+              Positioned.fill(
+                child: Center(
+                  child: Image.network(
+                    url,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Center(
+                        child: CircularProgressIndicator(
+                          value: loadingProgress.expectedTotalBytes != null
+                              ? loadingProgress.cumulativeBytesLoaded / 
+                                loadingProgress.expectedTotalBytes!
+                              : null,
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(Icons.error_outline, color: Colors.red, size: 50),
+                            SizedBox(height: 16),
+                            Text(
+                              'Failed to load image',
+                              style: TextStyle(color: Colors.white),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              url,
+                              style: TextStyle(color: Colors.white70, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+              ),
+              
+              // Close button
+              Positioned(
+                top: 20,
+                right: 20,
+                child: IconButton(
+                  icon: Icon(Icons.close, color: Colors.white, size: 30),
+                  onPressed: () {
+                    closeImage();
+                    Get.back();
+                  },
+                ),
+              ),
+            ],
+          ),
+          backgroundColor: Colors.black,
+        ),
+        barrierDismissible: false,
+      ).then((_) {
+        closeImage();
+      });
+    } catch (e) {
+      print('Error displaying image fullscreen: $e');
+      closeImage();
+    }
+  }
+  
+  /// Display an image in a windowed tile
+  Future<void> displayImageWindowed(String url, {String? title}) async {
+    try {
+      final controller = Get.find<TilingWindowController>();
+      controller.addImageTile(title ?? 'Kiosk Image', url);
+      currentImage.value = url;
+      mediaType.value = 'image';
+      isImageDisplayed.value = true;
+    } catch (e) {
+      print('Error opening image in window manager: $e');
+    }
+  }
+  
+  /// Close the currently displayed image
+  void closeImage() {
+    isImageDisplayed.value = false;
+    isFullscreen.value = false;
+    currentImage.value = null;
+    if (mediaType.value == 'image') {
+      mediaType.value = 'none';
     }
   }
 
@@ -136,7 +246,13 @@ class BackgroundMediaService extends GetxService {
     await _player.stop();
     isPlaying.value = false;
     currentMedia.value = null;
-    mediaType.value = 'none';
+    
+    // Also clear image if displayed
+    if (isImageDisplayed.value) {
+      closeImage();
+    } else {
+      mediaType.value = 'none';
+    }
     
     // Close fullscreen if open
     if (isFullscreen.value) {

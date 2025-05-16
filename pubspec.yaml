@@ -26,6 +26,7 @@ dependencies:
   window_manager: ^0.3.7
   number_pad_keyboard: ^0.0.6
   record: ^6.0.0 # Cross-platform audio recording
+  nsd: ^4.0.3
 
 dev_dependencies:
   flutter_test:

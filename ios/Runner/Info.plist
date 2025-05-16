@@ -47,5 +47,11 @@
 		<true/>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSBonjourServices</key>
+		<array>
+			<string>_wyoming._tcp</string>
+		</array>
+		<key>NSLocalNetworkUsageDescription</key>
+		<string>This app uses local network to discover and advertise the Wyoming Satellite service.</string>
 	</dict>
 </plist>

@@ -12,6 +12,7 @@ import '../../../services/mqtt_service_consolidated.dart';
 import '../../settings/controllers/settings_controller.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
+import 'image_window_controller.dart'; // Add import for image controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -353,6 +354,38 @@ class TilingWindowController extends GetxController {
       _layout.applyLayout(_containerBounds);
     }
     selectedTile.value = newTile;
+    publishOpenWindowsToMqtt();
+  }
+    /// Creates an image window tile
+  void addImageTile(String name, String url) {
+    final newTile = WindowTile(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      type: TileType.image,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(500, 400),
+    );
+    
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register ImageWindowController for window management
+    final controller = ImageWindowController(
+      windowName: newTile.id,
+      imageUrl: url,
+      closeCallback: () {
+        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+      },
+    );
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Save window state after adding tile
+    _saveWindowState();
     publishOpenWindowsToMqtt();
   }
   

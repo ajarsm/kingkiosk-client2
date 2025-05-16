@@ -496,6 +496,11 @@ class MqttService extends GetxService {
           type = 'video';
         } else if (url != null && (url.endsWith('.mp3') || url.endsWith('.wav'))) {
           type = 'audio';
+        } else if (url != null && (
+          url.endsWith('.jpg') || url.endsWith('.jpeg') || 
+          url.endsWith('.png') || url.endsWith('.gif') || 
+          url.endsWith('.webp') || url.endsWith('.bmp'))) {
+          type = 'image';
         }
       }
       if (url == null || url.isEmpty) {
@@ -517,6 +522,21 @@ class MqttService extends GetxService {
           } else {
             print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
             mediaService.playVideo(url, loop: loop);
+          }
+        } else if (type == 'image') {
+          // Custom title for windowed images
+          final title = cmdObj['title']?.toString() ?? 'MQTT Image';
+          
+          if (style == 'fullscreen') {
+            print('🖼️ [MQTT] Displaying image fullscreen via BackgroundMediaService: $url');
+            mediaService.displayImageFullscreen(url);
+          } else if (style == 'window') {
+            print('🖼️ [MQTT] Displaying image in window via BackgroundMediaService: $url, title=$title');
+            mediaService.displayImageWindowed(url, title: title);
+          } else {
+            // Default to window mode since background mode doesn't apply to images
+            print('🖼️ [MQTT] Displaying image in window via BackgroundMediaService: $url, title=$title (default style)');
+            mediaService.displayImageWindowed(url, title: title);
           }
         } else {
           print('⚠️ Unknown play_media type or missing url');
