@@ -369,12 +369,29 @@ class TilingWindowController extends GetxController {
     publishOpenWindowsToMqtt();
   }
     /// Creates an image window tile
-  void addImageTile(String name, String url) {
+  void addImageTile(String name, dynamic urlData) {
+    // Handle both string and list types for url data
+    String primaryUrl;
+    List<String> imageUrls = [];
+    
+    if (urlData is String) {
+      // Single image URL
+      primaryUrl = urlData;
+    } else if (urlData is List) {
+      // Multiple image URLs
+      imageUrls = List<String>.from(urlData.map((url) => url.toString()));
+      primaryUrl = imageUrls.first; // Use the first URL as primary
+    } else {
+      print('❌ Invalid image URL format');
+      return;
+    }
+    
     final newTile = WindowTile(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
       type: TileType.image,
-      url: url,
+      url: primaryUrl,
+      imageUrls: imageUrls,
       position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
       size: Size(500, 400),
     );
@@ -384,12 +401,11 @@ class TilingWindowController extends GetxController {
       _layout.addTile(newTile, targetTile: selectedTile.value);
       _layout.applyLayout(_containerBounds);
     }
-    selectedTile.value = newTile;
-
-    // Register ImageWindowController for window management
+    selectedTile.value = newTile;    // Register ImageWindowController for window management
     final controller = ImageWindowController(
       windowName: newTile.id,
-      imageUrl: url,
+      imageUrl: primaryUrl,
+      imageUrls: imageUrls,
       closeCallback: () {
         Get.find<WindowManagerService>().unregisterWindow(newTile.id);
       },

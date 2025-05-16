@@ -50,6 +50,7 @@ class WindowTileRenderer extends StatelessWidget {
       case TileType.image:
         return ImageTile(
           url: tile.url, 
+          imageUrls: tile.imageUrls,
           showControls: showControls,
           onClose: null, // This would be handled by the window manager
         );

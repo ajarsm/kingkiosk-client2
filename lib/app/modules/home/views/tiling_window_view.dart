@@ -356,9 +356,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
       case TileType.media:
         return MediaTile(url: tile.url);
       case TileType.audio:
-        return AudioTile(url: tile.url);
-      case TileType.image:
-        return ImageTile(url: tile.url, showControls: true);
+        return AudioTile(url: tile.url);      case TileType.image:
+        return ImageTile(
+          url: tile.url, 
+          imageUrls: tile.imageUrls,
+          showControls: true
+        );
     }
   }
 

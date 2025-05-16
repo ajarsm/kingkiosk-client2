@@ -7,6 +7,7 @@ class ImageWindowController extends GetxController implements KioskWindowControl
   @override
   final String windowName;
   final String imageUrl;
+  final List<String> imageUrls;
   final VoidCallback? closeCallback; // Renamed from onClose to avoid conflict
   
   @override
@@ -15,12 +16,14 @@ class ImageWindowController extends GetxController implements KioskWindowControl
   ImageWindowController({
     required this.windowName,
     required this.imageUrl,
+    this.imageUrls = const [], // Default to empty list
     this.closeCallback,
   });
   
   Widget buildWindow() {
     return ImageTile(
       url: imageUrl,
+      imageUrls: imageUrls,
       showControls: true,
       onClose: () {
         if (closeCallback != null) {

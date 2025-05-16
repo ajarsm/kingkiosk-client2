@@ -13,7 +13,8 @@ class WindowTile {
   final String id;
   final String name;
   final TileType type;
-  final String url;
+  final String url; // Primary URL (kept for backward compatibility)
+  final List<String> imageUrls; // List of image URLs for carousel
   final bool loop; // Whether to loop media playback
   bool isMaximized; // Whether the tile is maximized
   
@@ -26,18 +27,19 @@ class WindowTile {
     required this.name,
     required this.type,
     required this.url,
+    this.imageUrls = const [], // Default to empty list
     required this.position,
     required this.size,
     this.loop = false,
     this.isMaximized = false,
   });
-  
-  /// Creates a copy of this WindowTile with the given fields replaced
+    /// Creates a copy of this WindowTile with the given fields replaced
   WindowTile copyWith({
     String? id,
     String? name,
     TileType? type,
     String? url,
+    List<String>? imageUrls,
     Offset? position,
     Size? size,
     bool? loop,
@@ -48,6 +50,7 @@ class WindowTile {
       name: name ?? this.name,
       type: type ?? this.type,
       url: url ?? this.url,
+      imageUrls: imageUrls ?? this.imageUrls,
       position: position ?? this.position,
       size: size ?? this.size,
       loop: loop ?? this.loop,

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
+import '../modules/home/widgets/image_tile.dart';
 
 /// Service to handle media playback in the background or fullscreen
 class BackgroundMediaService extends GetxService {
@@ -48,6 +49,19 @@ class BackgroundMediaService extends GetxService {
     }
   }
   
+  /// Play audio in a windowed tile 
+  Future<void> playAudioWindowed(String url, {bool loop = false, String? title}) async {
+    try {
+      final controller = Get.find<TilingWindowController>();
+      controller.addAudioTile(title ?? 'Kiosk Audio', url);
+      currentMedia.value = url;
+      mediaType.value = 'audio';
+      isPlaying.value = true;
+    } catch (e) {
+      print('Error opening audio in window manager: $e');
+    }
+  }
+  
   /// Play video in the background (no UI)
   Future<void> playVideo(String url, {bool loop = false}) async {
     try {
@@ -61,71 +75,91 @@ class BackgroundMediaService extends GetxService {
       print('Error playing video: $e');
     }
   }
-  
-  /// Play video in a windowed tile managed by the window manager
-  Future<void> playVideoWindowed(String url, {bool loop = false}) async {
+    /// Play video in a windowed tile managed by the window manager
+  Future<void> playVideoWindowed(String url, {bool loop = false, String? title}) async {
     try {
       // Use the window manager to add a media tile
       final controller = Get.find<TilingWindowController>();
-      controller.addMediaTile('Kiosk Video', url, loop: loop);
+      controller.addMediaTile(title ?? 'Kiosk Video', url, loop: loop);
     } catch (e) {
       print('Error opening video in window manager: $e');
     }
   }
-
   /// Display an image in fullscreen
-  Future<void> displayImageFullscreen(String url) async {
+  Future<void> displayImageFullscreen(dynamic urlData) async {
     try {
       // Stop any current media playback
       await stop();
       
-      currentImage.value = url;
+      // Extract URLs
+      List<String> imageUrls = [];
+      
+      if (urlData is String) {
+        imageUrls = [urlData];
+        currentImage.value = urlData;
+      } else if (urlData is List) {
+        imageUrls = List<String>.from(urlData.map((url) => url.toString()));
+        if (imageUrls.isNotEmpty) {
+          currentImage.value = imageUrls[0];
+        }
+      }
+      
+      if (imageUrls.isEmpty) {
+        print('❌ No valid image URLs provided');
+        return;
+      }
+      
       mediaType.value = 'image';
       isImageDisplayed.value = true;
       isFullscreen.value = true;
-      
-      // Show fullscreen image dialog
+        // Show fullscreen image dialog
       Get.dialog(
         Dialog.fullscreen(
           child: Stack(
             children: [
-              // Image viewer with loading indicator
+              // Image viewer with carousel or single image
               Positioned.fill(
                 child: Center(
-                  child: Image.network(
-                    url,
-                    fit: BoxFit.contain,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Center(
-                        child: CircularProgressIndicator(
-                          value: loadingProgress.expectedTotalBytes != null
-                              ? loadingProgress.cumulativeBytesLoaded / 
-                                loadingProgress.expectedTotalBytes!
-                              : null,
-                        ),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Center(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(Icons.error_outline, color: Colors.red, size: 50),
-                            SizedBox(height: 16),
-                            Text(
-                              'Failed to load image',
-                              style: TextStyle(color: Colors.white),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              url,
-                              style: TextStyle(color: Colors.white70, fontSize: 12),
-                            ),
-                          ],
-                        ),
-                      );
-                    },
+                  child: imageUrls.length > 1
+                      ? ImageTile(
+                          url: imageUrls.first,
+                          imageUrls: imageUrls,
+                          showControls: false,
+                        )
+                      : Image.network(
+                          imageUrls.first,
+                          fit: BoxFit.contain,
+                          loadingBuilder: (context, child, loadingProgress) {
+                            if (loadingProgress == null) return child;
+                            return Center(
+                              child: CircularProgressIndicator(
+                                value: loadingProgress.expectedTotalBytes != null
+                                    ? loadingProgress.cumulativeBytesLoaded / 
+                                      loadingProgress.expectedTotalBytes!
+                                    : null,
+                              ),
+                            );
+                          },
+                          errorBuilder: (context, error, stackTrace) {
+                            return Center(
+                              child: Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(Icons.error_outline, color: Colors.red, size: 50),
+                                  SizedBox(height: 16),
+                                  Text(
+                                    'Failed to load image',
+                                    style: TextStyle(color: Colors.white),
+                                  ),
+                                  SizedBox(height: 8),
+                                  Text(
+                                    imageUrls.first,
+                                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
                   ),
                 ),
               ),
@@ -157,11 +191,22 @@ class BackgroundMediaService extends GetxService {
   }
   
   /// Display an image in a windowed tile
-  Future<void> displayImageWindowed(String url, {String? title}) async {
+  Future<void> displayImageWindowed(dynamic urlData, {String? title}) async {
     try {
       final controller = Get.find<TilingWindowController>();
-      controller.addImageTile(title ?? 'Kiosk Image', url);
-      currentImage.value = url;
+      controller.addImageTile(title ?? 'Kiosk Image', urlData);
+      
+      // Store the primary URL in our service state
+      String primaryUrl;
+      if (urlData is String) {
+        primaryUrl = urlData;
+      } else if (urlData is List && urlData.isNotEmpty) {
+        primaryUrl = urlData[0].toString();
+      } else {
+        primaryUrl = 'Invalid URL';
+      }
+      
+      currentImage.value = primaryUrl;
       mediaType.value = 'image';
       isImageDisplayed.value = true;
     } catch (e) {

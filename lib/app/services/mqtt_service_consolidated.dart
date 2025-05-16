@@ -508,17 +508,27 @@ class MqttService extends GetxService {
         return;
       }
       try {
-        final mediaService = Get.find<BackgroundMediaService>();
-        if (type == 'audio') {
-          print('🔊 [MQTT] Playing audio via BackgroundMediaService: $url');
-          mediaService.playAudio(url, loop: loop);
-        } else if (type == 'video') {
+        final mediaService = Get.find<BackgroundMediaService>();        if (type == 'audio') {
+          // Custom title for audio playback
+          final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
+          
+          if (style == 'window') {
+            print('🔊 [MQTT] Playing audio in window via BackgroundMediaService: $url, title=$title, loop=$loop');
+            mediaService.playAudioWindowed(url, loop: loop, title: title);
+          } else {
+            // Default to background audio playback
+            print('🔊 [MQTT] Playing audio in background via BackgroundMediaService: $url, loop=$loop');
+            mediaService.playAudio(url, loop: loop);
+          }} else if (type == 'video') {
+          // Custom title for videos (use the same pattern as images)
+          final title = cmdObj['title']?.toString() ?? 'Kiosk Video';
+          
           if (style == 'fullscreen') {
             print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url, loop=$loop');
             mediaService.playVideoFullscreen(url, loop: loop);
           } else if (style == 'window') {
-            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=$style, loop=$loop');
-            mediaService.playVideoWindowed(url, loop: loop);
+            print('🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop');
+            mediaService.playVideoWindowed(url, loop: loop, title: title);
           } else {
             print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
             mediaService.playVideo(url, loop: loop);
@@ -527,16 +537,35 @@ class MqttService extends GetxService {
           // Custom title for windowed images
           final title = cmdObj['title']?.toString() ?? 'MQTT Image';
           
-          if (style == 'fullscreen') {
-            print('🖼️ [MQTT] Displaying image fullscreen via BackgroundMediaService: $url');
-            mediaService.displayImageFullscreen(url);
-          } else if (style == 'window') {
-            print('🖼️ [MQTT] Displaying image in window via BackgroundMediaService: $url, title=$title');
-            mediaService.displayImageWindowed(url, title: title);
+          // Get URL(s) - can be a single string or an array of strings
+          final urlData = cmdObj['url'];
+          
+          if (urlData == null) {
+            print('⚠️ Missing URL for image display');
+            return;
+          }          if (style == 'fullscreen') {
+            if (urlData is List && urlData.length > 1) {
+              print('🖼️ [MQTT] Displaying image carousel in fullscreen via BackgroundMediaService');
+            } else {
+              print('🖼️ [MQTT] Displaying single image in fullscreen via BackgroundMediaService');
+            }
+            // Pass the urlData directly whether it's a string or an array
+            // The displayImageFullscreen method can handle both formats
+            mediaService.displayImageFullscreen(urlData);          } else if (style == 'window') {
+            if (urlData is List && urlData.length > 1) {
+              print('🖼️ [MQTT] Displaying image carousel in window via BackgroundMediaService, title=$title');
+            } else {
+              print('🖼️ [MQTT] Displaying single image in window via BackgroundMediaService, title=$title');
+            }
+            mediaService.displayImageWindowed(urlData, title: title);
           } else {
             // Default to window mode since background mode doesn't apply to images
-            print('🖼️ [MQTT] Displaying image in window via BackgroundMediaService: $url, title=$title (default style)');
-            mediaService.displayImageWindowed(url, title: title);
+            if (urlData is List && urlData.length > 1) {
+              print('🖼️ [MQTT] Displaying image carousel in window via BackgroundMediaService, title=$title (default style)');
+            } else {
+              print('🖼️ [MQTT] Displaying single image in window via BackgroundMediaService, title=$title (default style)');
+            }
+            mediaService.displayImageWindowed(urlData, title: title);
           }
         } else {
           print('⚠️ Unknown play_media type or missing url');
@@ -545,14 +574,15 @@ class MqttService extends GetxService {
         print('❌ Error calling BackgroundMediaService: $e');
       }
       return;
-    }
-    // --- open_browser command ---
+    }    // --- open_browser command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
       final url = cmdObj['url'] as String;
+      // Support custom title for web windows
+      final title = cmdObj['title']?.toString() ?? 'MQTT Web';
       try {
         final controller = Get.find<TilingWindowController>();
-        controller.addWebViewTile('MQTT Web', url);
-        print('🌐 [MQTT] Opened browser window for URL: $url');
+        controller.addWebViewTile(title, url);
+        print('🌐 [MQTT] Opened browser window for URL: $url, title=$title');
       } catch (e) {
         print('❌ Error opening browser window: $e');
       }
