@@ -82,7 +82,7 @@ class _TestImageScreenState extends State<TestImageScreen> {
     // Set a default device name if not already set
     if (mqttService.deviceName.value.isEmpty) {
       mqttService.deviceName.value = 'test_kiosk';
-      await storageService.writeData('device_name', 'test_kiosk');
+      storageService.write('device_name', 'test_kiosk');
     }
     
     // Listen for MQTT connection status
