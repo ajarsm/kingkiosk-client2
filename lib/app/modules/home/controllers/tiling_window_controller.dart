@@ -202,18 +202,30 @@ class TilingWindowController extends GetxController {
       setContainerBounds(bounds);
     }
   }
-  
-  /// Toggles between tiling and floating mode
+    /// Toggles between tiling and floating mode
   void toggleWindowMode() {
     tilingMode.value = !tilingMode.value;
     if (tilingMode.value) {
-      // When switching to tiling mode, rebuild the layout tree and apply it
+      // When switching to tiling mode, reset and rebuild the layout tree
+      _layout.resetLayout();
       _rebuildLayoutTree();
       _layout.applyLayout(_containerBounds);
+      
       // Force update of the UI
       final currentTiles = [...tiles];
       tiles.assignAll(currentTiles);
+    } else {
+      // When switching to floating mode, make sure tiles have sensible positions
+      for (var tile in tiles) {
+        // Only update tiles with default position
+        if (tile.position == Offset.zero) {
+          tile.position = _calculateNextPosition();
+        }
+      }
     }
+    
+    // Save the window state
+    _saveWindowState();
   }
   
   /// Rebuilds the layout tree from scratch based on current tiles
@@ -412,15 +424,32 @@ class TilingWindowController extends GetxController {
             playerData.player.dispose();
           }
         }
-      }
-      if (tilingMode.value) {
-        _layout.removeTile(tile);
-        _layout.applyLayout(_containerBounds);
-      }
+      }      // First remove the tile from our data structure
       tiles.removeAt(index);
+      
+      // Then recalculate the tiling layout if needed
+      if (tilingMode.value) {
+        // Complete layout reset and recalculation
+        _layout.resetLayout();
+        
+        // Only rebuild layout if we have remaining tiles
+        if (tiles.isNotEmpty) {
+          // Add all remaining tiles to the layout in order
+          for (var remainingTile in tiles) {
+            _layout.addTile(remainingTile);
+          }
+          
+          // Apply the updated layout
+          _layout.applyLayout(_containerBounds);
+        }
+      }
+      
+      // Update selection if needed
       if (selectedTile.value?.id == tile.id) {
         selectedTile.value = tiles.isNotEmpty ? tiles.last : null;
       }
+      
+      // Update MQTT status
       publishOpenWindowsToMqtt();
     }
   }

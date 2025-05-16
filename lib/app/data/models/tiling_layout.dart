@@ -218,6 +218,12 @@ class TilingLayout {
     root.updateContentBounds();
   }
   
+  /// Resets the layout to an empty state
+  void resetLayout() {
+    // Create a new empty root node
+    root = TilingNode.withContent(null);
+  }
+  
   /// Find the deepest rightmost/bottommost node (for default tile placement)
   TilingNode? _findDeepestRightNode(TilingNode node) {
     if (node.isLeaf) return node;
