@@ -478,6 +478,27 @@ class MqttService extends GetxService {
     } catch (_) {
       cmdObj = null;
     }
+    
+    // --- Handle batch commands array first ---
+    if (cmdObj is Map && cmdObj['commands'] is List) {
+      print('🎯 Processing batch of ${(cmdObj['commands'] as List).length} commands');
+      final List commandList = cmdObj['commands'] as List;
+      
+      for (final cmd in commandList) {
+        if (cmd is Map) {
+          try {
+            // Process each command in the batch
+            final cmdString = jsonEncode(cmd);
+            print('🎯 Processing batch command: $cmdString');
+            _processCommand(cmdString);
+          } catch (e) {
+            print('❌ Error processing batch command: $e');
+          }
+        }
+      }
+      return;
+    }
+    
     // --- Only handle commands that are JSON with a 'command' key ---
     if (cmdObj is! Map || !cmdObj.containsKey('command')) {
       print('🎯 Ignoring non-command MQTT message');
