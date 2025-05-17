@@ -50,10 +50,14 @@ class BackgroundMediaService extends GetxService {
   }
   
   /// Play audio in a windowed tile 
-  Future<void> playAudioWindowed(String url, {bool loop = false, String? title}) async {
+  Future<void> playAudioWindowed(String url, {bool loop = false, String? title, String? windowId}) async {
     try {
       final controller = Get.find<TilingWindowController>();
-      controller.addAudioTile(title ?? 'Kiosk Audio', url);
+      if (windowId != null && windowId.isNotEmpty) {
+        controller.addAudioTileWithId(windowId, title ?? 'Kiosk Audio', url);
+      } else {
+        controller.addAudioTile(title ?? 'Kiosk Audio', url);
+      }
       currentMedia.value = url;
       mediaType.value = 'audio';
       isPlaying.value = true;
@@ -75,16 +79,21 @@ class BackgroundMediaService extends GetxService {
       print('Error playing video: $e');
     }
   }
-    /// Play video in a windowed tile managed by the window manager
-  Future<void> playVideoWindowed(String url, {bool loop = false, String? title}) async {
+  
+  /// Play video in a windowed tile managed by the window manager
+  Future<void> playVideoWindowed(String url, {bool loop = false, String? title, String? windowId}) async {
     try {
-      // Use the window manager to add a media tile
       final controller = Get.find<TilingWindowController>();
-      controller.addMediaTile(title ?? 'Kiosk Video', url, loop: loop);
+      if (windowId != null && windowId.isNotEmpty) {
+        controller.addMediaTileWithId(windowId, title ?? 'Kiosk Video', url, loop: loop);
+      } else {
+        controller.addMediaTile(title ?? 'Kiosk Video', url, loop: loop);
+      }
     } catch (e) {
       print('Error opening video in window manager: $e');
     }
   }
+  
   /// Display an image in fullscreen
   Future<void> displayImageFullscreen(dynamic urlData) async {
     try {

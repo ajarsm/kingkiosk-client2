@@ -554,14 +554,19 @@ class TilingWindowController extends GetxController {
         if (controller != null) {
           controller.disposeWindow();
           wm.unregisterWindow(tile.id);
-        } else {
-          // If controller is missing, forcibly dispose the player for media/audio
-          if (tile.type == TileType.audio || tile.type == TileType.media) {
-            final playerData = MediaPlayerManager().getPlayerFor(tile.url);
-            playerData.player.dispose();
+        } 
+        // Always try to clean up the MediaPlayerManager for media/audio tiles
+        // even if the controller was present
+        if (tile.type == TileType.audio || tile.type == TileType.media) {
+          try {
+            final playerManager = MediaPlayerManager();
+            playerManager.disposePlayerFor(tile.url);
+          } catch (e) {
+            print('Error disposing player: $e');
           }
         }
-      }      // First remove the tile from our data structure
+      }
+      // First remove the tile from our data structure
       tiles.removeAt(index);
       
       // Then recalculate the tiling layout if needed

@@ -21,6 +21,25 @@ class MediaPlayerManager {
     return _players[url]!;
   }
   
+  /// Safely dispose a specific player by URL
+  /// Returns true if a player was found and disposed
+  bool disposePlayerFor(String url) {
+    if (_players.containsKey(url)) {
+      try {
+        final playerData = _players[url]!;
+        // Remove from map first to prevent race conditions
+        _players.remove(url);
+        // Then dispose the player
+        playerData.player.dispose();
+        return true;
+      } catch (e) {
+        print('Error disposing player for $url: $e');
+        return false;
+      }
+    }
+    return false;
+  }
+  
   void dispose() {
     for (final playerData in _players.values) {
       playerData.player.dispose();
@@ -59,19 +78,22 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
   Duration _position = Duration.zero;
   
   @override
-  bool get wantKeepAlive => true; // Keep this widget alive when it's not visible
-
-  @override
+  bool get wantKeepAlive => true; // Keep this widget alive when it's not visible  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _playerData = MediaPlayerManager().getPlayerFor(widget.url);
-    if (widget.loop) {
-      _playerData.player.setPlaylistMode(PlaylistMode.loop);
-    } else {
-      _playerData.player.setPlaylistMode(PlaylistMode.none);
+    try {
+      _playerData = MediaPlayerManager().getPlayerFor(widget.url);
+      // Defer playlist mode setting to _initializePlayer to avoid race conditions
+      _initializePlayer();
+    } catch (e) {
+      print('Error initializing media player in MediaTile: $e');
+      // Handle initialization error gracefully
+      setState(() {
+        _hasError = true;
+        _errorMessage = 'Error initializing player: $e';
+      });
     }
-    _initializePlayer();
   }
   
   @override
@@ -85,7 +107,6 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       _position = _playerData.player.state.position;
     }
   }
-
   Future<void> _initializePlayer() async {
     if (_playerData.isInitialized) {
       // If already initialized, just update our state
@@ -103,6 +124,18 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       
       // Wait for player to initialize
       await _playerData.player.open(Media(widget.url));
+      
+      // Set playlist mode safely after player is initialized
+      try {
+        if (widget.loop) {
+          await _playerData.player.setPlaylistMode(PlaylistMode.loop);
+        } else {
+          await _playerData.player.setPlaylistMode(PlaylistMode.none);
+        }
+      } catch (e) {
+        print('Warning: Could not set playlist mode: $e');
+        // Continue anyway - better to play without loop than to fail
+      }
       
       // Mark as initialized
       _playerData.isInitialized = true;

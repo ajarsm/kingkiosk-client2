@@ -6,6 +6,8 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
+import 'package:flutter_volume_controller/flutter_volume_controller.dart';
+import 'package:screen_brightness/screen_brightness.dart';
 import '../../wyoming_satellite/wyoming_satellite.dart';
 import 'storage_service.dart';
 import 'platform_sensor_service.dart';
@@ -470,7 +472,7 @@ class MqttService extends GetxService {
   }
 
   /// Process received commands
-  void _processCommand(String command) {
+  void _processCommand(String command) async {
     print('🎯 Processing command: "$command"');
     dynamic cmdObj;
     try {
@@ -563,7 +565,7 @@ class MqttService extends GetxService {
             mediaService.playVideoFullscreen(url, loop: loop);
           } else if (style == 'window') {
             print('🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
-            mediaService.playVideoWindowed(url, loop: loop, title: title);
+            mediaService.playVideoWindowed(url, loop: loop, title: title, windowId: windowId);
           } else {
             print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
             mediaService.playVideo(url, loop: loop);
@@ -677,23 +679,43 @@ class MqttService extends GetxService {
       }
       return;
     }
-    // --- pause_media command ---
+    // --- play, pause, close for media windows via {command:..., window_id:...} ---
+    final mediaWindowCommands = ['play', 'pause', 'close'];
+    if (mediaWindowCommands.contains(cmdObj['command']?.toString().toLowerCase())) {
+      final windowId = cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
+      final action = cmdObj['command']?.toString().toLowerCase();
+      if (windowId != null && windowId.isNotEmpty && action != null) {
+        try {
+          final wm = Get.find<WindowManagerService>();
+          final win = wm.getWindow(windowId);
+          if (win != null && win.windowType == KioskWindowType.media) {
+            print('[MQTT] Routing "$action" to MediaWindowController for window_id: $windowId');
+            win.handleCommand(action, cmdObj.map((key, value) => MapEntry(key.toString(), value)));
+            print('[MQTT] Sent "$action" to media window with ID: $windowId');
+          } else if (win == null) {
+            print('[MQTT] No media window found with ID: $windowId');
+          } else {
+            print('[MQTT] Window with ID $windowId is not a media window (type: [33m${win.windowType}[0m)');
+          }
+        } catch (e) {
+          print('[MQTT] Error processing $action command for media window ID $windowId: $e');
+        }
+      } else {
+        print('[MQTT] $action command missing window_id');
+      }
+      return;
+    }
+    // --- pause_media command (legacy, DEPRECATED) ---
     if (cmdObj['command']?.toString().toLowerCase() == 'pause_media') {
+      print('[MQTT] WARNING: pause_media command is deprecated. Use {command: "pause", window_id: ...} instead.');
       final windowId = cmdObj['window_id'] as String?;
       if (windowId != null && windowId.isNotEmpty) {
         try {
-          final controller = Get.find<TilingWindowController>();
-          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
-          if (tile != null && tile.type.toString().toLowerCase().contains('media')) {
-            // Try to pause the media via WindowManagerService
-            final wm = Get.find<WindowManagerService>();
-            final win = wm.getWindow(tile.id);
-            if (win != null && win is MediaWindowController) {
-              win.handleCommand('pause', null);
-              print('⏸️ [MQTT] Paused media for window ID: $windowId');
-            } else {
-              print('⚠️ Window found but not a MediaWindowController for ID: $windowId');
-            }
+          final wm = Get.find<WindowManagerService>();
+          final win = wm.getWindow(windowId);
+          if (win != null && win.windowType == KioskWindowType.media) {
+            win.handleCommand('pause', null);
+            print('⏸️ [MQTT] Paused media for window ID: $windowId');
           } else {
             print('⚠️ No media window found with ID: $windowId');
           }
@@ -731,6 +753,81 @@ class MqttService extends GetxService {
         }
       } else {
         print('[MQTT] $action command missing window_id');
+      }
+      return;
+    }
+    // --- System volume control via MQTT ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'set_volume') {
+      final volume = double.tryParse(cmdObj['value']?.toString() ?? '');
+      if (volume != null && volume >= 0.0 && volume <= 1.0) {
+        try {
+          // Set system volume using flutter_volume_controller
+          await FlutterVolumeController.setVolume(volume);
+          print('[MQTT] Set system volume to $volume');
+        } catch (e) {
+          print('[MQTT] Error setting system volume: $e');
+        }
+      } else {
+        print('[MQTT] Invalid set_volume value: ${cmdObj['value']}');
+      }
+      return;
+    }
+    if (cmdObj['command']?.toString().toLowerCase() == 'mute') {
+      try {
+        await FlutterVolumeController.setMute(true);
+        print('[MQTT] System volume muted');
+      } catch (e) {
+        print('[MQTT] Error muting system volume: $e');
+      }
+      return;
+    }
+    if (cmdObj['command']?.toString().toLowerCase() == 'unmute') {
+      try {
+        await FlutterVolumeController.setMute(false);
+        print('[MQTT] System volume unmuted');
+      } catch (e) {
+        print('[MQTT] Error unmuting system volume: $e');
+      }
+      return;
+    }
+    // --- System brightness control via MQTT ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'set_brightness') {
+      final brightness = double.tryParse(cmdObj['value']?.toString() ?? '');
+      if (brightness != null && brightness >= 0.0 && brightness <= 1.0) {
+        try {
+          // Set system brightness using screen_brightness
+          await ScreenBrightness().setScreenBrightness(brightness);
+          print('[MQTT] Set system brightness to $brightness');
+        } catch (e) {
+          print('[MQTT] Error setting system brightness: $e');
+        }
+      } else {
+        print('[MQTT] Invalid set_brightness value: [33m${cmdObj['value']}[0m');
+      }
+      return;
+    }
+    if (cmdObj['command']?.toString().toLowerCase() == 'get_brightness') {
+      try {
+        final currentBrightness = await ScreenBrightness().current;
+        print('[MQTT] Current system brightness: $currentBrightness');
+        // Optionally publish to a response topic
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(cmdObj['response_topic'], {
+            'brightness': currentBrightness
+          }, retain: false);
+        }
+      } catch (e) {
+        print('[MQTT] Error getting system brightness: $e');
+      }
+      return;
+    }
+    if (cmdObj['command']?.toString().toLowerCase() == 'restore_brightness') {
+      try {
+        // If you have a saved brightness value, restore it here. For now, just set to 1.0 (max)
+        await ScreenBrightness().setScreenBrightness(1.0);
+        print('[MQTT] Restored system brightness to 1.0');
+      } catch (e) {
+        print('[MQTT] Error restoring system brightness: $e');
       }
       return;
     }
