@@ -13,7 +13,6 @@ This document provides a comprehensive reference of all MQTT commands available 
 3. [Media Player Controls](#media-player-controls)
    - [Play](#play)
    - [Pause](#pause)
-   - [Close](#close)
 4. [Web Window Controls](#web-window-controls)
    - [Refresh](#refresh)
    - [Restart](#restart)
@@ -239,23 +238,6 @@ Pauses playback of a media window.
 ```
 
 > **Note:** There's also a legacy `pause_media` command that works the same way but is now deprecated.
-
-### Close
-
-**Command:** `close`
-
-Closes a media window.
-
-#### Parameters:
-- `window_id`: The ID of the media window to close
-
-#### Example:
-```json
-{
-  "command": "close",
-  "window_id": "video1"
-}
-```
 
 ## Web Window Controls
 

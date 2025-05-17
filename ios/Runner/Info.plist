@@ -53,5 +53,8 @@
 		</array>
 		<key>NSLocalNetworkUsageDescription</key>
 		<string>This app uses local network to discover and advertise the Wyoming Satellite service.</string>
+		<key>NSAppTransportSecurity</key>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
 	</dict>
 </plist>

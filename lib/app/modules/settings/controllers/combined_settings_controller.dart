@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/theme_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
@@ -46,6 +47,22 @@ class CombinedSettingsController extends GetxController {
     
     // Try to initialize MQTT connection status
     _initMqttStatus();
+    
+    // Listen for kioskMode changes to enable/disable wakelock
+    ever(kioskMode, (bool enabled) {
+      if (enabled) {
+        WakelockPlus.enable();
+      } else {
+        WakelockPlus.disable();
+      }
+    });
+    
+    // Set initial wakelock state
+    if (kioskMode.value) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
   }
   
   /// Load settings from storage

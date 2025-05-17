@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:number_pad_keyboard/number_pad_keyboard.dart';
+import 'package:audioplayers/audioplayers.dart';
+import 'shake_widget.dart';
+
+export 'settings_lock_pin_pad.dart' show SettingsLockPinPad, SettingsLockPinPadState;
 
 class SettingsLockPinPad extends StatefulWidget {
   final void Function(String pin) onPinEntered;
@@ -16,12 +20,14 @@ class SettingsLockPinPad extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<SettingsLockPinPad> createState() => _SettingsLockPinPadState();
+  SettingsLockPinPadState createState() => SettingsLockPinPadState();
 }
 
-class _SettingsLockPinPadState extends State<SettingsLockPinPad> {
+class SettingsLockPinPadState extends State<SettingsLockPinPad> {
   String _enteredPin = '';
   String? _error;
+  bool _shake = false;
+  final AudioPlayer _audioPlayer = AudioPlayer();
 
   void _onDigit(int digit) {
     if (_enteredPin.length < widget.pinLength) {
@@ -41,21 +47,35 @@ class _SettingsLockPinPadState extends State<SettingsLockPinPad> {
     }
   }
 
-  void _onEnter() {
+  void _onEnter() async {
     if (_enteredPin.length == widget.pinLength) {
       widget.onPinEntered(_enteredPin);
+      // Parent must call showError('Incorrect PIN') if PIN is wrong
     } else {
-      setState(() {
-        _error = 'Enter ${widget.pinLength}-digit PIN';
-      });
+      await _triggerError('Enter ${widget.pinLength}-digit PIN');
     }
   }
 
-  void showError(String error) {
+  Future<void> _triggerError(String error) async {
     setState(() {
       _error = error;
       _enteredPin = '';
+      _shake = true;
     });
+    // Play error sound (ensure player is stopped and seek to start for Android reliability)
+    try {
+      await _audioPlayer.stop();
+      await _audioPlayer.seek(Duration.zero);
+      await _audioPlayer.play(AssetSource('sounds/wrong.wav'));
+    } catch (_) {}
+    await Future.delayed(const Duration(milliseconds: 500));
+    setState(() {
+      _shake = false;
+    });
+  }
+
+  void showError(String error) {
+    _triggerError(error);
   }
 
   @override
@@ -71,20 +91,23 @@ class _SettingsLockPinPadState extends State<SettingsLockPinPad> {
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(widget.pinLength, (i) {
-            final filled = i < _enteredPin.length;
-            return Container(
-              margin: const EdgeInsets.symmetric(horizontal: 8),
-              width: 20,
-              height: 20,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: filled ? Colors.blue : Colors.grey[300],
-              ),
-            );
-          }),
+        ShakeWidget(
+          shake: _shake,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: List.generate(widget.pinLength, (i) {
+              final filled = i < _enteredPin.length;
+              return Container(
+                margin: const EdgeInsets.symmetric(horizontal: 8),
+                width: 20,
+                height: 20,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: filled ? Colors.blue : Colors.grey[300],
+                ),
+              );
+            }),
+          ),
         ),
         if (_error != null || widget.errorMessage != null)
           Padding(
@@ -110,3 +133,4 @@ class _SettingsLockPinPadState extends State<SettingsLockPinPad> {
     );
   }
 }
+

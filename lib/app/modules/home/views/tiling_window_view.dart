@@ -493,14 +493,22 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   context: context,
                   builder: (context) => AlertDialog(
                     title: Text('Unlock Kiosk'),
-                    content: SettingsLockPinPad(
-                      onPinEntered: (pin) {
-                        if (pin == settingsController.settingsPin.value) {
-                          settingsController.unlockSettings();
-                          Navigator.of(context).pop(true);
-                        }
+                    content: Builder(
+                      builder: (context) {
+                        final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                        return SettingsLockPinPad(
+                          key: pinPadKey,
+                          onPinEntered: (pin) {
+                            if (pin == settingsController.settingsPin.value) {
+                              settingsController.unlockSettings();
+                              Navigator.of(context).pop(true);
+                            } else {
+                              pinPadKey.currentState?.showError('Incorrect PIN');
+                            }
+                          },
+                          pinLength: 4,
+                        );
                       },
-                      pinLength: 4,
                     ),
                   ),
                 );
@@ -537,13 +545,21 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 context: context,
                 builder: (context) => AlertDialog(
                   title: Text('Enter PIN to Access Settings'),
-                  content: SettingsLockPinPad(
-                    onPinEntered: (pin) {
-                      if (pin == settingsController.settingsPin.value) {
-                        Navigator.of(context).pop(true);
-                      }
+                  content: Builder(
+                    builder: (context) {
+                      final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                      return SettingsLockPinPad(
+                        key: pinPadKey,
+                        onPinEntered: (pin) {
+                          if (pin == settingsController.settingsPin.value) {
+                            Navigator.of(context).pop(true);
+                          } else {
+                            pinPadKey.currentState?.showError('Incorrect PIN');
+                          }
+                        },
+                        pinLength: 4,
+                      );
                     },
-                    pinLength: 4,
                   ),
                 ),
               );
