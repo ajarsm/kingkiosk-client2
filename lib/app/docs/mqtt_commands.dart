@@ -3,7 +3,57 @@
 // It is intended as a reference for developers and integration with external systems.
 
 /// A documentation class that provides information about all supported MQTT commands.
-/// This is not used in the application logic but serves as a reference.
+/// T  /// System control commands
+  static const Map<String, dynamic> systemCommands = {
+    'notify': {
+      'description': 'Send a notification to the kiosk',
+      'parameters': {
+        'command': 'notify (required)',
+        'title': 'Notification title (optional, defaults to "MQTT Notification")',
+        'message': 'Notification message content (required)',
+        'priority': 'Priority level: "high", "normal", or "low" (optional, defaults to "normal")',
+        'is_html': 'Boolean, whether message contains HTML content (optional, defaults to false)',
+        'html': 'Alternative to is_html, same functionality',
+        'thumbnail': 'URL to thumbnail image for the notification (optional)'
+      },
+      'examples': [
+        {
+          'description': 'Send a basic notification',
+          'payload': {
+            'command': 'notify',
+            'title': 'System Alert',
+            'message': 'System update completed successfully.'
+          }
+        },
+        {
+          'description': 'Send an HTML notification with high priority',
+          'payload': {
+            'command': 'notify',
+            'title': 'Important Update',
+            'message': '<h3>New Feature Available</h3><p>Click <a href=\"https://example.com\">here</a> to learn more.</p>',
+            'is_html': true,
+            'priority': 'high',
+            'thumbnail': 'https://example.com/notification-icon.png'
+          }
+        }
+      ]
+    },
+    'set_volume': {
+      'description': 'Set system volume',
+      'parameters': {
+        'command': 'set_volume (required)',
+        'value': 'Float between 0.0 and 1.0 (required)'
+      },
+      'examples': [
+        {
+          'description': 'Set volume to 50%',
+          'payload': {
+            'command': 'set_volume',
+            'value': 0.5
+          }
+        }
+      ]
+    }, the application logic but serves as a reference.
 class MqttCommandsReference {
   
   /// Media playback commands for audio, video and images
@@ -428,4 +478,41 @@ class MqttCommandsReference {
     'For multiple related commands, use batch format to ensure they execute in order',
     'Avoid deprecated commands like pause_media in favor of newer alternatives'
   ];
+  
+  /// Notification commands
+  static const Map<String, dynamic> notificationCommands = {
+    'notify': {
+      'description': 'Send a notification to the kiosk',
+      'parameters': {
+        'command': 'notify (required)',
+        'title': 'Notification title (optional, defaults to "MQTT Notification")',
+        'message': 'Notification message content (required)',
+        'priority': 'Priority level: "high", "normal", or "low" (optional, defaults to "normal")',
+        'is_html': 'Boolean, whether message contains HTML content (optional, defaults to false)',
+        'html': 'Alternative to is_html, same functionality',
+        'thumbnail': 'URL to thumbnail image for the notification (optional)'
+      },
+      'examples': [
+        {
+          'description': 'Send a basic notification',
+          'payload': {
+            'command': 'notify',
+            'title': 'System Alert',
+            'message': 'System update completed successfully.'
+          }
+        },
+        {
+          'description': 'Send an HTML notification with high priority',
+          'payload': {
+            'command': 'notify',
+            'title': 'Important Update',
+            'message': '<h3>New Feature Available</h3><p>Click <a href=\"https://example.com\">here</a> to learn more.</p>',
+            'is_html': true,
+            'priority': 'high',
+            'thumbnail': 'https://example.com/notification-icon.png'
+          }
+        }
+      ]
+    }
+  };
 }

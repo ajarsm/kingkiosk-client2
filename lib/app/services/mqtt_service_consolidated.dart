@@ -9,6 +9,7 @@ import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:screen_brightness/screen_brightness.dart';
 import '../../wyoming_satellite/wyoming_satellite.dart';
+import '../../notification_system/notification_system.dart';
 import 'storage_service.dart';
 import 'platform_sensor_service.dart';
 import '../core/utils/app_constants.dart';
@@ -17,6 +18,7 @@ import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/controllers/media_window_controller.dart';
 import 'wyoming_service.dart';
+import 'mqtt_notification_handler.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -25,25 +27,24 @@ class MqttService extends GetxService {
   final StorageService _storageService;
   final PlatformSensorService _sensorService;
   final WyomingService _wyomingService = Get.find();
-  
+
   // MQTT client
   MqttServerClient? _client;
-  
+
   // Observable properties
   final RxBool isConnected = false.obs;
   final RxString deviceName = ''.obs;
   final RxBool haDiscovery = false.obs;
   final RxBool isOnline = true.obs; // Track online status
-  
+
   // Stats update timer
   Timer? _statsUpdateTimer;
-  
+
   // Update interval - 30 seconds for more responsive updates
   final int _updateIntervalSeconds = 30;
-  
+
   // Constructor
   MqttService(this._storageService, this._sensorService);
-
   @override
   void onInit() {
     super.onInit();
@@ -68,11 +69,20 @@ class MqttService extends GetxService {
       }
     });
 
+    // Ensure notification system is available
+    try {
+      Get.find<NotificationService>();
+      print('✅ [MQTT] NotificationService is ready for MQTT notifications');
+    } catch (e) {
+      print('⚠️ [MQTT] NotificationService not available: $e');
+    }
+
     // Clean up old windows discovery config on startup
     ever(isConnected, (connected) {
       if (connected == true) {
         final deviceNameStr = deviceName.value;
-        final discoveryTopic = 'homeassistant/sensor/${deviceNameStr}_windows/config';
+        final discoveryTopic =
+            'homeassistant/sensor/${deviceNameStr}_windows/config';
         // Publish empty payload to delete old config
         publishJsonToTopic(discoveryTopic, {}, retain: true);
         print('MQTT DEBUG: Deleted discovery config for windows');
@@ -90,7 +100,8 @@ class MqttService extends GetxService {
               if (msg is WyomingJsonMessage) {
                 publishJsonToTopic('homeassistant/wyoming/event', msg.json);
               } else if (msg is WyomingBinaryMessage) {
-                publishJsonToTopic('homeassistant/wyoming/audio', {'audio': msg.data});
+                publishJsonToTopic(
+                    'homeassistant/wyoming/audio', {'audio': msg.data});
               }
             });
           }
@@ -98,7 +109,7 @@ class MqttService extends GetxService {
       }
     });
   }
-  
+
   // Connection callbacks
   void onConnected() {
     print('MQTT client connected');
@@ -119,8 +130,10 @@ class MqttService extends GetxService {
                 print('✅ Received MQTT message - Topic: ${message.topic}');
                 print('✅ Message content: "$payloadString"');
                 // Process command if topic matches
-                if (message.topic.endsWith('/command') || message.topic.endsWith('/commands')) {
-                  print('🎯 Processing as command message on topic: ${message.topic}');
+                if (message.topic.endsWith('/command') ||
+                    message.topic.endsWith('/commands')) {
+                  print(
+                      '🎯 Processing as command message on topic: ${message.topic}');
                   _processCommand(payloadString);
                 }
               }
@@ -137,49 +150,58 @@ class MqttService extends GetxService {
         },
       );
     } else {
-      print('❌ ERROR: MQTT client updates stream is null - cannot listen for messages');
+      print(
+          '❌ ERROR: MQTT client updates stream is null - cannot listen for messages');
     }
   }
-  
+
   void onDisconnected() {
     print('MQTT client disconnected');
     isConnected.value = false;
   }
-  
+
   void onSubscribed(String topic) {
     print('MQTT subscription confirmed for topic $topic');
   }
-  
+
   /// Initialize the service
   Future<MqttService> init() async {
     // Load saved settings
-    deviceName.value = _storageService.read<String>(AppConstants.keyDeviceName) ?? '';
-    haDiscovery.value = _storageService.read<bool>(AppConstants.keyMqttHaDiscovery) ?? false;
-    
+    deviceName.value =
+        _storageService.read<String>(AppConstants.keyDeviceName) ?? '';
+    haDiscovery.value =
+        _storageService.read<bool>(AppConstants.keyMqttHaDiscovery) ?? false;
+
     // If device name is not set, generate a unique one
     if (deviceName.value.isEmpty) {
       // Generate device name without "kiosk" prefix
-      deviceName.value = 'device-${DateTime.now().millisecondsSinceEpoch % 100000}';
+      deviceName.value =
+          'device-${DateTime.now().millisecondsSinceEpoch % 100000}';
       // Save the generated device name
       _storageService.write(AppConstants.keyDeviceName, deviceName.value);
     }
-    
+
     // Check for and remove "kiosk" prefix if it exists in the device name
-    if (deviceName.value.startsWith('kiosk-') || deviceName.value.startsWith('kiosk ')) {
-      print('MQTT INFO: Removing kiosk prefix from device name: ${deviceName.value}');
+    if (deviceName.value.startsWith('kiosk-') ||
+        deviceName.value.startsWith('kiosk ')) {
+      print(
+          'MQTT INFO: Removing kiosk prefix from device name: ${deviceName.value}');
       final oldName = deviceName.value;
-      deviceName.value = deviceName.value.replaceFirst(RegExp(r'^kiosk[\s-]'), '');
+      deviceName.value =
+          deviceName.value.replaceFirst(RegExp(r'^kiosk[\s-]'), '');
       print('MQTT INFO: Name changed from "$oldName" to "${deviceName.value}"');
       // Save the updated device name
       _storageService.write(AppConstants.keyDeviceName, deviceName.value);
     }
-    
+
     // Sanitize the device name to be MQTT friendly (no spaces, special chars)
     if (deviceName.value.contains(RegExp(r'[^\w-]'))) {
-      print('MQTT INFO: Sanitizing device name for MQTT compatibility: ${deviceName.value}');
+      print(
+          'MQTT INFO: Sanitizing device name for MQTT compatibility: ${deviceName.value}');
       final oldName = deviceName.value;
       deviceName.value = deviceName.value.replaceAll(RegExp(r'[^\w-]'), '_');
-      print('MQTT INFO: Name sanitized from "$oldName" to "${deviceName.value}"');
+      print(
+          'MQTT INFO: Name sanitized from "$oldName" to "${deviceName.value}"');
       // Save the sanitized device name
       _storageService.write(AppConstants.keyDeviceName, deviceName.value);
     }
@@ -197,13 +219,16 @@ class MqttService extends GetxService {
     // Prevent multiple simultaneous connection attempts
     if (_client != null &&
         (_client!.connectionStatus?.state == MqttConnectionState.connecting ||
-         _client!.connectionStatus?.state == MqttConnectionState.connected)) {
-      print('MQTT already connected or connecting, skipping new connect attempt');
+            _client!.connectionStatus?.state ==
+                MqttConnectionState.connected)) {
+      print(
+          'MQTT already connected or connecting, skipping new connect attempt');
       return isConnected.value;
     }
 
     // Check if already connecting or connected
-    if (_client != null && _client!.connectionStatus!.state != MqttConnectionState.disconnected) {
+    if (_client != null &&
+        _client!.connectionStatus!.state != MqttConnectionState.disconnected) {
       print('MQTT already connected or connecting, disconnecting first');
       await disconnect();
     }
@@ -214,14 +239,15 @@ class MqttService extends GetxService {
       // Initialize client with a unique client ID
       final String clientId = '${deviceName.value}_${Random().nextInt(100000)}';
       _client = MqttServerClient.withPort(brokerUrl, clientId, port);
-      
+
       // Set keep alive interval - more frequent to detect connection issues earlier
       _client!.keepAlivePeriod = 30; // Reduced from 60 to 30 seconds
-      
+
       // Enable auto reconnect for better reliability
       _client!.autoReconnect = true;
-      _client!.resubscribeOnAutoReconnect = true; // Auto resubscribe on reconnect
-      
+      _client!.resubscribeOnAutoReconnect =
+          true; // Auto resubscribe on reconnect
+
       // Configure client
       _client!.logging(on: false);
       _client!.setProtocolV311();
@@ -235,26 +261,27 @@ class MqttService extends GetxService {
 
       print('📡 Setting up MQTT connection status monitor');
       MqttConnectionState? lastState;
-      
+
       Timer.periodic(Duration(seconds: 3), (timer) {
         if (_client == null) {
           timer.cancel();
           return;
         }
-        
+
         final currentState = _client!.connectionStatus!.state;
-        
+
         // Only log when the state changes
         if (lastState != currentState) {
           print('📡 MQTT connection state changed to: $currentState');
           lastState = currentState;
-          
+
           // Update local connection state
           isConnected.value = (currentState == MqttConnectionState.connected);
-          
+
           // If reconnected, resubscribe to topics
           if (currentState == MqttConnectionState.connected) {
-            print('📡 Connected to MQTT broker, ensuring topics are subscribed');
+            print(
+                '📡 Connected to MQTT broker, ensuring topics are subscribed');
             _subscribeToCommands();
           }
         }
@@ -268,7 +295,7 @@ class MqttService extends GetxService {
           .withWillQos(MqttQos.atLeastOnce)
           .withWillRetain()
           .startClean();
-          
+
       // Add authentication if provided
       if (username != null && username.isNotEmpty) {
         print('Using MQTT authentication with username: $username');
@@ -276,53 +303,54 @@ class MqttService extends GetxService {
       } else {
         print('MQTT connecting without authentication');
       }
-      
+
       _client!.connectionMessage = connMess;
-      
+
       // Connect to the broker
       print('Attempting to connect to MQTT broker $brokerUrl:$port...');
       await _client!.connect();
-      
+
       // Check connection result
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
         print('MQTT Connected successfully to: $brokerUrl:$port');
         isConnected.value = true;
-        
+
         // Publish online status
         publishStatus('online');
-        
+
         // Subscribe to command topics
         _subscribeToCommands();
-        
+
         // Set up Home Assistant discovery if enabled
         if (haDiscovery.value) {
           print('Setting up Home Assistant discovery');
-          
+
           // Use the debug flow to ensure all sensors are published correctly
           print('Using debug flow to ensure all sensors are registered');
           forcePublishAllSensors();
         } else {
           print('Home Assistant discovery disabled');
         }
-        
+
         // Start updating stats
         _startStatsUpdate();
-        
+
         return true;
       } else {
-        print('MQTT Connection failed: ${_client!.connectionStatus!.state.toString()}');
+        print(
+            'MQTT Connection failed: ${_client!.connectionStatus!.state.toString()}');
         isConnected.value = false;
         return false;
       }
     } catch (e) {
       print('MQTT Connection error: $e');
-      
+
       // Try to get more details about the error
       String errorDetails = '';
       if (_client != null && _client!.connectionStatus != null) {
         errorDetails = 'Return code: ${_client!.connectionStatus!.returnCode}';
       }
-      
+
       print('MQTT connection failure details: $errorDetails');
       isConnected.value = false;
       return false;
@@ -335,10 +363,10 @@ class MqttService extends GetxService {
       try {
         // Publish offline status before disconnecting
         publishStatus('offline');
-        
+
         // Stop stats update timer
         _stopStatsUpdate();
-        
+
         // Disconnect
         _client!.disconnect();
         isConnected.value = false;
@@ -351,10 +379,11 @@ class MqttService extends GetxService {
 
   /// Publish device status (online/offline)
   void publishStatus(String status) {
-    if (_client != null && _client!.connectionStatus!.state == MqttConnectionState.connected) {
+    if (_client != null &&
+        _client!.connectionStatus!.state == MqttConnectionState.connected) {
       final builder = MqttClientPayloadBuilder();
       builder.addString(status);
-      
+
       _client!.publishMessage(
         'kingkiosk/${deviceName.value}/status',
         MqttQos.atLeastOnce,
@@ -365,7 +394,8 @@ class MqttService extends GetxService {
   }
 
   /// Publish a JSON payload to an arbitrary topic (for diagnostics, etc.)
-  void publishJsonToTopic(String topic, Map<String, dynamic> payload, {bool retain = true}) {
+  void publishJsonToTopic(String topic, Map<String, dynamic> payload,
+      {bool retain = true}) {
     if (!isConnected.value || _client == null) {
       print('MQTT not connected, cannot publish to $topic');
       return;
@@ -378,20 +408,21 @@ class MqttService extends GetxService {
       builder.payload!,
       retain: retain,
     );
-    print('MQTT: Published JSON to $topic: ${jsonEncode(payload)} (retain=$retain)');
+    print(
+        'MQTT: Published JSON to $topic: ${jsonEncode(payload)} (retain=$retain)');
   }
 
   /// Start timer to periodically update device stats
   void _startStatsUpdate() {
     // Cancel existing timer if any
     _stopStatsUpdate();
-    
+
     // Create new timer
     _statsUpdateTimer = Timer.periodic(
       Duration(seconds: _updateIntervalSeconds),
       (_) => _publishSensorValues(),
     );
-    
+
     // Publish stats immediately
     _publishSensorValues();
   }
@@ -405,38 +436,43 @@ class MqttService extends GetxService {
   /// Publish all sensor values via MQTT
   void _publishSensorValues() {
     if (!isConnected.value) return;
-    
+
     try {
       // Get current values
       final batteryLevel = _sensorService.batteryLevel.value;
       final batteryState = _sensorService.batteryState.value;
       final cpuUsage = _sensorService.cpuUsage.value;
       final memoryUsage = _sensorService.memoryUsage.value;
-      
+
       // Publish battery level - format as integer
       _publishDirectValue('battery', batteryLevel.toString());
-      
+
       // Publish battery status
       _publishDirectValue('battery_status', batteryState);
-      
+
       // Publish CPU usage - format as percentage with 1 decimal place
       _publishDirectValue('cpu_usage', (cpuUsage * 100).toStringAsFixed(1));
-      
+
       // Publish memory usage - format as percentage with 1 decimal place
-      _publishDirectValue('memory_usage', (memoryUsage * 100).toStringAsFixed(1));
-      
+      _publishDirectValue(
+          'memory_usage', (memoryUsage * 100).toStringAsFixed(1));
+
       // Get platform info
       String platform = 'unknown';
-      if (Platform.isAndroid) platform = 'Android';
-      else if (Platform.isIOS) platform = 'iOS';
-      else if (Platform.isMacOS) platform = 'macOS';
-      else if (Platform.isWindows) platform = 'Windows';
-      else if (Platform.isLinux) platform = 'Linux';
+      if (Platform.isAndroid)
+        platform = 'Android';
+      else if (Platform.isIOS)
+        platform = 'iOS';
+      else if (Platform.isMacOS)
+        platform = 'macOS';
+      else if (Platform.isWindows)
+        platform = 'Windows';
+      else if (Platform.isLinux)
+        platform = 'Linux';
       else if (kIsWeb) platform = 'Web';
-      
+
       // Publish platform info
       _publishDirectValue('platform', platform);
-      
     } catch (e) {
       print('Error publishing sensor values: $e');
     }
@@ -455,7 +491,8 @@ class MqttService extends GetxService {
       _client!.subscribe(commandTopic, MqttQos.atMostOnce);
       print('🔄 Subscribing to commands topic: ${commandsTopic}');
       _client!.subscribe(commandsTopic, MqttQos.atMostOnce);
-      print('✅ Successfully requested subscription to command topics: ${commandTopic}, ${commandsTopic}');
+      print(
+          '✅ Successfully requested subscription to command topics: ${commandTopic}, ${commandsTopic}');
       print('ℹ️ Device name being used: ${deviceName.value}');
       try {
         print('ℹ️ Attempting to list active subscriptions:');
@@ -488,17 +525,25 @@ class MqttService extends GetxService {
     print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
     if (cmdObj is Map) {
       print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
-    }
-
-    // --- Handle batch commands array first ---
-    if (cmdObj is Map && cmdObj['commands'] is List) {
-      print('🎯 Processing batch of ${(cmdObj['commands'] as List).length} commands');
+    } // --- Handle batch commands array first ---
+    if (cmdObj is Map &&
+        (cmdObj['commands'] is List ||
+            cmdObj['command']?.toString().toLowerCase() == 'batch')) {
+      // Support both batch format styles: {commands: [...]} and {command: 'batch', commands: [...]}
+      print('🎯 Processing batch command');
       final List commandList = cmdObj['commands'] as List;
-      
+      print('🎯 Processing batch of ${commandList.length} commands');
+
       for (final cmd in commandList) {
         if (cmd is Map) {
           try {
-            // Process each command in the batch
+            // Check specifically for notify command to use optimized path
+            if (cmd['command']?.toString().toLowerCase() == 'notify') {
+              MqttNotificationHandler.processNotifyCommand(cmd);
+              continue;
+            }
+
+            // Process each other command in the batch
             final cmdString = jsonEncode(cmd);
             print('🎯 Processing batch command: $cmdString');
             _processCommand(cmdString);
@@ -509,10 +554,11 @@ class MqttService extends GetxService {
       }
       return;
     }
-    
+
     // --- Only handle commands that are JSON with a 'command' key ---
     if (cmdObj is! Map || !cmdObj.containsKey('command')) {
-      print('🎯 Ignoring non-command MQTT message (cmdObj type: ${cmdObj.runtimeType})');
+      print(
+          '🎯 Ignoring non-command MQTT message (cmdObj type: ${cmdObj.runtimeType})');
       return;
     }
     // --- play_media command via {"command": "play_media", ...} ---
@@ -520,20 +566,27 @@ class MqttService extends GetxService {
       String? type = cmdObj['type']?.toString();
       String? url = cmdObj['url']?.toString();
       String? style = cmdObj['style']?.toString();
-      final bool loop = cmdObj['loop'] == true || cmdObj['loop']?.toString() == 'true';
+      final bool loop =
+          cmdObj['loop'] == true || cmdObj['loop']?.toString() == 'true';
       // Get the custom window ID if provided
       final String? windowId = cmdObj['window_id']?.toString();
-      print('🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
+      print(
+          '🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop' +
+              (windowId != null ? ', id=$windowId' : ''));
       if (type == null) {
         // Try to infer type from url
         if (url != null && (url.endsWith('.mp4') || url.endsWith('.webm'))) {
           type = 'video';
-        } else if (url != null && (url.endsWith('.mp3') || url.endsWith('.wav'))) {
+        } else if (url != null &&
+            (url.endsWith('.mp3') || url.endsWith('.wav'))) {
           type = 'audio';
-        } else if (url != null && (
-          url.endsWith('.jpg') || url.endsWith('.jpeg') || 
-          url.endsWith('.png') || url.endsWith('.gif') || 
-          url.endsWith('.webp') || url.endsWith('.bmp'))) {
+        } else if (url != null &&
+            (url.endsWith('.jpg') ||
+                url.endsWith('.jpeg') ||
+                url.endsWith('.png') ||
+                url.endsWith('.gif') ||
+                url.endsWith('.webp') ||
+                url.endsWith('.bmp'))) {
           type = 'image';
         }
       }
@@ -546,7 +599,9 @@ class MqttService extends GetxService {
         if (type == 'audio') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
           if (style == 'window') {
-            print('🔊 [MQTT] Playing audio in window via BackgroundMediaService: $url, title=$title, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
+            print(
+                '🔊 [MQTT] Playing audio in window via BackgroundMediaService: $url, title=$title, loop=$loop' +
+                    (windowId != null ? ', id=$windowId' : ''));
             final controller = Get.find<TilingWindowController>();
             // Use custom ID if provided, otherwise auto-generate
             if (windowId != null && windowId.isNotEmpty) {
@@ -555,19 +610,25 @@ class MqttService extends GetxService {
               controller.addAudioTile(title, url);
             }
           } else {
-            print('🔊 [MQTT] Playing audio in background via BackgroundMediaService: $url, loop=$loop');
+            print(
+                '🔊 [MQTT] Playing audio in background via BackgroundMediaService: $url, loop=$loop');
             mediaService.playAudio(url, loop: loop);
           }
         } else if (type == 'video') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Video';
           if (style == 'fullscreen') {
-            print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url, loop=$loop');
+            print(
+                '🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url, loop=$loop');
             mediaService.playVideoFullscreen(url, loop: loop);
           } else if (style == 'window') {
-            print('🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
-            mediaService.playVideoWindowed(url, loop: loop, title: title, windowId: windowId);
+            print(
+                '🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop' +
+                    (windowId != null ? ', id=$windowId' : ''));
+            mediaService.playVideoWindowed(url,
+                loop: loop, title: title, windowId: windowId);
           } else {
-            print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
+            print(
+                '🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
             mediaService.playVideo(url, loop: loop);
           }
         } else if (type == 'image') {
@@ -598,7 +659,8 @@ class MqttService extends GetxService {
       return;
     }
     // --- open_browser command ---
-    if (cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
+    if (cmdObj['command']?.toString().toLowerCase() == 'open_browser' &&
+        cmdObj['url'] is String) {
       final url = cmdObj['url'] as String;
       final title = cmdObj['title']?.toString() ?? 'MQTT Web';
       final String? windowId = cmdObj['window_id']?.toString();
@@ -610,7 +672,8 @@ class MqttService extends GetxService {
         } else {
           controller.addWebViewTile(title, url);
         }
-        print('🌐 [MQTT] Opened browser window for URL: $url, title=$title' + (windowId != null ? ', id=$windowId' : ''));
+        print('🌐 [MQTT] Opened browser window for URL: $url, title=$title' +
+            (windowId != null ? ', id=$windowId' : ''));
       } catch (e) {
         print('❌ Error opening browser window: $e');
       }
@@ -622,7 +685,8 @@ class MqttService extends GetxService {
       if (windowId != null && windowId.isNotEmpty) {
         try {
           final controller = Get.find<TilingWindowController>();
-          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          final tile =
+              controller.tiles.firstWhereOrNull((t) => t.id == windowId);
           if (tile != null) {
             controller.closeTile(tile);
             print('🪟 [MQTT] Closed window with ID: $windowId');
@@ -643,7 +707,8 @@ class MqttService extends GetxService {
       if (windowId != null && windowId.isNotEmpty) {
         try {
           final controller = Get.find<TilingWindowController>();
-          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          final tile =
+              controller.tiles.firstWhereOrNull((t) => t.id == windowId);
           if (tile != null) {
             controller.maximizeTile(tile);
             print('🪟 [MQTT] Maximized window with ID: $windowId');
@@ -664,7 +729,8 @@ class MqttService extends GetxService {
       if (windowId != null && windowId.isNotEmpty) {
         try {
           final controller = Get.find<TilingWindowController>();
-          final tile = controller.tiles.firstWhereOrNull((t) => t.id == windowId);
+          final tile =
+              controller.tiles.firstWhereOrNull((t) => t.id == windowId);
           if (tile != null) {
             controller.minimizeTile(tile);
             print('🪟 [MQTT] Minimized window with ID: $windowId');
@@ -678,27 +744,38 @@ class MqttService extends GetxService {
         print('⚠️ minimize_window command missing window_id');
       }
       return;
+    } // --- notify command for sending notifications ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'notify') {
+      MqttNotificationHandler.processNotifyCommand(cmdObj);
+      return;
     }
+    // Notification handling is delegated to MqttNotificationHandler
     // --- play, pause, close for media windows via {command:..., window_id:...} ---
     final mediaWindowCommands = ['play', 'pause', 'close'];
-    if (mediaWindowCommands.contains(cmdObj['command']?.toString().toLowerCase())) {
-      final windowId = cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
+    if (mediaWindowCommands
+        .contains(cmdObj['command']?.toString().toLowerCase())) {
+      final windowId =
+          cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
       final action = cmdObj['command']?.toString().toLowerCase();
       if (windowId != null && windowId.isNotEmpty && action != null) {
         try {
           final wm = Get.find<WindowManagerService>();
           final win = wm.getWindow(windowId);
           if (win != null && win.windowType == KioskWindowType.media) {
-            print('[MQTT] Routing "$action" to MediaWindowController for window_id: $windowId');
-            win.handleCommand(action, cmdObj.map((key, value) => MapEntry(key.toString(), value)));
+            print(
+                '[MQTT] Routing "$action" to MediaWindowController for window_id: $windowId');
+            win.handleCommand(action,
+                cmdObj.map((key, value) => MapEntry(key.toString(), value)));
             print('[MQTT] Sent "$action" to media window with ID: $windowId');
           } else if (win == null) {
             print('[MQTT] No media window found with ID: $windowId');
           } else {
-            print('[MQTT] Window with ID $windowId is not a media window (type: [33m${win.windowType}[0m)');
+            print(
+                '[MQTT] Window with ID $windowId is not a media window (type: [33m${win.windowType}[0m)');
           }
         } catch (e) {
-          print('[MQTT] Error processing $action command for media window ID $windowId: $e');
+          print(
+              '[MQTT] Error processing $action command for media window ID $windowId: $e');
         }
       } else {
         print('[MQTT] $action command missing window_id');
@@ -707,7 +784,8 @@ class MqttService extends GetxService {
     }
     // --- pause_media command (legacy, DEPRECATED) ---
     if (cmdObj['command']?.toString().toLowerCase() == 'pause_media') {
-      print('[MQTT] WARNING: pause_media command is deprecated. Use {command: "pause", window_id: ...} instead.');
+      print(
+          '[MQTT] WARNING: pause_media command is deprecated. Use {command: "pause", window_id: ...} instead.');
       final windowId = cmdObj['window_id'] as String?;
       if (windowId != null && windowId.isNotEmpty) {
         try {
@@ -729,15 +807,18 @@ class MqttService extends GetxService {
     }
     // --- web window commands: refresh, restart, evaljs, loadurl ---
     final webWindowCommands = ['refresh', 'restart', 'evaljs', 'loadurl'];
-    if (webWindowCommands.contains(cmdObj['command']?.toString().toLowerCase())) {
-      final windowId = cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
+    if (webWindowCommands
+        .contains(cmdObj['command']?.toString().toLowerCase())) {
+      final windowId =
+          cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
       final action = cmdObj['command']?.toString().toLowerCase();
       if (windowId != null && windowId.isNotEmpty && action != null) {
         try {
           final wm = Get.find<WindowManagerService>();
           final win = wm.getWindow(windowId);
           if (win != null && win.windowType == KioskWindowType.web) {
-            print('[MQTT] Routing "$action" to WebWindowController for window_id: $windowId');
+            print(
+                '[MQTT] Routing "$action" to WebWindowController for window_id: $windowId');
             win.handleCommand(
               action,
               cmdObj.map((key, value) => MapEntry(key.toString(), value)),
@@ -746,10 +827,12 @@ class MqttService extends GetxService {
           } else if (win == null) {
             print('[MQTT] No window found with ID: $windowId');
           } else {
-            print('[MQTT] Window with ID $windowId is not a web window (type: ${win.windowType})');
+            print(
+                '[MQTT] Window with ID $windowId is not a web window (type: ${win.windowType})');
           }
         } catch (e) {
-          print('[MQTT] Error processing $action command for window ID $windowId: $e');
+          print(
+              '[MQTT] Error processing $action command for window ID $windowId: $e');
         }
       } else {
         print('[MQTT] $action command missing window_id');
@@ -802,7 +885,8 @@ class MqttService extends GetxService {
           print('[MQTT] Error setting system brightness: $e');
         }
       } else {
-        print('[MQTT] Invalid set_brightness value: [33m${cmdObj['value']}[0m');
+        print(
+            '[MQTT] Invalid set_brightness value: [33m${cmdObj['value']}[0m');
       }
       return;
     }
@@ -812,9 +896,9 @@ class MqttService extends GetxService {
         print('[MQTT] Current system brightness: $currentBrightness');
         // Optionally publish to a response topic
         if (cmdObj['response_topic'] != null) {
-          publishJsonToTopic(cmdObj['response_topic'], {
-            'brightness': currentBrightness
-          }, retain: false);
+          publishJsonToTopic(
+              cmdObj['response_topic'], {'brightness': currentBrightness},
+              retain: false);
         }
       } catch (e) {
         print('[MQTT] Error getting system brightness: $e');
@@ -839,13 +923,13 @@ class MqttService extends GetxService {
   /// Publish a direct value to a sensor topic without wrapping it in JSON
   void _publishDirectValue(String name, String value) {
     if (!isConnected.value) return;
-    
+
     final topic = 'kingkiosk/${deviceName.value}/$name';
     final builder = MqttClientPayloadBuilder();
-    
+
     // Directly publish the value as a string - Home Assistant expects this format
     builder.addString(value);
-    
+
     _client!.publishMessage(
       topic,
       MqttQos.atLeastOnce,
@@ -860,40 +944,42 @@ class MqttService extends GetxService {
       print('MQTT DEBUG: Not connected, cannot force publish');
       return;
     }
-    
+
     try {
       print('MQTT DEBUG: Force publishing all sensors with detailed logging');
-      
+
       // Enhancing with more device info logging
       print('MQTT DEBUG: Current device information:');
       print('MQTT DEBUG: Device name: ${deviceName.value}');
-      print('MQTT DEBUG: Connection state: ${_client!.connectionStatus!.state}');
+      print(
+          'MQTT DEBUG: Connection state: ${_client!.connectionStatus!.state}');
       print('MQTT DEBUG: Client ID: ${_client!.clientIdentifier}');
-      
+
       // List all client properties
       print('MQTT DEBUG: Client properties:');
       print('MQTT DEBUG: - Keep alive: ${_client!.keepAlivePeriod}');
       print('MQTT DEBUG: - Auto reconnect: ${_client!.autoReconnect}');
-      
+
       // Try to get connection message details safely
       try {
-        print('MQTT DEBUG: - Connection message: ${_client!.connectionMessage.toString()}');
+        print(
+            'MQTT DEBUG: - Connection message: ${_client!.connectionMessage.toString()}');
       } catch (e) {
         print('MQTT DEBUG: - Connection message not available: $e');
       }
-      
+
       // First delete existing discovery configs
       _deleteAllDiscoveryConfigs();
-      
+
       // Wait briefly
       Future.delayed(Duration(milliseconds: 300), () {
         // Then re-create all discovery configs with debug logging
         _setupHomeAssistantDiscoveryWithDebug();
-        
+
         // Wait for discovery to be processed, then publish values
         Future.delayed(Duration(milliseconds: 500), () {
           _publishSensorValuesWithDebug();
-          
+
           // Run MQTT messaging tests to verify functionality with longer delays
           print('MQTT DEBUG: Running MQTT messaging tests after 2 seconds...');
           Future.delayed(Duration(seconds: 2), () {
@@ -907,64 +993,75 @@ class MqttService extends GetxService {
       print('MQTT DEBUG: Error in force publish: $e');
     }
   }
-  
+
   /// Delete all existing discovery configs - helps with troubleshooting
   void _deleteAllDiscoveryConfigs() {
     if (!isConnected.value) return;
-    
+
     try {
       print('MQTT DEBUG: Deleting all existing discovery configs');
-      final sensors = ['battery', 'battery_status', 'cpu_usage', 'memory_usage', 'platform'];
-      
+      final sensors = [
+        'battery',
+        'battery_status',
+        'cpu_usage',
+        'memory_usage',
+        'platform'
+      ];
+
       for (final sensor in sensors) {
         final topic = 'homeassistant/sensor/${deviceName.value}_$sensor/config';
         // To delete a retained message, publish an empty message
         _client!.publishMessage(
-          topic,
-          MqttQos.atLeastOnce,
-          MqttClientPayloadBuilder().payload!,
-          retain: true
-        );
+            topic, MqttQos.atLeastOnce, MqttClientPayloadBuilder().payload!,
+            retain: true);
         print('MQTT DEBUG: Deleted discovery config for $sensor');
       }
     } catch (e) {
       print('MQTT DEBUG: Error deleting configs: $e');
     }
   }
-  
+
   /// Set up discovery with additional debug logging
   void _setupHomeAssistantDiscoveryWithDebug() {
     if (!isConnected.value || !haDiscovery.value) return;
-    
+
     try {
       print('MQTT DEBUG: Setting up all discovery sensors with debug logging');
-      
+
       // Set up the key sensors one by one with debug logging
       print('MQTT DEBUG: Setting up battery level sensor');
-      _setupDiscoverySensorWithDebug('battery', 'Battery Level', 'battery', '%', 'mdi:battery');
-      
+      _setupDiscoverySensorWithDebug(
+          'battery', 'Battery Level', 'battery', '%', 'mdi:battery');
+
       print('MQTT DEBUG: Setting up battery status sensor');
-      _setupDiscoverySensorWithDebug('battery_status', 'Battery Status', 'battery', '', 'mdi:battery-charging');
-      
+      _setupDiscoverySensorWithDebug('battery_status', 'Battery Status',
+          'battery', '', 'mdi:battery-charging');
+
       print('MQTT DEBUG: Setting up CPU usage sensor');
-      _setupDiscoverySensorWithDebug('cpu_usage', 'CPU Usage', 'cpu', '%', 'mdi:cpu-64-bit');
-      
+      _setupDiscoverySensorWithDebug(
+          'cpu_usage', 'CPU Usage', 'cpu', '%', 'mdi:cpu-64-bit');
+
       print('MQTT DEBUG: Setting up memory usage sensor');
-      _setupDiscoverySensorWithDebug('memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');
-      
+      _setupDiscoverySensorWithDebug(
+          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');
+
       print('MQTT DEBUG: Setting up platform sensor');
-      _setupDiscoverySensorWithDebug('platform', 'Platform', 'text', '', 'mdi:laptop');
-      
+      _setupDiscoverySensorWithDebug(
+          'platform', 'Platform', 'text', '', 'mdi:laptop');
+
       print('MQTT DEBUG: Home Assistant discovery setup complete');
     } catch (e) {
       print('MQTT DEBUG: Error setting up discovery: $e');
     }
   }
-  
+
   /// Set up a single discovery sensor with detailed logging
-  void _setupDiscoverySensorWithDebug(String name, String displayName, String deviceClass, String unit, [String? icon]) {
-    final discoveryTopic = 'homeassistant/sensor/${deviceName.value}_$name/config';
-    
+  void _setupDiscoverySensorWithDebug(
+      String name, String displayName, String deviceClass, String unit,
+      [String? icon]) {
+    final discoveryTopic =
+        'homeassistant/sensor/${deviceName.value}_$name/config';
+
     // Use valid Home Assistant device_class values
     // See https://www.home-assistant.io/integrations/sensor/#device-class
     String validDeviceClass = deviceClass;
@@ -975,16 +1072,15 @@ class MqttService extends GetxService {
       // Memory is not a valid device class in Home Assistant
       validDeviceClass = ''; // empty will use default sensor
     }
-    
+
     // Create a proper JSON structure as a map
     final Map<String, dynamic> payloadMap = {
       "name": displayName,
       "unique_id": "${deviceName.value}_$name",
       "state_topic": "kingkiosk/${deviceName.value}/$name",
       "value_template": "{{ value }}", // Important for direct value parsing
-      "icon": icon ?? "mdi:${deviceClass == 'battery' ? 'battery' : 
-                       deviceClass == 'memory' ? 'memory' : 
-                       deviceClass == 'cpu' ? 'cpu-64-bit' : 'information-outline'}",
+      "icon": icon ??
+          "mdi:${deviceClass == 'battery' ? 'battery' : deviceClass == 'memory' ? 'memory' : deviceClass == 'cpu' ? 'cpu-64-bit' : 'information-outline'}",
       "device": {
         "identifiers": ["${deviceName.value}"],
         "name": deviceName.value,
@@ -995,108 +1091,116 @@ class MqttService extends GetxService {
       "payload_available": "online",
       "payload_not_available": "offline"
     };
-    
+
     // Only add device_class if it's valid and not empty
     if (validDeviceClass.isNotEmpty) {
       payloadMap["device_class"] = validDeviceClass;
     }
-    
+
     // Add unit of measurement if not empty
     if (unit.isNotEmpty) {
       payloadMap["unit_of_measurement"] = unit;
     }
-    
+
     // Convert to JSON string
     final payload = jsonEncode(payloadMap);
-    
+
     // Log the formatted payload for debugging
     print('MQTT DEBUG: Discovery payload for $name: $payload');
     print('MQTT DEBUG: Publishing to topic: $discoveryTopic');
-    
+
     final builder = MqttClientPayloadBuilder();
     builder.addString(payload);
-    
+
     _client!.publishMessage(
       discoveryTopic,
       MqttQos.atLeastOnce,
       builder.payload!,
       retain: true,
     );
-    
+
     print('MQTT DEBUG: Published discovery config for $name');
   }
-  
+
   /// Publish sensor values with detailed debug info
   void _publishSensorValuesWithDebug() {
     if (!isConnected.value) return;
-    
+
     try {
       print('MQTT DEBUG: Publishing all sensor values with debug info');
-      
+
       // Get current values
       final batteryLevel = _sensorService.batteryLevel.value;
       final batteryState = _sensorService.batteryState.value;
       final cpuUsage = _sensorService.cpuUsage.value;
       final memoryUsage = _sensorService.memoryUsage.value;
-      
+
       print('MQTT DEBUG: Current sensor values:');
       print('MQTT DEBUG: Battery level: $batteryLevel');
       print('MQTT DEBUG: Battery status: $batteryState');
       print('MQTT DEBUG: CPU usage: ${(cpuUsage * 100).toStringAsFixed(1)}%');
-      print('MQTT DEBUG: Memory usage: ${(memoryUsage * 100).toStringAsFixed(1)}%');
-      
+      print(
+          'MQTT DEBUG: Memory usage: ${(memoryUsage * 100).toStringAsFixed(1)}%');
+
       // Publish battery level
       _publishDirectValueWithDebug('battery', batteryLevel.toString());
-      
+
       // Publish battery status
       _publishDirectValueWithDebug('battery_status', batteryState);
-      
+
       // Publish CPU usage - format as percentage with 1 decimal place
-      _publishDirectValueWithDebug('cpu_usage', (cpuUsage * 100).toStringAsFixed(1));
-      
+      _publishDirectValueWithDebug(
+          'cpu_usage', (cpuUsage * 100).toStringAsFixed(1));
+
       // Publish memory usage - format as percentage with 1 decimal place
-      _publishDirectValueWithDebug('memory_usage', (memoryUsage * 100).toStringAsFixed(1));
-      
+      _publishDirectValueWithDebug(
+          'memory_usage', (memoryUsage * 100).toStringAsFixed(1));
+
       // Get platform info
       String platform = 'unknown';
-      if (Platform.isAndroid) platform = 'Android';
-      else if (Platform.isIOS) platform = 'iOS';
-      else if (Platform.isMacOS) platform = 'macOS';
-      else if (Platform.isWindows) platform = 'Windows';
-      else if (Platform.isLinux) platform = 'Linux';
+      if (Platform.isAndroid)
+        platform = 'Android';
+      else if (Platform.isIOS)
+        platform = 'iOS';
+      else if (Platform.isMacOS)
+        platform = 'macOS';
+      else if (Platform.isWindows)
+        platform = 'Windows';
+      else if (Platform.isLinux)
+        platform = 'Linux';
       else if (kIsWeb) platform = 'Web';
-      
+
       // Publish platform info
       _publishDirectValueWithDebug('platform', platform);
-      
+
       print('MQTT DEBUG: Finished publishing all sensor values');
     } catch (e) {
       print('MQTT DEBUG: Error publishing sensor values: $e');
     }
   }
-  
+
   /// Publish a direct value to a sensor topic with debug info
   void _publishDirectValueWithDebug(String name, String value) {
     if (!isConnected.value) return;
-    
+
     final topic = 'kingkiosk/${deviceName.value}/$name';
     final builder = MqttClientPayloadBuilder();
-    
+
     // Directly publish the value as a string
     builder.addString(value);
-    
+
     print('MQTT DEBUG: Publishing to topic $topic: "$value"');
-    
+
     _client!.publishMessage(
       topic,
       MqttQos.atLeastOnce,
       builder.payload!,
       retain: true,
     );
-    
+
     print('MQTT DEBUG: Published value for $name');
   }
-  
+
   /// Check if MQTT service is connected
   bool isConnectedToBroker() {
     return isConnected.value;
@@ -1106,44 +1210,45 @@ class MqttService extends GetxService {
   int getUpdateInterval() {
     return _updateIntervalSeconds;
   }
-  
+
   /// Force a manual reconnection to the MQTT broker
   Future<bool> forceReconnect() async {
     print('⚙️ Force reconnecting to MQTT broker...');
-    
+
     if (_client == null) {
       print('❌ Cannot reconnect: MQTT client is null');
       return false;
     }
-    
+
     try {
       // Disconnect but keep client settings
       print('⚙️ Disconnecting from broker...');
       _client!.disconnect();
       isConnected.value = false;
-      
+
       // Wait a moment
       await Future.delayed(Duration(milliseconds: 1000));
-      
+
       // Reconnect using existing client settings
       print('⚙️ Attempting to reconnect...');
       await _client!.connect();
-      
+
       // Check if reconnection was successful
       if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
         print('✅ MQTT Reconnected successfully');
         isConnected.value = true;
-        
+
         // Resubscribe to topics
         print('⚙️ Resubscribing to topics...');
         _subscribeToCommands();
-        
+
         // Republish online status
         publishStatus('online');
-        
+
         return true;
       } else {
-        print('❌ MQTT Reconnection failed: ${_client!.connectionStatus!.state}');
+        print(
+            '❌ MQTT Reconnection failed: ${_client!.connectionStatus!.state}');
         isConnected.value = false;
         return false;
       }
@@ -1153,15 +1258,16 @@ class MqttService extends GetxService {
       return false;
     }
   }
-  
+
   /// Subscribe to a custom MQTT topic
   void subscribe(String topic, Function(String, String) onMessage) {
     if (!isConnected.value || _client == null) return;
-    
+
     try {
       print('Subscribing to topic: $topic');
       _client!.subscribe(topic, MqttQos.atLeastOnce);
-      _client!.updates!.listen((List<MqttReceivedMessage<MqttMessage?>>? messages) {
+      _client!.updates!
+          .listen((List<MqttReceivedMessage<MqttMessage?>>? messages) {
         if (messages == null || messages.isEmpty) return;
         for (final message in messages) {
           if (message.payload is MqttPublishMessage) {
@@ -1182,7 +1288,8 @@ class MqttService extends GetxService {
   void publishWindowsDiscoveryConfig({String? friendlyNameOverride}) {
     final deviceNameStr = deviceName.value;
     final deviceFriendlyName = friendlyNameOverride ?? deviceNameStr;
-    final discoveryTopic = 'homeassistant/sensor/${deviceNameStr}_windows/config';
+    final discoveryTopic =
+        'homeassistant/sensor/${deviceNameStr}_windows/config';
     final stateTopic = 'kiosk/$deviceNameStr/diagnostics/windows';
     final availabilityTopic = 'kingkiosk/$deviceNameStr/status';
     final payload = {
