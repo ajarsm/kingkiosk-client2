@@ -14,6 +14,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   record_windows
   screen_brightness_windows
   screen_retriever
+  url_launcher_windows
   volume_controller
   window_manager
 )

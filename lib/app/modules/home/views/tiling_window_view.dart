@@ -20,6 +20,7 @@ import '../../../services/wyoming_service.dart';
 import 'package:king_kiosk/wyoming_satellite/wyoming_satellite.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
+import 'package:king_kiosk/notification_system/notification_system.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -37,7 +38,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
   late final StreamSubscription kioskModeSub;
 
   // Add a GlobalKey to control the toolbar from the handle
-  final GlobalKey<_AutoHidingToolbarState> _autoHidingToolbarKey = GlobalKey<_AutoHidingToolbarState>();
+  final GlobalKey<_AutoHidingToolbarState> _autoHidingToolbarKey =
+      GlobalKey<_AutoHidingToolbarState>();
 
   // Wyoming FAB state
   final WyomingService wyomingService = Get.find<WyomingService>();
@@ -112,7 +114,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
             ),
             // Windows and overlays
             Obx(() => Stack(
-                  children: controller.tiles.map((tile) => _buildWindowTile(tile, locked)).toList(),
+                  children: controller.tiles
+                      .map((tile) => _buildWindowTile(tile, locked))
+                      .toList(),
                 )),
             // Edge handle for toolbar/appbar reveal (mobile and desktop)
             if (PlatformUtils.isMobile)
@@ -176,13 +180,11 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     ),
                   ),
                 ),
-              ),
-            // Auto-hiding toolbar at the bottom
+              ), // Auto-hiding toolbar at the bottom
             _AutoHidingToolbar(
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),
-            ),
-            // Overlay Wyoming FAB in top right
+            ), // Overlay Wyoming FAB in top right
             Obx(() => wyomingService.enabled.value
                 ? Positioned(
                     top: 24,
@@ -190,6 +192,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     child: _buildWyomingFab(),
                   )
                 : SizedBox.shrink()),
+            // Notification Center positioned on the right side
+            _buildNotificationCenter(),
           ],
         );
       }),
@@ -204,7 +208,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Obx(() {
           // This Obx will rebuild the entire tile when refreshCounter changes
           final refreshValue = webController.refreshCounter.value;
-          print('🔄 [REFRESH] Rebuilding WebView tile for window: ${tile.id}, refreshCounter: $refreshValue');
+          print(
+              '🔄 [REFRESH] Rebuilding WebView tile for window: ${tile.id}, refreshCounter: $refreshValue');
           return _buildWindowTileCore(tile, locked);
         });
       }
@@ -249,7 +254,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   child: _buildTileContent(tile),
                 ),
                 // Only show resize handle in floating mode and when not locked
-                if (!controller.tilingMode.value && !locked) _buildResizeHandle(tile),
+                if (!controller.tilingMode.value && !locked)
+                  _buildResizeHandle(tile),
                 // Force rebuild on lock state change to ensure drag is re-enabled
                 if (locked) SizedBox.shrink(),
               ],
@@ -322,7 +328,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
             // Maximize/Restore button (only in floating mode)
             if (!controller.tilingMode.value)
               Tooltip(
-                message: tile.isMaximized ? "Restore Window" : "Maximize Window",
+                message:
+                    tile.isMaximized ? "Restore Window" : "Maximize Window",
                 child: IconButton(
                   icon: Icon(
                     tile.isMaximized ? Icons.filter_none : Icons.crop_square,
@@ -377,7 +384,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         if (controller is WebWindowController) {
           return Obx(() {
             final refreshKey = controller.refreshCounter.value;
-            print('🔄 [REFRESH] Building WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
+            print(
+                '🔄 [REFRESH] Building WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
             return WebViewTile(
               key: ValueKey('${tile.id}_$refreshKey'),
               url: tile.url,
@@ -387,7 +395,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
           });
         } else {
           // Fallback: just show the webview without refresh support
-          print('⚠️ [REFRESH] No WebWindowController found for window: ${tile.id}, using regular WebViewTile but passing windowId');
+          print(
+              '⚠️ [REFRESH] No WebWindowController found for window: ${tile.id}, using regular WebViewTile but passing windowId');
           return WebViewTile(
             key: ValueKey(tile.id),
             url: tile.url,
@@ -400,10 +409,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return AudioTile(url: tile.url);
       case TileType.image:
         return ImageTile(
-          url: tile.url, 
-          imageUrls: tile.imageUrls,
-          showControls: true
-        );
+            url: tile.url, imageUrls: tile.imageUrls, showControls: true);
     }
   }
 
@@ -437,7 +443,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
       height: 64,
       padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: Theme.of(context).appBarTheme.backgroundColor ?? Theme.of(context).primaryColor,
+        color: Theme.of(context).appBarTheme.backgroundColor ??
+            Theme.of(context).primaryColor,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -461,17 +468,23 @@ class TilingWindowViewState extends State<TilingWindowView> {
             _buildToolbarButton(
               icon: Icons.video_collection_rounded,
               label: 'Video',
-              onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: false),
+              onPressed: locked
+                  ? null
+                  : () => _showAddMediaDialog(context, isAudio: false),
               locked: locked,
             ),
             _buildToolbarButton(
               icon: Icons.music_note_rounded,
               label: 'Audio',
-              onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: true),
+              onPressed: locked
+                  ? null
+                  : () => _showAddMediaDialog(context, isAudio: true),
               locked: locked,
             ),
             _buildToolbarButton(
-              icon: controller.tilingMode.value ? Icons.grid_view_rounded : Icons.view_carousel_rounded,
+              icon: controller.tilingMode.value
+                  ? Icons.grid_view_rounded
+                  : Icons.view_carousel_rounded,
               label: controller.tilingMode.value ? 'Tiling' : 'Floating',
               onPressed: locked ? null : () => controller.toggleWindowMode(),
               locked: locked,
@@ -504,15 +517,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
                           title: Text('Unlock Kiosk'),
                           content: Builder(
                             builder: (context) {
-                              final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                              final pinPadKey =
+                                  GlobalKey<SettingsLockPinPadState>();
                               return SettingsLockPinPad(
                                 key: pinPadKey,
                                 onPinEntered: (pin) {
-                                  if (pin == settingsController.settingsPin.value) {
+                                  if (pin ==
+                                      settingsController.settingsPin.value) {
                                     settingsController.unlockSettings();
                                     Navigator.of(context).pop(true);
                                   } else {
-                                    pinPadKey.currentState?.showError('Incorrect PIN');
+                                    pinPadKey.currentState
+                                        ?.showError('Incorrect PIN');
                                   }
                                 },
                                 pinLength: 4,
@@ -527,10 +543,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
                             content: Text(
                               'Unlocked!',
                               style: TextStyle(
-                                color: Get.isDarkMode ? Colors.black : Colors.white,
+                                color: Get.isDarkMode
+                                    ? Colors.black
+                                    : Colors.white,
                               ),
                             ),
-                            backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                            backgroundColor:
+                                Get.isDarkMode ? Colors.white : Colors.black,
                             behavior: SnackBarBehavior.floating,
                           ),
                         );
@@ -542,15 +561,23 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   child: AnimatedSwitcher(
                     duration: Duration(milliseconds: 300),
                     child: locked
-                        ? Icon(Icons.lock_rounded, key: ValueKey('locked'), color: Colors.redAccent, size: 38)
-                        : Icon(Icons.lock_open_rounded, key: ValueKey('unlocked'), color: Colors.greenAccent, size: 38),
+                        ? Icon(Icons.lock_rounded,
+                            key: ValueKey('locked'),
+                            color: Colors.redAccent,
+                            size: 38)
+                        : Icon(Icons.lock_open_rounded,
+                            key: ValueKey('unlocked'),
+                            color: Colors.greenAccent,
+                            size: 38),
                   ),
                 ),
               ),
             ),
-          ),
-          // System info and settings
+          ), // System info and settings
           _buildCompactSystemInfo(),
+          // Notification Badge
+          NotificationBadge(),
+          SizedBox(width: 8),
           _buildToolbarButton(
             icon: Icons.settings_rounded,
             label: 'Settings',
@@ -593,7 +620,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   Widget _buildCompactSystemInfo() {
     // Use cached controller and Obx for reactivity
     return Obx(() {
-      // Only show if system info is enabled in settings  
+      // Only show if system info is enabled in settings
       if (!appStateController.showSystemInfo.value) {
         return SizedBox.shrink();
       }
@@ -625,7 +652,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   /// Builds compact CPU and Memory stats display
   Widget _buildCompactStats(BuildContext context) {
     // Using the cached sensor service from initState
-    
+
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -639,9 +666,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
             style: TextStyle(color: Colors.white, fontSize: 11),
           );
         }),
-        
+
         SizedBox(width: 12),
-        
+
         // Memory Usage
         Icon(Icons.storage, size: 14, color: Colors.white),
         SizedBox(width: 4),
@@ -696,7 +723,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   void _showAddWebViewDialog(BuildContext context) {
     final TextEditingController nameController = TextEditingController();
-    final TextEditingController urlController = TextEditingController(text: 'https://');
+    final TextEditingController urlController =
+        TextEditingController(text: 'https://');
 
     // Use Future.microtask to avoid setState during build errors
     Future.microtask(() {
@@ -730,8 +758,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
             ),
             ElevatedButton(
               onPressed: () {
-                if (nameController.text.isNotEmpty && urlController.text.isNotEmpty) {
-                  controller.addWebViewTile(nameController.text, urlController.text);
+                if (nameController.text.isNotEmpty &&
+                    urlController.text.isNotEmpty) {
+                  controller.addWebViewTile(
+                      nameController.text, urlController.text);
                   Get.back();
                 }
               },
@@ -779,11 +809,14 @@ class TilingWindowViewState extends State<TilingWindowView> {
             ),
             ElevatedButton(
               onPressed: () {
-                if (nameController.text.isNotEmpty && urlController.text.isNotEmpty) {
+                if (nameController.text.isNotEmpty &&
+                    urlController.text.isNotEmpty) {
                   if (isAudio) {
-                    controller.addAudioTile(nameController.text, urlController.text);
+                    controller.addAudioTile(
+                        nameController.text, urlController.text);
                   } else {
-                    controller.addMediaTile(nameController.text, urlController.text);
+                    controller.addMediaTile(
+                        nameController.text, urlController.text);
                   }
                   Get.back();
                 }
@@ -851,27 +884,34 @@ class TilingWindowViewState extends State<TilingWindowView> {
           content: Container(
             width: 400,
             child: Obx(() => ListView(
-              shrinkWrap: true,
-              children: tiles.map((tile) => ListTile(
-                title: Text(tile.name),
-                subtitle: Text('ID: ${tile.id}\nType: ${tile.type.toString().split('.').last}\nURL: ${tile.url}'),
-                dense: true,
-                trailing: IconButton(
-                  icon: Icon(Icons.copy),
-                  tooltip: 'Copy ID',
-                  onPressed: () {
-                    Clipboard.setData(ClipboardData(text: tile.id));
-                    Get.snackbar(
-                      'Copied',
-                      'Window ID copied to clipboard',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
-                      colorText: Get.isDarkMode ? Colors.black : Colors.white,
-                    );
-                  },
-                ),
-              )).toList(),
-            )),
+                  shrinkWrap: true,
+                  children: tiles
+                      .map((tile) => ListTile(
+                            title: Text(tile.name),
+                            subtitle: Text(
+                                'ID: ${tile.id}\nType: ${tile.type.toString().split('.').last}\nURL: ${tile.url}'),
+                            dense: true,
+                            trailing: IconButton(
+                              icon: Icon(Icons.copy),
+                              tooltip: 'Copy ID',
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: tile.id));
+                                Get.snackbar(
+                                  'Copied',
+                                  'Window ID copied to clipboard',
+                                  snackPosition: SnackPosition.BOTTOM,
+                                  backgroundColor: Get.isDarkMode
+                                      ? Colors.white
+                                      : Colors.black,
+                                  colorText: Get.isDarkMode
+                                      ? Colors.black
+                                      : Colors.white,
+                                );
+                              },
+                            ),
+                          ))
+                      .toList(),
+                )),
           ),
           actions: [
             TextButton(
@@ -879,6 +919,44 @@ class TilingWindowViewState extends State<TilingWindowView> {
               child: Text('Close'),
             ),
           ],
+        ),
+      );
+    });
+  } // Build the notification center with auto-hide behavior that matches the toolbar
+
+  Widget _buildNotificationCenter() {
+    final notificationService = Get.find<NotificationService>();
+
+    return Obx(() {
+      // Don't render anything if notification center is closed
+      if (!notificationService.isNotificationCenterOpen) {
+        return SizedBox.shrink();
+      }
+
+      // Calculate appropriate positioning for notification center
+      final screenSize = MediaQuery.of(context).size;
+
+      // On smaller screens, take up more width. On larger screens, maintain a good width
+      final width = screenSize.width < 600
+          ? screenSize.width * 0.9
+          : (screenSize.width < 1200 ? 380 : 420);
+
+      // On mobile, push it away from the edge a bit
+      final rightPadding = PlatformUtils.isMobile ? 8.0 : 0.0;
+
+      // Make sure notification center doesn't extend past the bottom toolbar
+      final bottomPadding = 64.0;
+      return Positioned(
+        top: 16,
+        right: rightPadding,
+        bottom: bottomPadding,
+        width: width.toDouble(),
+        child: GestureDetector(
+          // This prevents clicks on the notification center from being handled by widgets behind it
+          behavior: HitTestBehavior.opaque,
+          onTap:
+              () {}, // Empty onTap to prevent clicks from propagating through
+          child: NotificationCenter(),
         ),
       );
     });
@@ -915,7 +993,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
       child: GestureDetector(
         onTapDown: (details) async {
           if (!wyomingService.enabled.value) {
-            Get.snackbar('Wyoming Disabled', 'Enable Wyoming Satellite in settings');
+            Get.snackbar(
+                'Wyoming Disabled', 'Enable Wyoming Satellite in settings');
             return;
           }
           if (!isRecording.value) {
@@ -955,6 +1034,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
 }
 
 /// Auto-hiding toolbar widget that shows on hover or tap
+/// Also coordinates with notification center visibility
 class _AutoHidingToolbar extends StatefulWidget {
   final Widget child;
 
@@ -970,6 +1050,22 @@ class _AutoHidingToolbar extends StatefulWidget {
 class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   bool _isVisible = false;
   Timer? _hideTimer;
+  late NotificationService _notificationService;
+  @override
+  void initState() {
+    super.initState();
+    // Find the notification service
+    _notificationService = Get.find<NotificationService>();
+
+    // Listen to changes in notification center visibility
+    _notificationService.notificationCenterVisibilityStream
+        .listen((bool isOpen) {
+      if (isOpen && !_isVisible) {
+        // If notification center opens but toolbar is hidden, show the toolbar
+        showToolbar();
+      }
+    });
+  }
 
   // Expose a method to show the toolbar from outside (e.g., from handle)
   void showToolbar() {
@@ -981,6 +1077,10 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
     _hideTimer?.cancel();
     _hideTimer = Timer(const Duration(seconds: 6), () {
       if (mounted) {
+        // When hiding toolbar, also close notification center if it's open
+        if (_notificationService.isNotificationCenterOpen) {
+          _notificationService.toggleNotificationCenter();
+        }
         setState(() => _isVisible = false);
       }
     });
@@ -1004,9 +1104,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
           duration: const Duration(milliseconds: 200),
           height: _isVisible ? 50 : 0, // Fully hide when not visible
           curve: Curves.easeInOut,
-          child: _isVisible
-              ? widget.child
-              : const SizedBox.shrink(),
+          child: _isVisible ? widget.child : const SizedBox.shrink(),
         ),
       ),
     );

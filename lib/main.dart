@@ -9,6 +9,10 @@ import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
 import 'app/services/wyoming_service.dart';
 
+import 'package:king_kiosk/notification_system/services/notification_service.dart';
+import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
+
+
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
@@ -24,7 +28,8 @@ void main() async {
   
   // Register WyomingService
   Get.put(WyomingService());
-  
+  Get.put<NotificationService>(GetXNotificationService(), permanent: true);
+
   runApp(const KioskApp());
 }
 
