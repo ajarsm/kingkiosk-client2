@@ -434,113 +434,127 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   Widget _buildToolbar(BuildContext context, bool locked) {
     return Container(
-      height: 50,
-      constraints: BoxConstraints.tightFor(height: 50),
-      color: Theme.of(context).primaryColor,
+      height: 64,
+      padding: const EdgeInsets.symmetric(horizontal: 24),
+      decoration: BoxDecoration(
+        color: Theme.of(context).appBarTheme.backgroundColor ?? Theme.of(context).primaryColor,
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.08),
+            blurRadius: 12,
+            offset: Offset(0, -2),
+          ),
+        ],
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
+      ),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
           // Left-side toolbar buttons
-          _buildToolbarButton(
-            icon: Icons.web,
-            label: 'Web',
-            onPressed: locked ? null : () => _showAddWebViewDialog(context),
-            locked: locked,
-          ),
-          _buildToolbarButton(
-            icon: Icons.video_file,
-            label: 'Video',
-            onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: false),
-            locked: locked,
-          ),
-          _buildToolbarButton(
-            icon: Icons.audio_file,
-            label: 'Audio',
-            onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: true),
-            locked: locked,
-          ),
-          _buildToolbarButton(
-            icon: controller.tilingMode.value ? Icons.view_quilt : Icons.view_carousel,
-            label: controller.tilingMode.value ? 'Tiling' : 'Floating',
-            onPressed: locked ? null : () => controller.toggleWindowMode(),
-            locked: locked,
-          ),
-          _buildToolbarButton(
-            icon: Icons.info,
-            label: 'IDs',
-            onPressed: locked ? null : () => _showWindowIdsDialog(context),
-            locked: locked,
-          ),
-          _buildToolbarButton(
-            icon: Icons.dashboard,
-            label: 'System Info',
-            onPressed: locked ? null : () => _showSystemInfoDialog(context),
-            locked: locked,
-          ),
-          // Spacer before center lock icon
-          Spacer(),
-          // Centered lock icon
-          IconButton(
-            icon: AnimatedSwitcher(
-              duration: Duration(milliseconds: 300),
-              child: locked
-                  ? Icon(Icons.lock, key: ValueKey('locked'), color: Colors.redAccent)
-                  : Icon(Icons.lock_open, key: ValueKey('unlocked'), color: Colors.greenAccent),
+          ...[
+            _buildToolbarButton(
+              icon: Icons.web,
+              label: 'Web',
+              onPressed: locked ? null : () => _showAddWebViewDialog(context),
+              locked: locked,
             ),
-            tooltip: locked ? 'Unlock' : 'Lock',
-            onPressed: () async {
-              if (locked) {
-                final result = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('Unlock Kiosk'),
-                    content: Builder(
-                      builder: (context) {
-                        final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                        return SettingsLockPinPad(
-                          key: pinPadKey,
-                          onPinEntered: (pin) {
-                            if (pin == settingsController.settingsPin.value) {
-                              settingsController.unlockSettings();
-                              Navigator.of(context).pop(true);
-                            } else {
-                              pinPadKey.currentState?.showError('Incorrect PIN');
-                            }
-                          },
-                          pinLength: 4,
-                        );
-                      },
-                    ),
-                  ),
-                );
-                if (result == true) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text(
-                        'Unlocked!',
-                        style: TextStyle(
-                          color: Get.isDarkMode ? Colors.black : Colors.white,
+            _buildToolbarButton(
+              icon: Icons.video_collection_rounded,
+              label: 'Video',
+              onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: false),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: Icons.music_note_rounded,
+              label: 'Audio',
+              onPressed: locked ? null : () => _showAddMediaDialog(context, isAudio: true),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: controller.tilingMode.value ? Icons.grid_view_rounded : Icons.view_carousel_rounded,
+              label: controller.tilingMode.value ? 'Tiling' : 'Floating',
+              onPressed: locked ? null : () => controller.toggleWindowMode(),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: Icons.info_outline_rounded,
+              label: 'IDs',
+              onPressed: locked ? null : () => _showWindowIdsDialog(context),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: Icons.dashboard_customize_rounded,
+              label: 'System Info',
+              onPressed: locked ? null : () => _showSystemInfoDialog(context),
+              locked: locked,
+            ),
+          ],
+          // Center lock icon
+          Expanded(
+            child: Center(
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(32),
+                  onTap: () async {
+                    if (locked) {
+                      final result = await showDialog<bool>(
+                        context: context,
+                        builder: (context) => AlertDialog(
+                          title: Text('Unlock Kiosk'),
+                          content: Builder(
+                            builder: (context) {
+                              final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                              return SettingsLockPinPad(
+                                key: pinPadKey,
+                                onPinEntered: (pin) {
+                                  if (pin == settingsController.settingsPin.value) {
+                                    settingsController.unlockSettings();
+                                    Navigator.of(context).pop(true);
+                                  } else {
+                                    pinPadKey.currentState?.showError('Incorrect PIN');
+                                  }
+                                },
+                                pinLength: 4,
+                              );
+                            },
+                          ),
                         ),
-                      ),
-                      backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
-                      behavior: SnackBarBehavior.floating,
-                    ),
-                  );
-                }
-              } else {
-                settingsController.lockSettings();
-              }
-            },
+                      );
+                      if (result == true) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text(
+                              'Unlocked!',
+                              style: TextStyle(
+                                color: Get.isDarkMode ? Colors.black : Colors.white,
+                              ),
+                            ),
+                            backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                            behavior: SnackBarBehavior.floating,
+                          ),
+                        );
+                      }
+                    } else {
+                      settingsController.lockSettings();
+                    }
+                  },
+                  child: AnimatedSwitcher(
+                    duration: Duration(milliseconds: 300),
+                    child: locked
+                        ? Icon(Icons.lock_rounded, key: ValueKey('locked'), color: Colors.redAccent, size: 38)
+                        : Icon(Icons.lock_open_rounded, key: ValueKey('unlocked'), color: Colors.greenAccent, size: 38),
+                  ),
+                ),
+              ),
+            ),
           ),
-          // Spacer after center lock icon
-          Spacer(),
-          // System stats display (compact system info) immediately left of settings
+          // System info and settings
           _buildCompactSystemInfo(),
-          // Settings button (rightmost)
           _buildToolbarButton(
-            icon: Icons.settings,
+            icon: Icons.settings_rounded,
             label: 'Settings',
             onPressed: () async {
-              // Prompt for PIN before navigating to settings
               final result = await showDialog<bool>(
                 context: context,
                 builder: (context) => AlertDialog(
@@ -567,7 +581,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 _navigateToSettings();
               }
             },
-            locked: false, // Always allow settings button (PIN required)
+            locked: false,
           ),
           SizedBox(width: 8),
         ],
