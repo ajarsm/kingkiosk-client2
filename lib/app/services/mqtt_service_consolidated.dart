@@ -475,10 +475,19 @@ class MqttService extends GetxService {
     dynamic cmdObj;
     try {
       cmdObj = jsonDecode(command);
+      if (cmdObj is String) {
+        print('🔄 [MQTT] Detected nested JSON string, parsing inner JSON');
+        cmdObj = jsonDecode(cmdObj);
+      }
     } catch (_) {
       cmdObj = null;
     }
-    
+
+    print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
+    if (cmdObj is Map) {
+      print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
+    }
+
     // --- Handle batch commands array first ---
     if (cmdObj is Map && cmdObj['commands'] is List) {
       print('🎯 Processing batch of ${(cmdObj['commands'] as List).length} commands');
@@ -501,7 +510,7 @@ class MqttService extends GetxService {
     
     // --- Only handle commands that are JSON with a 'command' key ---
     if (cmdObj is! Map || !cmdObj.containsKey('command')) {
-      print('🎯 Ignoring non-command MQTT message');
+      print('🎯 Ignoring non-command MQTT message (cmdObj type: ${cmdObj.runtimeType})');
       return;
     }
     // --- play_media command via {"command": "play_media", ...} ---
@@ -510,7 +519,9 @@ class MqttService extends GetxService {
       String? url = cmdObj['url']?.toString();
       String? style = cmdObj['style']?.toString();
       final bool loop = cmdObj['loop'] == true || cmdObj['loop']?.toString() == 'true';
-      print('🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop');
+      // Get the custom window ID if provided
+      final String? windowId = cmdObj['window_id']?.toString();
+      print('🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
       if (type == null) {
         // Try to infer type from url
         if (url != null && (url.endsWith('.mp4') || url.endsWith('.webm'))) {
@@ -529,65 +540,53 @@ class MqttService extends GetxService {
         return;
       }
       try {
-        final mediaService = Get.find<BackgroundMediaService>();        if (type == 'audio') {
-          // Custom title for audio playback
+        final mediaService = Get.find<BackgroundMediaService>();
+        if (type == 'audio') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
-          
           if (style == 'window') {
-            print('🔊 [MQTT] Playing audio in window via BackgroundMediaService: $url, title=$title, loop=$loop');
-            mediaService.playAudioWindowed(url, loop: loop, title: title);
+            print('🔊 [MQTT] Playing audio in window via BackgroundMediaService: $url, title=$title, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
+            final controller = Get.find<TilingWindowController>();
+            // Use custom ID if provided, otherwise auto-generate
+            if (windowId != null && windowId.isNotEmpty) {
+              controller.addAudioTileWithId(windowId, title, url);
+            } else {
+              controller.addAudioTile(title, url);
+            }
           } else {
-            // Default to background audio playback
             print('🔊 [MQTT] Playing audio in background via BackgroundMediaService: $url, loop=$loop');
             mediaService.playAudio(url, loop: loop);
-          }} else if (type == 'video') {
-          // Custom title for videos (use the same pattern as images)
+          }
+        } else if (type == 'video') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Video';
-          
           if (style == 'fullscreen') {
             print('🎥 [MQTT] Playing video fullscreen via BackgroundMediaService: $url, loop=$loop');
             mediaService.playVideoFullscreen(url, loop: loop);
           } else if (style == 'window') {
-            print('🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop');
+            print('🎥 [MQTT] Playing video in window via BackgroundMediaService: $url, title=$title, loop=$loop' + (windowId != null ? ', id=$windowId' : ''));
             mediaService.playVideoWindowed(url, loop: loop, title: title);
           } else {
             print('🎥 [MQTT] Playing video (background/window) via BackgroundMediaService: $url, style=background, loop=$loop');
             mediaService.playVideo(url, loop: loop);
           }
         } else if (type == 'image') {
-          // Custom title for windowed images
           final title = cmdObj['title']?.toString() ?? 'MQTT Image';
-          
-          // Get URL(s) - can be a single string or an array of strings
           final urlData = cmdObj['url'];
-          
           if (urlData == null) {
             print('⚠️ Missing URL for image display');
             return;
-          }          if (style == 'fullscreen') {
-            if (urlData is List && urlData.length > 1) {
-              print('🖼️ [MQTT] Displaying image carousel in fullscreen via BackgroundMediaService');
-            } else {
-              print('🖼️ [MQTT] Displaying single image in fullscreen via BackgroundMediaService');
-            }
-            // Pass the urlData directly whether it's a string or an array
-            // The displayImageFullscreen method can handle both formats
-            mediaService.displayImageFullscreen(urlData);          } else if (style == 'window') {
-            if (urlData is List && urlData.length > 1) {
-              print('🖼️ [MQTT] Displaying image carousel in window via BackgroundMediaService, title=$title');
-            } else {
-              print('🖼️ [MQTT] Displaying single image in window via BackgroundMediaService, title=$title');
-            }
-            mediaService.displayImageWindowed(urlData, title: title);
+          }
+          if (windowId != null && windowId.isNotEmpty) {
+            // Always create a window tile if windowId is provided
+            final controller = Get.find<TilingWindowController>();
+            controller.addImageTileWithId(windowId, title, urlData);
+            print('🖼️ [MQTT] Displaying image in window with ID: $windowId');
+          } else if (style == 'fullscreen') {
+            mediaService.displayImageFullscreen(urlData);
           } else {
-            // Default to window mode since background mode doesn't apply to images
-            if (urlData is List && urlData.length > 1) {
-              print('🖼️ [MQTT] Displaying image carousel in window via BackgroundMediaService, title=$title (default style)');
-            } else {
-              print('🖼️ [MQTT] Displaying single image in window via BackgroundMediaService, title=$title (default style)');
-            }
             mediaService.displayImageWindowed(urlData, title: title);
           }
+        } else if (type == 'web') {
+          // Not standard, but if you add web type, handle here
         } else {
           print('⚠️ Unknown play_media type or missing url');
         }
@@ -595,15 +594,21 @@ class MqttService extends GetxService {
         print('❌ Error calling BackgroundMediaService: $e');
       }
       return;
-    }    // --- open_browser command ---
+    }
+    // --- open_browser command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'open_browser' && cmdObj['url'] is String) {
       final url = cmdObj['url'] as String;
-      // Support custom title for web windows
       final title = cmdObj['title']?.toString() ?? 'MQTT Web';
+      final String? windowId = cmdObj['window_id']?.toString();
       try {
         final controller = Get.find<TilingWindowController>();
-        controller.addWebViewTile(title, url);
-        print('🌐 [MQTT] Opened browser window for URL: $url, title=$title');
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addWebViewTileWithId(windowId, title, url);
+        } else {
+          controller.addWebViewTile(title, url);
+        }
+        print('🌐 [MQTT] Opened browser window for URL: $url, title=$title' + (windowId != null ? ', id=$windowId' : ''));
       } catch (e) {
         print('❌ Error opening browser window: $e');
       }
@@ -697,6 +702,35 @@ class MqttService extends GetxService {
         }
       } else {
         print('⚠️ pause_media command missing window_id');
+      }
+      return;
+    }
+    // --- web window commands: refresh, restart, evaljs, loadurl ---
+    final webWindowCommands = ['refresh', 'restart', 'evaljs', 'loadurl'];
+    if (webWindowCommands.contains(cmdObj['command']?.toString().toLowerCase())) {
+      final windowId = cmdObj['window_id']?.toString() ?? cmdObj['windowid']?.toString();
+      final action = cmdObj['command']?.toString().toLowerCase();
+      if (windowId != null && windowId.isNotEmpty && action != null) {
+        try {
+          final wm = Get.find<WindowManagerService>();
+          final win = wm.getWindow(windowId);
+          if (win != null && win.windowType == KioskWindowType.web) {
+            print('[MQTT] Routing "$action" to WebWindowController for window_id: $windowId');
+            win.handleCommand(
+              action,
+              cmdObj.map((key, value) => MapEntry(key.toString(), value)),
+            );
+            print('[MQTT] Sent "$action" to web window with ID: $windowId');
+          } else if (win == null) {
+            print('[MQTT] No window found with ID: $windowId');
+          } else {
+            print('[MQTT] Window with ID $windowId is not a web window (type: ${win.windowType})');
+          }
+        } catch (e) {
+          print('[MQTT] Error processing $action command for window ID $windowId: $e');
+        }
+      } else {
+        print('[MQTT] $action command missing window_id');
       }
       return;
     }

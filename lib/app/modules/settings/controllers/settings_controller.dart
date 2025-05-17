@@ -1,6 +1,7 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
+import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
@@ -149,6 +150,13 @@ class SettingsController extends GetxController {
       deviceName.value = storedDeviceName;
     }
     
+    // After loading kioskMode, ensure wakelock is set correctly
+    if (kioskMode.value) {
+      await WakelockPlus.enable();
+    } else {
+      await WakelockPlus.disable();
+    }
+    
     // Apply theme
     _applyTheme();
     
@@ -249,6 +257,12 @@ class SettingsController extends GetxController {
   void toggleKioskMode() {
     kioskMode.value = !kioskMode.value;
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
+    // Control wakelock based on kiosk mode
+    if (kioskMode.value) {
+      WakelockPlus.enable();
+    } else {
+      WakelockPlus.disable();
+    }
   }
 
   void toggleShowSystemInfo() {

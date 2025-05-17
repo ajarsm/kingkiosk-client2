@@ -18,6 +18,8 @@ import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
 import '../../../services/wyoming_service.dart';
 import 'package:king_kiosk/wyoming_satellite/wyoming_satellite.dart';
+import '../../../services/window_manager_service.dart';
+import '../controllers/web_window_controller.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -195,6 +197,23 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }
 
   Widget _buildWindowTile(WindowTile tile, bool locked) {
+    if (tile.type == TileType.webView) {
+      final wm = Get.find<WindowManagerService>();
+      final webController = wm.getWindow(tile.id);
+      if (webController is WebWindowController) {
+        return Obx(() {
+          // This Obx will rebuild the entire tile when refreshCounter changes
+          final refreshValue = webController.refreshCounter.value;
+          print('🔄 [REFRESH] Rebuilding WebView tile for window: ${tile.id}, refreshCounter: $refreshValue');
+          return _buildWindowTileCore(tile, locked);
+        });
+      }
+    }
+    // Fallback for non-web or missing controller
+    return _buildWindowTileCore(tile, locked);
+  }
+
+  Widget _buildWindowTileCore(WindowTile tile, bool locked) {
     return Positioned(
       left: tile.position.dx,
       top: tile.position.dy,
@@ -352,11 +371,34 @@ class TilingWindowViewState extends State<TilingWindowView> {
   Widget _buildTileContent(WindowTile tile) {
     switch (tile.type) {
       case TileType.webView:
-        return WebViewTile(url: tile.url);
+        // Find the WebWindowController for this tile
+        final wm = Get.find<WindowManagerService>();
+        final controller = wm.getWindow(tile.id);
+        if (controller is WebWindowController) {
+          return Obx(() {
+            final refreshKey = controller.refreshCounter.value;
+            print('🔄 [REFRESH] Building WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
+            return WebViewTile(
+              key: ValueKey('${tile.id}_$refreshKey'),
+              url: tile.url,
+              refreshKey: refreshKey,
+              windowId: tile.id,
+            );
+          });
+        } else {
+          // Fallback: just show the webview without refresh support
+          print('⚠️ [REFRESH] No WebWindowController found for window: ${tile.id}, using regular WebViewTile but passing windowId');
+          return WebViewTile(
+            key: ValueKey(tile.id),
+            url: tile.url,
+            windowId: tile.id,
+          );
+        }
       case TileType.media:
         return MediaTile(url: tile.url);
       case TileType.audio:
-        return AudioTile(url: tile.url);      case TileType.image:
+        return AudioTile(url: tile.url);
+      case TileType.image:
         return ImageTile(
           url: tile.url, 
           imageUrls: tile.imageUrls,

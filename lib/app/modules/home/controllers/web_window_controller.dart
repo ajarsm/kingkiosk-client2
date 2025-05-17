@@ -1,5 +1,7 @@
 import '../../../services/window_manager_service.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:get/get.dart';
+import '../widgets/webview_manager.dart';
 
 class WebWindowController extends KioskWindowController {
   @override
@@ -8,6 +10,7 @@ class WebWindowController extends KioskWindowController {
   KioskWindowType get windowType => KioskWindowType.web;
   final InAppWebViewController webViewController;
   final void Function()? onClose;
+  final RxInt refreshCounter = 0.obs;
 
   WebWindowController({
     required this.windowName,
@@ -19,7 +22,16 @@ class WebWindowController extends KioskWindowController {
   void handleCommand(String action, Map<String, dynamic>? payload) async {
     switch (action) {
       case 'refresh':
-        await webViewController.reload();
+        print('🔄 [REFRESH] WebWindowController received refresh command for window: $windowName');
+        print('🔄 [REFRESH] Old counter: ${refreshCounter.value}');
+        
+        try {
+          // Step 2: Increment counter to trigger Obx rebuilds
+          refreshCounter.value++;
+          print('🔄 [REFRESH] New counter: ${refreshCounter.value} - WebViewTile should get a new refreshKey, leading to a new InAppWebView instance.');
+        } catch (e) {
+          print('⚠️ [REFRESH] Error during refresh: $e');
+        }
         break;
       case 'close':
         disposeWindow();

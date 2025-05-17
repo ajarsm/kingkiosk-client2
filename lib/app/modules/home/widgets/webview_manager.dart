@@ -15,6 +15,9 @@ class WebViewManager {
     if (!_webViews.containsKey(url)) {
       final controller = Completer<InAppWebViewController>();
       _webViews[url] = WebViewData(controller);
+      print('🔄 [REFRESH] WebViewManager - Created new WebViewData for URL: $url');
+    } else {
+      print('🔄 [REFRESH] WebViewManager - Reusing existing WebViewData for URL: $url');
     }
     return _webViews[url]!;
   }
@@ -26,6 +29,24 @@ class WebViewManager {
       }).catchError((_) {});
     }
     _webViews.clear();
+  }
+
+  /// Hard refresh - force recreation of WebViewData for a URL
+  void forceRefresh(String url) {
+    if (_webViews.containsKey(url)) {
+      try {
+        print('🔄 [REFRESH] WebViewManager - Forcing refresh of WebViewData for URL: $url');
+        // Try to dispose the old controller if it exists
+        _webViews[url]?.controller.future.then((controller) {
+          controller.stopLoading();
+        }).catchError((_) {});
+        
+        // Replace with new WebViewData
+        _webViews[url] = WebViewData(Completer<InAppWebViewController>());
+      } catch (e) {
+        print('⚠️ [REFRESH] Error while forcing refresh: $e');
+      }
+    }
   }
 }
 

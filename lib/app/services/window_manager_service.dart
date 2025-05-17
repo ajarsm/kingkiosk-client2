@@ -36,6 +36,20 @@ class WindowManagerService extends GetxService {
     }
   }
 
+  /// Called by MqttService or other sources when a command is received
+  /// Now supports window_id in payload for more robust routing
+  void handleWindowCommandWithId(String action, Map<String, dynamic>? payload) {
+    final windowId = payload != null && payload['window_id'] is String
+        ? payload['window_id'] as String
+        : null;
+    if (windowId != null && _windows.containsKey(windowId)) {
+      _windows[windowId]?.handleCommand(action, payload);
+    } else {
+      print('No window registered with id: '
+          '[33m$windowId[0m (action: $action)');
+    }
+  }
+
   /// For debugging: list all open windows
   List<String> get openWindowNames => _windows.keys.toList();
 }

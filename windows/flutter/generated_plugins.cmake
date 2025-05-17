@@ -10,6 +10,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   media_kit_video
   nsd_windows
   record_windows
+  screen_brightness_windows
   screen_retriever
   volume_controller
   window_manager

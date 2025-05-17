@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:wakelock_plus/wakelock_plus.dart';
 
 class PlatformUtils {
   /// Checks if the current platform is a desktop platform (Windows, macOS, Linux)
@@ -67,6 +68,8 @@ class PlatformUtils {
         }
       }
     }
+    // Enable wakelock when kiosk mode is enabled
+    await WakelockPlus.enable();
   }
 
   /// Disable kiosk/fullscreen mode (mobile: restore UI, desktop: exit fullscreen)
@@ -81,5 +84,7 @@ class PlatformUtils {
         await windowManager.setSkipTaskbar(false);
       }
     }
+    // Disable wakelock when kiosk mode is disabled
+    await WakelockPlus.disable();
   }
 }

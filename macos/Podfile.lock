@@ -24,6 +24,8 @@ PODS:
     - FlutterMacOS
   - record_macos (1.0.0):
     - FlutterMacOS
+  - screen_brightness_macos (0.1.0):
+    - FlutterMacOS
   - screen_retriever (0.0.1):
     - FlutterMacOS
   - volume_controller (0.0.1):
@@ -46,6 +48,7 @@ DEPENDENCIES:
   - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
   - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
+  - screen_brightness_macos (from `Flutter/ephemeral/.symlinks/plugins/screen_brightness_macos/macos`)
   - screen_retriever (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever/macos`)
   - volume_controller (from `Flutter/ephemeral/.symlinks/plugins/volume_controller/macos`)
   - wakelock_plus (from `Flutter/ephemeral/.symlinks/plugins/wakelock_plus/macos`)
@@ -79,6 +82,8 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
   record_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/record_macos/macos
+  screen_brightness_macos:
+    :path: Flutter/ephemeral/.symlinks/plugins/screen_brightness_macos/macos
   screen_retriever:
     :path: Flutter/ephemeral/.symlinks/plugins/screen_retriever/macos
   volume_controller:
@@ -101,6 +106,7 @@ SPEC CHECKSUMS:
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   record_macos: 295d70bd5fb47145df78df7b80e6697cd18403c0
+  screen_brightness_macos: 2a3ee243f8051c340381e8e51bcedced8360f421
   screen_retriever: 4f97c103641aab8ce183fa5af3b87029df167936
   volume_controller: 5c068e6d085c80dadd33fc2c918d2114b775b3dd
   wakelock_plus: 21ddc249ac4b8d018838dbdabd65c5976c308497
