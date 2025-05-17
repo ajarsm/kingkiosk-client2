@@ -19,6 +19,7 @@ import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/controllers/media_window_controller.dart';
 import 'wyoming_service.dart';
 import 'mqtt_notification_handler.dart';
+import 'screenshot_service.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -750,6 +751,12 @@ class MqttService extends GetxService {
       return;
     }
     // Notification handling is delegated to MqttNotificationHandler
+
+    // --- screenshot command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'screenshot') {
+      _processScreenshotCommand(cmdObj);
+      return;
+    }
     // --- play, pause, close for media windows via {command:..., window_id:...} ---
     final mediaWindowCommands = ['play', 'pause', 'close'];
     if (mediaWindowCommands
@@ -1197,8 +1204,105 @@ class MqttService extends GetxService {
       builder.payload!,
       retain: true,
     );
-
     print('MQTT DEBUG: Published value for $name');
+  }
+
+  /// Process screenshot command
+  Future<void> _processScreenshotCommand(Map<dynamic, dynamic> cmdObj) async {
+    print('📸 [MQTT] Processing screenshot command');
+    try {
+      // Try to find or create the screenshot service
+      ScreenshotService? screenshotService;
+      try {
+        screenshotService = Get.find<ScreenshotService>();
+        print('✅ Found existing ScreenshotService');
+      } catch (e) {
+        print('⚠️ ScreenshotService not found, creating a new instance');
+        screenshotService = ScreenshotService();
+        Get.put(screenshotService, permanent: true);
+      }
+
+      // Capture the screenshot
+      final bytes = await screenshotService.captureScreenshot();
+      if (bytes == null) {
+        print('❌ Failed to capture screenshot');
+        return;
+      }
+
+      // Get the file path for the screenshot
+      final path = screenshotService.latestScreenshotPath.value;
+      if (path.isEmpty) {
+        print('❌ Screenshot path is empty');
+        return;
+      }
+
+      print('📸 [MQTT] Screenshot taken and saved to: $path');
+
+      // Convert image to base64 for MQTT transmission if Home Assistant discovery is enabled
+      if (haDiscovery.value) {
+        final base64Image = screenshotService.imageToBase64(bytes);
+        if (base64Image.isNotEmpty) {
+          // Publish to Home Assistant
+          _publishScreenshotToHomeAssistant(base64Image);
+        }
+      }
+    } catch (e) {
+      print('❌ Error processing screenshot command: $e');
+    }
+  }
+
+  /// Publish screenshot to Home Assistant
+  void _publishScreenshotToHomeAssistant(String base64Image) {
+    try {
+      // First setup discovery config if not already done
+      _setupScreenshotSensorDiscovery();
+      // Then publish the actual image data
+      final topic = 'kingkiosk/${deviceName.value}/screenshot';
+      final builder = MqttClientPayloadBuilder();
+      builder.addString(base64Image);
+      _client?.publishMessage(topic, MqttQos.atLeastOnce, builder.payload!,
+          retain: true);
+      print('📤 Published screenshot to Home Assistant');
+    } catch (e) {
+      print('❌ Error publishing screenshot to Home Assistant: $e');
+    }
+  }
+
+  /// Setup Home Assistant discovery for the screenshot sensor
+  void _setupScreenshotSensorDiscovery() {
+    if (!isConnected.value || !haDiscovery.value) return;
+
+    try {
+      final deviceNameStr = deviceName.value;
+      final discoveryTopic =
+          'homeassistant/camera/${deviceNameStr}_screenshot/config';
+
+      // Create discovery config
+      final Map<String, dynamic> discoveryConfig = {
+        "name": "${deviceNameStr} Screenshot",
+        "unique_id": "${deviceNameStr}_screenshot",
+        "topic": "kingkiosk/${deviceNameStr}/screenshot",
+        "device": {
+          "identifiers": ["${deviceNameStr}"],
+          "name": deviceNameStr,
+          "model": "King Kiosk",
+          "manufacturer": "King Kiosk"
+        },
+        "availability_topic": "kingkiosk/${deviceNameStr}/status",
+        "payload_available": "online",
+        "payload_not_available": "offline"
+      };
+      // Convert to JSON and publish
+      final payload = jsonEncode(discoveryConfig);
+      final builder = MqttClientPayloadBuilder();
+      builder.addString(payload);
+      _client?.publishMessage(
+          discoveryTopic, MqttQos.atLeastOnce, builder.payload!,
+          retain: true);
+      print('✅ Setup Home Assistant discovery for screenshot sensor');
+    } catch (e) {
+      print('❌ Error setting up screenshot sensor discovery: $e');
+    }
   }
 
   /// Check if MQTT service is connected

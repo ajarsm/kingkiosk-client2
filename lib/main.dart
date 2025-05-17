@@ -12,23 +12,21 @@ import 'app/services/wyoming_service.dart';
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
 import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
 
-
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   // Initialize GetStorage for persistent settings
   await GetStorage.init();
-  
+
   // Initialize MediaKit for media playback
   MediaKit.ensureInitialized();
 
   // Initialize window_manager for desktop
-  await PlatformUtils.ensureWindowManagerInitialized();
-  
-  // Register WyomingService
+  await PlatformUtils.ensureWindowManagerInitialized(); // Register services
   Get.put(WyomingService());
   Get.put<NotificationService>(GetXNotificationService(), permanent: true);
+  // Remove ScreenshotService from here - it will be initialized in InitialBinding
 
   runApp(const KioskApp());
 }

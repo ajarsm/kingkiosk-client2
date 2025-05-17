@@ -4,7 +4,21 @@
 
 /// A documentation class that provides information about all supported MQTT commands.
 /// T  /// System control commands
-  static const Map<String, dynamic> systemCommands = {
+  const Map<String, dynamic> systemCommands = {
+    'screenshot': {
+      'description': 'Take a screenshot of the kiosk display',
+      'parameters': {
+        'command': 'screenshot (required)'
+      },
+      'examples': [
+        {
+          'description': 'Take a screenshot',
+          'payload': {
+            'command': 'screenshot'
+          }
+        }
+      ]
+    },
     'notify': {
       'description': 'Send a notification to the kiosk',
       'parameters': {
@@ -54,7 +68,7 @@
         }
       ]
     }, the application logic but serves as a reference.
-class MqttCommandsReference {
+ MqttCommandsReference {
   
   /// Media playback commands for audio, video and images
   static const Map<String, dynamic> mediaCommands = {
