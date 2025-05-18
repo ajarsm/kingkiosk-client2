@@ -3,17 +3,18 @@ import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'dart:io' show exit;
 
 class PlatformUtils {
   /// Checks if the current platform is a desktop platform (Windows, macOS, Linux)
   static bool get isDesktop => GetPlatform.isDesktop;
-  
+
   /// Checks if the current platform is a mobile platform (Android, iOS)
   static bool get isMobile => GetPlatform.isMobile;
-  
+
   /// Checks if the current platform is web
   static bool get isWeb => kIsWeb;
-  
+
   /// Gets a user-friendly name for the current platform
   static String get platformName {
     if (kIsWeb) return 'Web';
@@ -25,18 +26,21 @@ class PlatformUtils {
     if (GetPlatform.isFuchsia) return 'Fuchsia';
     return 'Unknown';
   }
-  
+
   /// Determines if the current platform can run in kiosk mode
   static bool get canRunInKioskMode => GetPlatform.isDesktop;
-  
+
   /// Determines if the current platform supports fullscreen
-  static bool get supportsFullscreen => !kIsWeb || kIsWeb; // All platforms support some form of fullscreen
-  
+  static bool get supportsFullscreen =>
+      !kIsWeb || kIsWeb; // All platforms support some form of fullscreen
+
   /// Returns true if the platform can support receiving sensor data
-  static bool get supportsSensors => GetPlatform.isMobile || GetPlatform.isDesktop;
-  
+  static bool get supportsSensors =>
+      GetPlatform.isMobile || GetPlatform.isDesktop;
+
   /// Returns true if the platform can support WebRTC
-  static bool get supportsWebRTC => GetPlatform.isMobile || GetPlatform.isDesktop || kIsWeb;
+  static bool get supportsWebRTC =>
+      GetPlatform.isMobile || GetPlatform.isDesktop || kIsWeb;
 
   /// Call this early in main() for desktop to initialize window_manager
   static Future<void> ensureWindowManagerInitialized() async {
@@ -86,5 +90,24 @@ class PlatformUtils {
     }
     // Disable wakelock when kiosk mode is disabled
     await WakelockPlus.disable();
+  }
+
+  /// Exit the application
+  static Future<void> exitApplication() async {
+    // First disable kiosk mode
+    await disableKioskMode();
+
+    // Close the app using the appropriate method for each platform
+    if (isDesktop) {
+      await windowManager.destroy();
+    } else if (GetPlatform.isAndroid) {
+      SystemNavigator.pop();
+    } else if (GetPlatform.isIOS) {
+      exit(
+          0); // This is a hard exit, generally discouraged on iOS but necessary for kiosk apps
+    } else if (!kIsWeb) {
+      exit(0); // Fallback for other platforms
+    }
+    // Web can't be exited programmatically
   }
 }

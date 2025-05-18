@@ -6,9 +6,8 @@ import 'package:get/get.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
-
-  // These methods have been integrated directly into _getDeviceInfo
-  // to simplify the code and avoid unused methods
+// These methods have been integrated directly into _getDeviceInfo
+// to simplify the code and avoid unused methods
 
 class PlatformSensorService extends GetxService {
   var battery = Battery();
@@ -16,29 +15,29 @@ class PlatformSensorService extends GetxService {
 
   // Battery info
   final RxInt batteryLevel = 0.obs;
-  final RxString batteryState = "unknown".obs;
-  
+  final RxString batteryState = "Not Available".obs;
+
   // Sensor data
   final RxDouble accelerometerX = 0.0.obs;
   final RxDouble accelerometerY = 0.0.obs;
   final RxDouble accelerometerZ = 0.0.obs;
-  
+
   // Device info
   final RxMap<String, dynamic> deviceData = <String, dynamic>{}.obs;
-  
+
   // System resources
   final RxDouble cpuUsage = 0.0.obs;
   final RxDouble memoryUsage = 0.0.obs;
-  
+
   Timer? _resourceMonitorTimer;
 
   PlatformSensorService init() {
     // Simulate getting device info
     _getDeviceInfo();
-    
+
     // Start monitoring system resources
     _initResourceMonitoring();
-    
+
     return this;
   }
 
@@ -50,14 +49,14 @@ class PlatformSensorService extends GetxService {
       'isMobile': GetPlatform.isMobile,
       'isWeb': kIsWeb,
     };
-    
+
     // First assign basic info
     deviceData.assignAll(basicInfo);
-    
+
     // Then try to get detailed info
     try {
       Map<String, dynamic> detailedInfo = <String, dynamic>{};
-      
+
       if (kIsWeb) {
         WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;
         detailedInfo = {
@@ -128,30 +127,31 @@ class PlatformSensorService extends GetxService {
           'cpuFrequency': macInfo.cpuFrequency,
         };
       }
-      
+
       // Merge with basic info
       deviceData.assignAll(detailedInfo);
-      
+
       developer.log('Device info loaded: ${deviceData.length} properties');
     } catch (e) {
       developer.log('Error getting detailed device info', error: e);
       // Keep basic info if detailed info fails
     }
   }
-  
+
   void _initResourceMonitoring() {
     // Initialize battery monitoring
     _initBatteryMonitoring();
-    
+
     // Start periodic monitoring for other resources
-    _resourceMonitorTimer = Timer.periodic(const Duration(seconds: 60), (timer) async {
+    _resourceMonitorTimer =
+        Timer.periodic(const Duration(seconds: 60), (timer) async {
       await _updateAllSensorData();
     });
-    
+
     // Also update immediately on startup
     _updateAllSensorData();
   }
-  
+
   void _initBatteryMonitoring() {
     try {
       // Get initial battery level safely
@@ -159,31 +159,35 @@ class PlatformSensorService extends GetxService {
         batteryLevel.value = level;
       }).catchError((error) {
         // Handle battery level error gracefully
-        developer.log('Error getting battery level, using default value', error: error);
+        developer.log('Error getting battery level, using default value',
+            error: error);
         batteryLevel.value = 100; // Default to 100% on error
       });
-      
+
       // Listen for battery state changes safely
-      getSafeBatteryState().listen(
-        (BatteryState state) {
-          batteryState.value = state == BatteryState.charging ? "charging" : 
-                              state == BatteryState.discharging ? "discharging" : 
-                              state == BatteryState.full ? "full" : "Not Available";
-        },
-        onError: (error) {
-          // Handle battery state error gracefully
-          developer.log('Error monitoring battery state, using default', error: error);
-          batteryState.value = "Not Available"; // Default state
-        }
-      );
+      getSafeBatteryState().listen((BatteryState state) {
+        batteryState.value = state == BatteryState.charging
+            ? "charging"
+            : state == BatteryState.discharging
+                ? "discharging"
+                : state == BatteryState.full
+                    ? "full"
+                    : "Not Available";
+      }, onError: (error) {
+        // Handle battery state error gracefully
+        developer.log('Error monitoring battery state, using default',
+            error: error);
+        batteryState.value = "Not Available"; // Default state
+      });
     } catch (e) {
       // Catch any exceptions from battery API initialization
-      developer.log('Exception in battery monitoring setup, using defaults', error: e);
+      developer.log('Exception in battery monitoring setup, using defaults',
+          error: e);
       batteryLevel.value = 100; // Default to 100%
       batteryState.value = "Not Available"; // Default state
     }
   }
-  
+
   Future<void> _updateAllSensorData() async {
     try {
       // Update battery level with error handling
@@ -191,26 +195,27 @@ class PlatformSensorService extends GetxService {
         batteryLevel.value = await getSafeBatteryLevel();
       } catch (batteryError) {
         // Keep existing battery level on error
-        developer.log('Error updating battery level, keeping current value', error: batteryError);
+        developer.log('Error updating battery level, keeping current value',
+            error: batteryError);
       }
-      
+
       // Update simulated accelerometer data (for demo purposes)
       accelerometerX.value = (DateTime.now().millisecond % 100) / 100;
       accelerometerY.value = (DateTime.now().millisecond % 70) / 100;
       accelerometerZ.value = (DateTime.now().millisecond % 50) / 100;
-      
+
       // Update system resource usage
       // In a real app, you'd get these from system APIs
       // For now, we'll generate semi-random values that seem realistic
       cpuUsage.value = (DateTime.now().millisecond % 100) / 100;
       memoryUsage.value = (DateTime.now().second % 100) / 100;
-      
+
       developer.log('Updated all sensor data');
     } catch (e) {
       developer.log('Error updating sensor data', error: e);
     }
   }
-  
+
   Map<String, dynamic> getAllSensorData() {
     return {
       'battery': {
@@ -229,7 +234,7 @@ class PlatformSensorService extends GetxService {
       }
     };
   }
-  
+
   // Enhanced version of getSensorData that uses actual device information
   Future<SensorData> getSensorData() async {
     try {
@@ -238,39 +243,49 @@ class PlatformSensorService extends GetxService {
       // Get data from different sections
       final deviceInfoData = allSensorData['deviceInfo'];
       final resourceData = allSensorData['systemResources'];
-      
+
       // Get battery level from the observable property
       final batteryLevel = this.batteryLevel.value;
-      
+
       // Get memory and CPU usage from resourceData
-      final memoryUsage = resourceData['memoryUsage'] * 100; // Convert to percentage
+      final memoryUsage =
+          resourceData['memoryUsage'] * 100; // Convert to percentage
       final cpuUsage = resourceData['cpuUsage'] * 100; // Convert to percentage
-      
+
       // Simulate storage usage based on memory usage
       final storageUsage = (memoryUsage * 0.8) % 100; // Just a placeholder
-      
+
       // Get device info from the collected data
       String osVersion;
       String model;
-      
+
       // Try to get OS version from device info
       if (GetPlatform.isAndroid && deviceInfoData.containsKey('version')) {
         final version = deviceInfoData['version'];
-        osVersion = version is Map ? 'Android ${version['release']}' : 'Android';
-      } else if (GetPlatform.isIOS && deviceInfoData.containsKey('systemVersion')) {
+        osVersion =
+            version is Map ? 'Android ${version['release']}' : 'Android';
+      } else if (GetPlatform.isIOS &&
+          deviceInfoData.containsKey('systemVersion')) {
         osVersion = 'iOS ${deviceInfoData['systemVersion']}';
-      } else if (GetPlatform.isMacOS && deviceInfoData.containsKey('osRelease')) {
+      } else if (GetPlatform.isMacOS &&
+          deviceInfoData.containsKey('osRelease')) {
         osVersion = 'macOS ${deviceInfoData['osRelease']}';
-      } else if (GetPlatform.isWindows && deviceInfoData.containsKey('productName')) {
+      } else if (GetPlatform.isWindows &&
+          deviceInfoData.containsKey('productName')) {
         osVersion = deviceInfoData['productName'] ?? 'Windows';
-      } else if (GetPlatform.isLinux && deviceInfoData.containsKey('prettyName')) {
+      } else if (GetPlatform.isLinux &&
+          deviceInfoData.containsKey('prettyName')) {
         osVersion = deviceInfoData['prettyName'] ?? 'Linux';
       } else {
-        osVersion = deviceInfoData['isDesktop'] == true ? 'Desktop OS' : 
-                  deviceInfoData['isMobile'] == true ? 'Mobile OS' : 
-                  deviceInfoData['isWeb'] == true ? 'Web' : 'Unknown OS';
+        osVersion = deviceInfoData['isDesktop'] == true
+            ? 'Desktop OS'
+            : deviceInfoData['isMobile'] == true
+                ? 'Mobile OS'
+                : deviceInfoData['isWeb'] == true
+                    ? 'Web'
+                    : 'Unknown OS';
       }
-      
+
       // Try to get model from device info
       if (deviceInfoData.containsKey('model')) {
         model = deviceInfoData['model'] ?? 'King Kiosk Device';
@@ -279,13 +294,14 @@ class PlatformSensorService extends GetxService {
       } else {
         model = 'King Kiosk Device';
       }
-      
+
       final appVersion = '1.0.0';
-      
+
       // Network info - these will be placeholders
       final networkType = 'WiFi';
-      final ipAddress = '192.168.1.${DateTime.now().second % 254 + 1}'; // Mock IP address
-      
+      final ipAddress =
+          '192.168.1.${DateTime.now().second % 254 + 1}'; // Mock IP address
+
       return SensorData(
         batteryLevel: batteryLevel,
         memoryUsage: memoryUsage,
@@ -302,7 +318,7 @@ class PlatformSensorService extends GetxService {
       return SensorData();
     }
   }
-  
+
   /// Safely check for macOS battery issue
   bool _isMacOSWithBatteryBug() {
     // The bug appears to be in the battery_plus macOS implementation
@@ -311,7 +327,7 @@ class PlatformSensorService extends GetxService {
     developer.log('Checking platform for battery bug workarounds');
     return GetPlatform.isMacOS;
   }
-  
+
   /// Safe way to get battery level that won't crash on macOS
   Future<int> getSafeBatteryLevel() async {
     // If we're on macOS, don't use the battery API directly
@@ -319,7 +335,7 @@ class PlatformSensorService extends GetxService {
       // Return a fake but reasonable battery value
       return 90; // Assume 90% battery on macOS
     }
-    
+
     // For other platforms, try the normal API with error handling
     try {
       final level = await battery.batteryLevel;
@@ -329,7 +345,7 @@ class PlatformSensorService extends GetxService {
       return 100; // Default to 100% on error
     }
   }
-  
+
   /// Safe way to get battery state that won't crash on macOS
   Stream<BatteryState> getSafeBatteryState() {
     // If we're on macOS, provide a fake stream instead
@@ -337,11 +353,11 @@ class PlatformSensorService extends GetxService {
       // Return a fake stream with a reasonable state
       return Stream.fromIterable([BatteryState.charging]);
     }
-    
+
     // For other platforms, use the normal API
     return battery.onBatteryStateChanged;
   }
-  
+
   @override
   void onClose() {
     _resourceMonitorTimer?.cancel();
@@ -360,7 +376,7 @@ class SensorData {
   final String? appVersion;
   final String? networkType;
   final String? ipAddress;
-  
+
   SensorData({
     this.batteryLevel,
     this.memoryUsage,

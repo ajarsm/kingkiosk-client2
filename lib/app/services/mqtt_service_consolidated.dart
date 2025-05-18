@@ -920,36 +920,37 @@ class MqttService extends GetxService {
         print('[MQTT] Restored system brightness to 1.0');
       } catch (e) {
         print('[MQTT] Error restoring system brightness: $e');
-      }      return;
-    }    // --- Emergency reset command for fixing media black screens ---
+      }
+      return;
+    } // --- Emergency reset command for fixing media black screens ---
     if (cmdObj['command']?.toString().toLowerCase() == 'reset_media') {
       print('⚠️ [MQTT] Received emergency media reset command');
-      
+
       // Parse optional parameters
-      final bool forceReset = cmdObj['force'] == true || 
-                             cmdObj['force']?.toString().toLowerCase() == 'true';
-      
+      final bool forceReset = cmdObj['force'] == true ||
+          cmdObj['force']?.toString().toLowerCase() == 'true';
+
       // Check if this is a test request
       final bool testOnly = cmdObj['test'] == true ||
-                           cmdObj['test']?.toString().toLowerCase() == 'true';
-      
+          cmdObj['test']?.toString().toLowerCase() == 'true';
+
       try {
         final mediaRecoveryService = Get.find<MediaRecoveryService>();
-        
+
         // Get media health status before reset
         final healthStatus = mediaRecoveryService.getMediaHealthStatus();
         print('📊 [MQTT] Media health status: $healthStatus');
-        
+
         // If test-only mode, run the test but don't do a reset
         if (testOnly) {
           print('🧪 [MQTT] Running media health check test (no reset)');
-          
+
           // If you have a MediaHealthCheckTester class, call it directly here.
           // Otherwise, comment out or implement the test logic as needed.
           // Example (uncomment if available):
           // MediaHealthCheckTester.runTest();
 
-          // Publish health status report  
+          // Publish health status report
           if (isConnected.value && _client != null) {
             publishJsonToTopic(
               'kingkiosk/${deviceName.value}/status/media_health',
@@ -958,19 +959,20 @@ class MqttService extends GetxService {
           }
           return;
         }
-        
+
         // Not a test, perform actual reset
-        final result = await mediaRecoveryService.resetAllMediaResources(force: forceReset);
-        
+        final result = await mediaRecoveryService.resetAllMediaResources(
+            force: forceReset);
+
         // Report result
         if (result) {
           print('✅ [MQTT] Media reset completed successfully');
-          
+
           // Send status report back to MQTT if enabled
           try {
             if (isConnected.value && _client != null) {
               final topic = 'kingkiosk/${deviceName.value}/status/media_reset';
-              
+
               // Create report payload
               final reportPayload = {
                 'success': true,
@@ -978,7 +980,7 @@ class MqttService extends GetxService {
                 'resetCount': mediaRecoveryService.recoveryCount.value,
                 'forced': forceReset,
               };
-              
+
               // Publish using the existing method
               publishJsonToTopic(topic, reportPayload);
             }
@@ -986,14 +988,15 @@ class MqttService extends GetxService {
             print('⚠️ [MQTT] Error sending reset status report: $reportError');
           }
         } else {
-          print('⚠️ [MQTT] Media reset was not performed (cooldown or already in progress)');
+          print(
+              '⚠️ [MQTT] Media reset was not performed (cooldown or already in progress)');
         }
       } catch (e) {
         print('❌ [MQTT] Error during media reset: $e');
       }
       return;
     }
-    
+
     // ...existing fallback string command logic...
     print('🎯 Unknown command received: "$command"');
     return;
@@ -1294,6 +1297,16 @@ class MqttService extends GetxService {
         Get.put(screenshotService, permanent: true);
       }
 
+      // Show a snackbar notification to indicate a screenshot is being taken (optional)
+      if (cmdObj['notify'] == true) {
+        Get.snackbar(
+          'Taking Screenshot',
+          'A screenshot was requested remotely',
+          duration: Duration(seconds: 2),
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      }
+
       // Capture the screenshot
       final bytes = await screenshotService.captureScreenshot();
       if (bytes == null) {
@@ -1316,10 +1329,46 @@ class MqttService extends GetxService {
         if (base64Image.isNotEmpty) {
           // Publish to Home Assistant
           _publishScreenshotToHomeAssistant(base64Image);
+          print('📸 [MQTT] Screenshot published to Home Assistant');
+
+          // Send confirmation message if requested
+          if (cmdObj['confirm'] == true) {
+            final confirmTopic =
+                'kingkiosk/${deviceName.value}/screenshot/status';
+            final builder = MqttClientPayloadBuilder();
+            builder.addString(jsonEncode({
+              'status': 'success',
+              'timestamp': DateTime.now().toIso8601String(),
+              'path': path
+            }));
+            _client?.publishMessage(
+                confirmTopic, MqttQos.atLeastOnce, builder.payload!,
+                retain: false);
+            print('📸 [MQTT] Screenshot confirmation published');
+          }
         }
       }
     } catch (e) {
       print('❌ Error processing screenshot command: $e');
+
+      // Send error message if confirm was requested
+      if (cmdObj['confirm'] == true) {
+        try {
+          final confirmTopic =
+              'kingkiosk/${deviceName.value}/screenshot/status';
+          final builder = MqttClientPayloadBuilder();
+          builder.addString(jsonEncode({
+            'status': 'error',
+            'timestamp': DateTime.now().toIso8601String(),
+            'error': e.toString()
+          }));
+          _client?.publishMessage(
+              confirmTopic, MqttQos.atLeastOnce, builder.payload!,
+              retain: false);
+        } catch (_) {
+          // Ignore errors in error handling
+        }
+      }
     }
   }
 

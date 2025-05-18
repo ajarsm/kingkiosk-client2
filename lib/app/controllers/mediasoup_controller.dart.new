@@ -1,0 +1,1585 @@
+// lib/controllers/mediasoup_controller.dart
+import 'package:get/get.dart';
+import 'package:flutter/foundation.dart';
+import 'package:mediasoup_client_flutter/mediasoup_client_flutter.dart';
+import 'dart:typed_data';
+import '../services/signaling_service.dart';
+import '../controllers/call_settings_controller.dart';
+
+enum CallState {
+  idle,
+  initializing,
+  connecting,
+  connected,
+  disconnected,
+  failed,
+}
+
+enum TransportMode {
+  separate, // Separate send and receive transports
+  unified // Single transport for both sending and receiving
+}
+
+class MediaDevice {
+  final String deviceId;
+  final String label;
+  final String kind;
+
+  MediaDevice(
+      {required this.deviceId, required this.label, required this.kind});
+
+  @override
+  String toString() => label.isEmpty ? 'Default $kind' : label;
+}
+
+class DataChannelMessage {
+  final String type;
+  final dynamic data;
+  final String? subtype;
+
+  DataChannelMessage({
+    required this.type,
+    required this.data,
+    this.subtype,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'type': type,
+        'data': data,
+        if (subtype != null) 'subtype': subtype,
+      };
+
+  factory DataChannelMessage.fromJson(Map<String, dynamic> json) {
+    return DataChannelMessage(
+      type: json['type'],
+      data: json['data'],
+      subtype: json['subtype'],
+    );
+  }
+}
+
+class MediasoupController extends GetxController {
+  // Core mediasoup components
+  Rx<Device?> device = Rx<Device?>(null);
+  Rx<Transport?> sendTransport = Rx<Transport?>(null);
+  Rx<Transport?> recvTransport = Rx<Transport?>(null);
+  Rx<Transport?> unifiedTransport =
+      Rx<Transport?>(null); // For unified transport mode
+
+  // Transport mode
+  Rx<TransportMode> transportMode = TransportMode.separate.obs;
+
+  // Media state tracking
+  final RxList<Producer> producers = <Producer>[].obs;
+  final RxList<Consumer> consumers = <Consumer>[].obs;
+  Rx<MediaStream?> localStream = Rx<MediaStream?>(null);
+
+  // Data channel components
+  Rx<DataProducer?> dataProducer = Rx<DataProducer?>(null);
+  final RxList<DataConsumer> dataConsumers = <DataConsumer>[].obs;
+  final RxList<DataChannelMessage> dataMessages = <DataChannelMessage>[].obs;
+
+  // Call state
+  final Rx<CallState> callState = CallState.idle.obs;
+  final RxBool isVideoCall = false.obs;
+  final RxBool isMuted = false.obs;
+  final RxBool isCameraOn = true.obs;
+  final RxBool isScreenSharing = false.obs;
+
+  // Device selection tracking
+  final RxList<MediaDevice> audioInputDevices = <MediaDevice>[].obs;
+  final RxList<MediaDevice> videoInputDevices = <MediaDevice>[].obs;
+  final RxList<MediaDevice> audioOutputDevices = <MediaDevice>[].obs;
+
+  // Currently selected devices
+  Rx<MediaDevice?> selectedAudioInput = Rx<MediaDevice?>(null);
+  Rx<MediaDevice?> selectedVideoInput = Rx<MediaDevice?>(null);
+  Rx<MediaDevice?> selectedAudioOutput = Rx<MediaDevice?>(null);
+
+  // Flags for device switching
+  final RxBool isChangingAudioInput = false.obs;
+  final RxBool isChangingVideoInput = false.obs;
+
+  // Remote streams for UI rendering
+  final RxList<MediaStream> remoteStreams = <MediaStream>[].obs;
+
+  // Call statistics
+  final RxInt callDuration = 0.obs;
+  final RxMap<String, dynamic> networkStats = <String, dynamic>{}.obs;
+
+  // Error and status tracking
+  final RxString lastError = ''.obs;
+  final RxBool isInitialized = false.obs;
+
+  // Access the services via GetX dependency injection
+  final SignalingService signalingService = Get.find<SignalingService>();
+  final CallSettingsController settingsController =
+      Get.find<CallSettingsController>();
+
+  // Worker for tracking call duration
+  Worker? _callDurationWorker;
+
+  // Message handlers
+  final Rx<Function(DataChannelMessage)> onDataMessage =
+      Rx<Function(DataChannelMessage)>((_) {});
+
+  @override
+  void onInit() {
+    super.onInit();
+    device.value = Device();
+
+    // Set up signaling callbacks
+    signalingService.onNewConsumer.value = _handleNewConsumer;
+    signalingService.onNewDataConsumer.value = _handleNewDataConsumer;
+    signalingService.onPeerClosed.value = _handlePeerClosed;
+    signalingService.onRemoteStream.value = _handleRemoteStream;
+
+    // Setup call duration tracker
+    _callDurationWorker = ever(callState, (CallState state) {
+      if (state == CallState.connected) {
+        _startCallDurationTimer();
+      } else {
+        _stopCallDurationTimer();
+      }
+    });
+
+    // Initialize mediasoup devices
+    initialize();
+
+    // Enumerate media devices
+    enumerateDevices();
+  }
+
+  void _startCallDurationTimer() {
+    callDuration.value = 0;
+    Future.doWhile(() async {
+      await Future.delayed(Duration(seconds: 1));
+      if (callState.value == CallState.connected) {
+        callDuration.value++;
+        return true;
+      }
+      return false;
+    });
+  }
+
+  void _stopCallDurationTimer() {
+    callDuration.value = 0;
+  }
+
+  // Set transport mode
+  void setTransportMode(TransportMode mode) {
+    if (callState.value != CallState.idle) {
+      print('Cannot change transport mode during active call');
+      return;
+    }
+
+    transportMode.value = mode;
+    update();
+  }
+
+  // Enumerate available media devices
+  Future<void> enumerateDevices() async {
+    try {
+      List<MediaDeviceInfo> devices =
+          await navigator.mediaDevices.enumerateDevices();
+
+      // Clear current device lists
+      audioInputDevices.clear();
+      videoInputDevices.clear();
+      audioOutputDevices.clear();
+
+      // Process devices
+      for (var deviceInfo in devices) {
+        final String deviceId = deviceInfo.deviceId ?? '';
+        final String label = deviceInfo.label ?? '';
+        final String kind = deviceInfo.kind ?? '';
+
+        final device = MediaDevice(
+          deviceId: deviceId,
+          label: label,
+          kind: kind,
+        );
+
+        if (kind == 'audioinput') {
+          audioInputDevices.add(device);
+        } else if (kind == 'videoinput') {
+          videoInputDevices.add(device);
+        } else if (kind == 'audiooutput') {
+          audioOutputDevices.add(device);
+        }
+      }
+
+      // Set defaults if available
+      if (audioInputDevices.isNotEmpty && selectedAudioInput.value == null) {
+        selectedAudioInput.value = audioInputDevices.first;
+      }
+
+      if (videoInputDevices.isNotEmpty && selectedVideoInput.value == null) {
+        selectedVideoInput.value = videoInputDevices.first;
+      }
+
+      if (audioOutputDevices.isNotEmpty && selectedAudioOutput.value == null) {
+        selectedAudioOutput.value = audioOutputDevices.first;
+      }
+
+      update();
+    } catch (error) {
+      print('Error enumerating devices: $error');
+    }
+  }
+
+  // Change audio input device
+  Future<void> switchAudioInput(MediaDevice newDevice) async {
+    try {
+      if (isChangingAudioInput.value ||
+          newDevice.deviceId == selectedAudioInput.value?.deviceId) {
+        return;
+      }
+
+      isChangingAudioInput.value = true;
+
+      // Update selected device
+      selectedAudioInput.value = newDevice;
+
+      // If we're in a call, we need to replace the audio track
+      if (callState.value == CallState.connected) {
+        await _replaceAudioTrack(newDevice);
+      }
+
+      isChangingAudioInput.value = false;
+      update();
+    } catch (error) {
+      isChangingAudioInput.value = false;
+      lastError.value = 'Failed to switch microphone: $error';
+      Get.snackbar('Microphone Switch Error', lastError.value);
+      print('Microphone switch error: $error');
+    }
+  }
+
+  // Replace audio track with new device
+  Future<void> _replaceAudioTrack(MediaDevice newDevice) async {
+    // Find the audio producer
+    final audioProducer =
+        producers.firstWhereOrNull((producer) => producer.kind == 'audio');
+
+    if (audioProducer == null) {
+      throw 'No audio producer found to replace';
+    }
+
+    // Get user media with new audio device
+    final Map<String, dynamic> constraints = {
+      'audio': {
+        'deviceId': {'exact': newDevice.deviceId},
+        ...settingsController.getAudioConstraints(),
+      },
+      'video': false,
+    };
+
+    final MediaStream newStream =
+        await navigator.mediaDevices.getUserMedia(constraints);
+
+    if (newStream.getAudioTracks().isEmpty) {
+      throw 'New audio device did not provide any tracks';
+    }
+
+    final MediaStreamTrack newTrack = newStream.getAudioTracks().first;
+
+    // Replace the track in the producer
+    await audioProducer.replaceTrack(newTrack);
+
+    // Update the local stream with the new track
+    if (localStream.value != null) {
+      // Remove old audio tracks
+      localStream.value!.getAudioTracks().forEach((track) {
+        localStream.value!.removeTrack(track);
+        track.stop();
+      });
+
+      // Add new track
+      localStream.value!.addTrack(newTrack);
+    }
+
+    // Restore mute state
+    if (isMuted.value) {
+      newTrack.enabled = false;
+    }
+
+    print('Microphone switched to: ${newDevice.label}');
+  }
+
+  // Change video input device (camera)
+  Future<void> switchVideoInput(MediaDevice newDevice) async {
+    try {
+      if (isChangingVideoInput.value ||
+          newDevice.deviceId == selectedVideoInput.value?.deviceId ||
+          !isVideoCall.value) {
+        return;
+      }
+
+      isChangingVideoInput.value = true;
+
+      // Update selected device
+      selectedVideoInput.value = newDevice;
+
+      // If we're in a call, we need to replace the video track
+      if (callState.value == CallState.connected) {
+        await _replaceVideoTrack(newDevice);
+      }
+
+      isChangingVideoInput.value = false;
+      update();
+    } catch (error) {
+      isChangingVideoInput.value = false;
+      lastError.value = 'Failed to switch camera: $error';
+      Get.snackbar('Camera Switch Error', lastError.value);
+      print('Camera switch error: $error');
+    }
+  }
+
+  // Replace video track with new device
+  Future<void> _replaceVideoTrack(MediaDevice newDevice) async {
+    // Find the video producer
+    final videoProducer = producers.firstWhereOrNull((producer) =>
+        producer.kind == 'video' && producer.appData['mediaType'] == 'video');
+
+    if (videoProducer == null) {
+      throw 'No video producer found to replace';
+    }
+
+    // Get video constraints
+    final videoConstraints = settingsController.getVideoConstraints();
+
+    // Add deviceId constraint
+    final Map<String, dynamic> constraints = {
+      'audio': false,
+      'video': {
+        'deviceId': {'exact': newDevice.deviceId},
+        'mandatory': videoConstraints['mandatory'],
+        'optional': videoConstraints['optional'],
+      },
+    };
+
+    final MediaStream newStream =
+        await navigator.mediaDevices.getUserMedia(constraints);
+
+    if (newStream.getVideoTracks().isEmpty) {
+      throw 'New camera did not provide any tracks';
+    }
+
+    final MediaStreamTrack newTrack = newStream.getVideoTracks().first;
+
+    // Replace the track in the producer
+    await videoProducer.replaceTrack(newTrack);
+
+    // Update the local stream with the new track
+    if (localStream.value != null) {
+      // Remove old video tracks
+      localStream.value!.getVideoTracks().forEach((track) {
+        localStream.value!.removeTrack(track);
+        track.stop();
+      });
+
+      // Add new track
+      localStream.value!.addTrack(newTrack);
+    }
+
+    // Restore camera state
+    if (!isCameraOn.value) {
+      newTrack.enabled = false;
+    }
+
+    print('Camera switched to: ${newDevice.label}');
+  }
+
+  // Set audio output device (if supported by platform)
+  Future<void> setAudioOutput(MediaDevice device) async {
+    try {
+      selectedAudioOutput.value = device;
+
+      // Apply audio output selection
+      // Note: This is platform specific and may not be supported everywhere
+      if (kIsWeb) {
+        // For web, we can use the setSinkId API if available
+        for (var stream in remoteStreams) {
+          final audioElements = document.getElementsByTagName('audio');
+          for (var element in audioElements) {
+            if (element.srcObject == stream) {
+              try {
+                await element.setSinkId(device.deviceId);
+              } catch (e) {
+                print('Error setting audio output: $e');
+              }
+            }
+          }
+        }
+      } else {
+        // For mobile/desktop, this would be platform specific
+        // Some platforms may require native code to handle this
+        // Example: For Android, you might need a method channel to switch outputs
+      }
+
+      update();
+    } catch (error) {
+      print('Error setting audio output: $error');
+    }
+  }
+
+  // Initialize mediasoup device
+  Future<void> initialize() async {
+    try {
+      callState.value = CallState.initializing;
+      lastError.value = '';
+
+      // Get router capabilities from server (following example pattern)
+      final Map<String, dynamic> routerRtpCapabilities =
+          await signalingService.request('getRouterCapabilities', {});
+
+      // Load the device with router capabilities
+      final rtpCapabilities = RtpCapabilities.fromMap(routerRtpCapabilities);
+      await device.value!.load(routerRtpCapabilities: rtpCapabilities);
+
+      isInitialized.value = true;
+      callState.value = CallState.idle;
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to initialize Mediasoup: $error';
+      callState.value = CallState.failed;
+      Get.snackbar('Initialization Error', lastError.value);
+      print('Mediasoup initialization failed: $error');
+    }
+  }
+
+  // Check device capabilities
+  bool canProduceVideo() {
+    return device.value?.canProduce(RTCRtpMediaType.RTCRtpMediaTypeVideo) ??
+        false;
+  }
+
+  bool canProduceAudio() {
+    return device.value?.canProduce(RTCRtpMediaType.RTCRtpMediaTypeAudio) ??
+        false;
+  }
+
+  // Create transport for media sending and receiving
+  Future<void> createTransports() async {
+    if (transportMode.value == TransportMode.unified) {
+      await _createUnifiedTransport();
+    } else {
+      await createSendTransport();
+      await createRecvTransport();
+    }
+  }
+
+  // Create a unified transport for both sending and receiving media
+  Future<void> _createUnifiedTransport() async {
+    if (unifiedTransport.value != null) return;
+
+    try {
+      // Request transport creation from server with both producing and consuming flags
+      final Map transportInfo = await signalingService.request(
+        'createTransport',
+        {
+          'forceTcp': settingsController.forceTcp.value,
+          'producing': true,
+          'consuming': true,
+          'sctpCapabilities': device.value!.sctpCapabilities?.toMap(),
+          'enableSctp': true, // Enable SCTP for data channels
+          'numSctpStreams': {'OS': 1024, 'MIS': 1024},
+          'enableTcp': true, // Force TCP for single port operation
+          'preferUdp': false, // Prefer TCP over UDP
+          'preferTcp': true,
+        },
+      );
+
+      // Create unified transport with producer callback
+      unifiedTransport.value = device.value!.createSendTransportFromMap(
+        transportInfo,
+        producerCallback: _producerCallback,
+        dataProducerCallback: _dataProducerCallback,
+      );
+
+      // Set transport event handlers using same callback pattern from example
+      unifiedTransport.value!.on('connect', (Map data) {
+        // Here we must communicate our local parameters to our remote transport
+        signalingService
+            .request(
+              'transport-connect',
+              {
+                'transportId': unifiedTransport.value!.id,
+                'dtlsParameters': data['dtlsParameters'].toMap(),
+              },
+            )
+            .then(data['callback'])
+            .catchError(data['errback']);
+      });
+
+      unifiedTransport.value!.on('produce', (Map data) async {
+        try {
+          Map response = await signalingService.request(
+            'produce',
+            {
+              'transportId': unifiedTransport.value!.id,
+              'kind': data['kind'],
+              'rtpParameters': data['rtpParameters'].toMap(),
+              if (data['appData'] != null)
+                'appData': Map<String, dynamic>.from(data['appData'])
+            },
+          );
+          // Done in the server, pass the response to our transport
+          data['callback'](response['id']);
+        } catch (error) {
+          // Something was wrong in server side
+          lastError.value = 'Producer error: $error';
+          data['errback'](error);
+        }
+      });
+
+      // Handle data channel production
+      unifiedTransport.value!.on('producedata', (Map data) async {
+        try {
+          Map response = await signalingService.request(
+            'produceData',
+            {
+              'transportId': unifiedTransport.value!.id,
+              'sctpStreamParameters': data['sctpStreamParameters'].toMap(),
+              'label': data['label'],
+              'protocol': data['protocol'],
+              if (data['appData'] != null)
+                'appData': Map<String, dynamic>.from(data['appData'])
+            },
+          );
+
+          // Pass the response to our transport
+          data['callback'](response['id']);
+        } catch (error) {
+          lastError.value = 'Data producer error: $error';
+          data['errback'](error);
+        }
+      });
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to create unified transport: $error';
+      Get.snackbar('Transport Error', lastError.value);
+      print('Unified transport creation failed: $error');
+    }
+  }
+
+  // Create send transport (for sending our media)
+  Future<void> createSendTransport() async {
+    if (sendTransport.value != null) return;
+
+    try {
+      // Request transport creation from server
+      final Map transportInfo = await signalingService.request(
+        'createTransport',
+        {
+          'forceTcp': settingsController.forceTcp.value,
+          'producing': true,
+          'consuming': false,
+          'sctpCapabilities': device.value!.sctpCapabilities?.toMap(),
+          'enableSctp': true, // Enable SCTP for data channels
+          'numSctpStreams': {'OS': 1024, 'MIS': 1024},
+          'enableTcp': true, // Force TCP for single port operation
+          'preferUdp': false, // Prefer TCP over UDP
+          'preferTcp': true,
+        },
+      );
+
+      // Create send transport with producer callback
+      sendTransport.value = device.value!.createSendTransportFromMap(
+        transportInfo,
+        producerCallback: _producerCallback,
+        dataProducerCallback: _dataProducerCallback,
+      );
+
+      // Set transport event handlers using same callback pattern from example
+      sendTransport.value!.on('connect', (Map data) {
+        // Here we must communicate our local parameters to our remote transport
+        // IMPORTANT: Following the exact callback pattern from the example
+        signalingService
+            .request(
+              'transport-connect',
+              {
+                'transportId': sendTransport.value!.id,
+                'dtlsParameters': data['dtlsParameters'].toMap(),
+              },
+            )
+            .then(data['callback'])
+            .catchError(data['errback']);
+      });
+
+      sendTransport.value!.on('produce', (Map data) async {
+        // Here we must communicate our local parameters to our remote transport
+        try {
+          Map response = await signalingService.request(
+            'produce',
+            {
+              'transportId': sendTransport.value!.id,
+              'kind': data['kind'],
+              'rtpParameters': data['rtpParameters'].toMap(),
+              if (data['appData'] != null)
+                'appData': Map<String, dynamic>.from(data['appData'])
+            },
+          );
+          // Done in the server, pass the response to our transport
+          // IMPORTANT: Following the exact callback pattern from the example
+          data['callback'](response['id']);
+        } catch (error) {
+          // Something was wrong in server side
+          lastError.value = 'Producer error: $error';
+          data['errback'](error);
+        }
+      });
+
+      // Handle data channel production
+      sendTransport.value!.on('producedata', (Map data) async {
+        try {
+          Map response = await signalingService.request(
+            'produceData',
+            {
+              'transportId': sendTransport.value!.id,
+              'sctpStreamParameters': data['sctpStreamParameters'].toMap(),
+              'label': data['label'],
+              'protocol': data['protocol'],
+              if (data['appData'] != null)
+                'appData': Map<String, dynamic>.from(data['appData'])
+            },
+          );
+
+          // Pass the response to our transport
+          data['callback'](response['id']);
+        } catch (error) {
+          lastError.value = 'Data producer error: $error';
+          data['errback'](error);
+        }
+      });
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to create send transport: $error';
+      Get.snackbar('Transport Error', lastError.value);
+      print('Send transport creation failed: $error');
+    }
+  }
+
+  // Create receive transport (for receiving remote media)
+  Future<void> createRecvTransport() async {
+    if (recvTransport.value != null) return;
+
+    try {
+      // Request transport creation from server
+      final Map transportInfo = await signalingService.request(
+        'createTransport',
+        {
+          'forceTcp': settingsController.forceTcp.value,
+          'producing': false,
+          'consuming': true,
+          'sctpCapabilities': device.value!.sctpCapabilities?.toMap(),
+          'enableSctp': true, // Enable SCTP for data channels
+          'numSctpStreams': {'OS': 1024, 'MIS': 1024},
+          'enableTcp': true, // Force TCP for single port operation
+          'preferUdp': false, // Prefer TCP over UDP
+          'preferTcp': true,
+        },
+      );
+
+      // Create receive transport
+      recvTransport.value =
+          device.value!.createRecvTransportFromMap(transportInfo);
+
+      // Set transport event handler with callback pattern
+      recvTransport.value!.on('connect', (Map data) {
+        // IMPORTANT: Following the exact callback pattern from the example
+        signalingService
+            .request(
+              'transport-connect',
+              {
+                'transportId': recvTransport.value!.id,
+                'dtlsParameters': data['dtlsParameters'].toMap(),
+              },
+            )
+            .then(data['callback'])
+            .catchError(data['errback']);
+      });
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to create receive transport: $error';
+      Get.snackbar('Transport Error', lastError.value);
+      print('Receive transport creation failed: $error');
+    }
+  }
+
+  // Producer callback (handles new producers)
+  void _producerCallback(Producer producer) {
+    producers.add(producer);
+
+    // Handle producer events
+    producer.on('close', (_) {
+      producers.remove(producer);
+      update();
+    });
+
+    producer.on('transportclose', (_) {
+      producers.remove(producer);
+      update();
+    });
+
+    producer.on('trackended', (_) {
+      // Handle track ended
+      print('Track ended for producer: ${producer.id}');
+    });
+
+    print(
+        'New producer created with ID: ${producer.id}, kind: ${producer.kind}');
+    update();
+  }
+
+  // Data producer callback
+  void _dataProducerCallback(DataProducer producer) {
+    dataProducer.value = producer;
+
+    // Handle data producer events
+    producer.on('close', (_) {
+      dataProducer.value = null;
+      update();
+    });
+
+    producer.on('transportclose', (_) {
+      dataProducer.value = null;
+      update();
+    });
+
+    print('New data producer created with ID: ${producer.id}');
+    update();
+  }
+
+  // Create a data channel
+  Future<void> createDataChannel(String label,
+      {String protocol = '', Map<String, dynamic>? appData}) async {
+    try {
+      // Make sure we have a transport
+      Transport? transport;
+      if (transportMode.value == TransportMode.unified) {
+        if (unifiedTransport.value == null) {
+          await _createUnifiedTransport();
+        }
+        transport = unifiedTransport.value;
+      } else {
+        if (sendTransport.value == null) {
+          await createSendTransport();
+        }
+        transport = sendTransport.value;
+      }
+
+      if (transport == null) {
+        throw 'No transport available for data channel creation';
+      }
+
+      // Create data producer (channel)
+      // IMPORTANT: Not using await as per callback pattern
+      transport.produceData(
+        ordered: true,
+        maxRetransmits: 1,
+        maxPacketLifeTime: 2000,
+        label: label,
+        protocol: protocol,
+        appData: appData ?? {},
+      );
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to create data channel: $error';
+      print('Data channel creation failed: $error');
+    }
+  }
+
+  // Send data through the data channel
+  Future<void> sendDataMessage(String type, dynamic data,
+      {String? subtype}) async {
+    if (dataProducer.value == null) {
+      print('Cannot send data: No data producer available');
+      return;
+    }
+
+    try {
+      final message = DataChannelMessage(
+        type: type,
+        data: data,
+        subtype: subtype,
+      );
+
+      final String jsonMessage = jsonEncode(message.toJson());
+
+      // Convert string to bytes
+      List<int> list = utf8.encode(jsonMessage);
+      Uint8List bytes = Uint8List.fromList(list);
+
+      // Send through data channel
+      await dataProducer.value!.send(bytes);
+    } catch (error) {
+      print('Error sending data message: $error');
+    }
+  }
+
+  // Handle incoming data from a data consumer
+  void _handleDataMessage(Uint8List data, DataConsumer consumer) {
+    try {
+      // Convert bytes to string
+      String jsonString = utf8.decode(data);
+
+      // Parse JSON
+      Map<String, dynamic> jsonData = jsonDecode(jsonString);
+      DataChannelMessage message = DataChannelMessage.fromJson(jsonData);
+
+      // Add to messages list
+      dataMessages.add(message);
+
+      // Notify listeners
+      if (onDataMessage.value != null) {
+        onDataMessage.value(message);
+      }
+
+      update();
+    } catch (error) {
+      print('Error handling data message: $error');
+    }
+  }
+
+  // Start a video call
+  Future<void> startVideoCall() async {
+    // Check if video production is supported
+    if (!canProduceVideo()) {
+      lastError.value = 'This device cannot produce video';
+      Get.snackbar('Device Error', lastError.value);
+      return;
+    }
+
+    try {
+      // Reset state
+      lastError.value = '';
+
+      // Create appropriate transport(s)
+      await createTransports();
+
+      callState.value = CallState.connecting;
+      isVideoCall.value = true;
+      isMuted.value = false;
+      isCameraOn.value = true;
+
+      // Get constraints for selected devices
+      final Map<String, dynamic> mediaConstraints = {
+        'audio': selectedAudioInput.value != null
+            ? {
+                'deviceId': {'exact': selectedAudioInput.value!.deviceId},
+                ...settingsController.getAudioConstraints(),
+              }
+            : settingsController.getAudioConstraints(),
+        'video': selectedVideoInput.value != null
+            ? {
+                'deviceId': {'exact': selectedVideoInput.value!.deviceId},
+                'mandatory':
+                    settingsController.getVideoConstraints()['mandatory'],
+                'optional':
+                    settingsController.getVideoConstraints()['optional'],
+              }
+            : settingsController.getVideoConstraints(),
+      };
+
+      final MediaStream stream =
+          await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      localStream.value = stream;
+
+      // Create audio producer if we have audio tracks
+      if (stream.getAudioTracks().isNotEmpty) {
+        final MediaStreamTrack audioTrack = stream.getAudioTracks().first;
+
+        // Get appropriate transport
+        final transport = transportMode.value == TransportMode.unified
+            ? unifiedTransport.value
+            : sendTransport.value;
+
+        // IMPORTANT: Not using await here as per example callback pattern
+        transport!.produce(
+            track: audioTrack,
+            stream: stream,
+            source: 'microphone',
+            appData: {
+              'mediaType': 'audio',
+            });
+      }
+
+      // Create video producer if we have video tracks
+      if (stream.getVideoTracks().isNotEmpty) {
+        final MediaStreamTrack videoTrack = stream.getVideoTracks().first;
+
+        // Get appropriate transport
+        final transport = transportMode.value == TransportMode.unified
+            ? unifiedTransport.value
+            : sendTransport.value;
+
+        // IMPORTANT: Not using await here as per example callback pattern
+        transport!.produce(
+            track: videoTrack,
+            stream: stream,
+            source: 'webcam',
+            appData: {
+              'mediaType': 'video',
+            },
+            encodings: _getVideoEncodings(),
+            codecOptions: {
+              'videoGoogleStartBitrate': settingsController.maxBitrate.value,
+            });
+      }
+
+      // Create data channel for chat and session info
+      await createDataChannel('chat', appData: {'mediaType': 'chat'});
+
+      // Notify call connected
+      callState.value = CallState.connected;
+
+      // Request any active consumers from the server
+      signalingService.request('getExistingConsumers', {}).then((data) {
+        if (data is List) {
+          for (var consumerData in data) {
+            _handleNewConsumer(consumerData);
+          }
+        }
+      }).catchError((error) {
+        print('Error getting existing consumers: $error');
+      });
+
+      // Request any active data consumers
+      signalingService.request('getExistingDataConsumers', {}).then((data) {
+        if (data is List) {
+          for (var consumerData in data) {
+            _handleNewDataConsumer(consumerData);
+          }
+        }
+      }).catchError((error) {
+        print('Error getting existing data consumers: $error');
+      });
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to start video call: $error';
+      callState.value = CallState.failed;
+      Get.snackbar('Call Error', lastError.value);
+      print('Video call failed: $error');
+    }
+  }
+
+  // Helper to get video encodings based on quality settings
+  List<Map<String, dynamic>> _getVideoEncodings() {
+    final int maxBitrate = settingsController.maxBitrate.value;
+
+    if (settingsController.autoAdjustQuality.value) {
+      // Scalable video coding with simulcast for better adaptation
+      return [
+        {
+          'maxBitrate': maxBitrate,
+          'scaleResolutionDownBy': 1,
+          'maxFramerate': settingsController.frameRate.value
+        },
+        {
+          'maxBitrate': maxBitrate * 0.5,
+          'scaleResolutionDownBy': 2,
+          'maxFramerate': 15
+        },
+        {
+          'maxBitrate': maxBitrate * 0.25,
+          'scaleResolutionDownBy': 4,
+          'maxFramerate': 15
+        }
+      ];
+    } else {
+      // Single encoding with configured settings
+      return [
+        {
+          'maxBitrate': maxBitrate,
+          'maxFramerate': settingsController.frameRate.value
+        }
+      ];
+    }
+  }
+
+  // Start an audio-only call
+  Future<void> startAudioCall() async {
+    // Check if audio production is supported
+    if (!canProduceAudio()) {
+      lastError.value = 'This device cannot produce audio';
+      Get.snackbar('Device Error', lastError.value);
+      return;
+    }
+
+    try {
+      // Reset state
+      lastError.value = '';
+
+      // Create appropriate transport(s)
+      await createTransports();
+
+      callState.value = CallState.connecting;
+      isVideoCall.value = false;
+      isMuted.value = false;
+
+      // Get audio constraints with selected device
+      final Map<String, dynamic> mediaConstraints = {
+        'audio': selectedAudioInput.value != null
+            ? {
+                'deviceId': {'exact': selectedAudioInput.value!.deviceId},
+                ...settingsController.getAudioConstraints(),
+              }
+            : settingsController.getAudioConstraints(),
+        'video': false,
+      };
+
+      final MediaStream stream =
+          await navigator.mediaDevices.getUserMedia(mediaConstraints);
+      localStream.value = stream;
+
+      // Get appropriate transport
+      final transport = transportMode.value == TransportMode.unified
+          ? unifiedTransport.value
+          : sendTransport.value;
+
+      // Create audio producer
+      if (stream.getAudioTracks().isNotEmpty) {
+        final MediaStreamTrack audioTrack = stream.getAudioTracks().first;
+
+        // IMPORTANT: Not using await here as per example callback pattern
+        transport!.produce(
+            track: audioTrack,
+            stream: stream,
+            source: 'microphone',
+            appData: {'mediaType': 'audio'});
+      }
+
+      // Create data channel for chat and session info
+      await createDataChannel('chat', appData: {'mediaType': 'chat'});
+
+      // Notify call connected
+      callState.value = CallState.connected;
+
+      // Request any active consumers from the server
+      signalingService.request('getExistingConsumers', {}).then((data) {
+        if (data is List) {
+          for (var consumerData in data) {
+            _handleNewConsumer(consumerData);
+          }
+        }
+      }).catchError((error) {
+        print('Error getting existing consumers: $error');
+      });
+
+      // Request any active data consumers
+      signalingService.request('getExistingDataConsumers', {}).then((data) {
+        if (data is List) {
+          for (var consumerData in data) {
+            _handleNewDataConsumer(consumerData);
+          }
+        }
+      }).catchError((error) {
+        print('Error getting existing data consumers: $error');
+      });
+
+      update();
+    } catch (error) {
+      lastError.value = 'Failed to start audio call: $error';
+      callState.value = CallState.failed;
+      Get.snackbar('Call Error', lastError.value);
+      print('Audio call failed: $error');
+    }
+  }
+
+  // Screen sharing functionality
+  Future<void> toggleScreenSharing() async {
+    if (!isVideoCall.value || callState.value != CallState.connected) {
+      return;
+    }
+
+    try {
+      if (isScreenSharing.value) {
+        // Stop screen sharing
+        _stopScreenSharing();
+      } else {
+        // Start screen sharing
+        await _startScreenSharing();
+      }
+    } catch (error) {
+      print('Screen sharing toggle error: $error');
+      Get.snackbar('Screen Sharing Error', error.toString());
+    }
+  }
+
+  Future<void> _startScreenSharing() async {
+    try {
+      // Get display media stream
+      final mediaConstraints = {
+        'audio': false,
+        'video': {
+          'mandatory': {
+            'minWidth': '1280',
+            'minHeight': '720',
+            'frameRate': settingsController.frameRate.value,
+          },
+        }
+      };
+
+      // This requires platform-specific implementations
+      // For example, on web:
+      final MediaStream screenStream =
+          await navigator.mediaDevices.getDisplayMedia(mediaConstraints);
+
+      // Store the screen stream for later use
+      final screenTrack = screenStream.getVideoTracks().first;
+
+      // Handle track ending (user stops sharing)
+      screenTrack.onEnded = () {
+        _stopScreenSharing();
+      };
+
+      // Get appropriate transport
+      final transport = transportMode.value == TransportMode.unified
+          ? unifiedTransport.value
+          : sendTransport.value;
+
+      // Produce screen sharing track
+      transport!.produce(
+          track: screenTrack,
+          stream: screenStream,
+          source: 'screen',
+          appData: {'mediaType': 'screen'});
+
+      isScreenSharing.value = true;
+      update();
+    } catch (error) {
+      print('Start screen sharing error: $error');
+      throw error;
+    }
+  }
+
+  void _stopScreenSharing() {
+    // Find screen producer and close it
+    final screenProducer = producers.firstWhereOrNull((producer) =>
+        producer.appData != null && producer.appData['mediaType'] == 'screen');
+
+    if (screenProducer != null) {
+      screenProducer.close();
+      producers.remove(screenProducer);
+    }
+
+    isScreenSharing.value = false;
+    update();
+  }
+
+  // Handle new consumer (incoming media)
+  void _handleNewConsumer(Map<String, dynamic> data) async {
+    try {
+      // Get the appropriate transport
+      Transport? transport;
+      if (transportMode.value == TransportMode.unified) {
+        transport = unifiedTransport.value;
+      } else {
+        if (recvTransport.value == null) {
+          await createRecvTransport();
+        }
+        transport = recvTransport.value;
+      }
+
+      if (transport == null) {
+        throw 'No transport available for consuming';
+      }
+
+      final String producerId = data['producerId'];
+      final String id = data['id'];
+      final String kind = data['kind'];
+      final Map rtpParameters = data['rtpParameters'];
+      final Map? appData = data['appData'];
+
+      // Create the consumer (note callback pattern)
+      Consumer consumer = await transport.consume(
+        id: id,
+        producerId: producerId,
+        kind: kind,
+        rtpParameters: RtpParameters.fromMap(rtpParameters),
+        appData: appData,
+      );
+
+      consumers.add(consumer);
+
+      // Notify server that we're ready to receive media
+      await signalingService
+          .request('consumer-resume', {'consumerId': consumer.id});
+
+      // Handle consumer events
+      consumer.on('close', (_) {
+        consumers.remove(consumer);
+
+        // Find and remove associated stream
+        final streamToRemove = remoteStreams
+            .firstWhereOrNull((stream) => stream.id == consumer.stream?.id);
+
+        if (streamToRemove != null) {
+          remoteStreams.remove(streamToRemove);
+        }
+
+        update();
+      });
+
+      consumer.on('transportclose', (_) {
+        consumers.remove(consumer);
+        update();
+      });
+
+      // Handle remote stream for UI
+      if (consumer.stream != null) {
+        _handleRemoteStream(consumer.stream!, kind);
+      }
+
+      update();
+    } catch (error) {
+      print('Error handling new consumer: $error');
+    }
+  }
+
+  // Handle new data consumer (incoming data channel)
+  void _handleNewDataConsumer(Map<String, dynamic> data) async {
+    try {
+      // Get the appropriate transport
+      Transport? transport;
+      if (transportMode.value == TransportMode.unified) {
+        transport = unifiedTransport.value;
+      } else {
+        if (recvTransport.value == null) {
+          await createRecvTransport();
+        }
+        transport = recvTransport.value;
+      }
+
+      if (transport == null) {
+        throw 'No transport available for data consuming';
+      }
+
+      final String producerId = data['dataProducerId'];
+      final String id = data['id'];
+      final Map sctpStreamParameters = data['sctpStreamParameters'];
+      final String label = data['label'];
+      final String protocol = data['protocol'];
+      final Map? appData = data['appData'];
+
+      // Create the data consumer
+      DataConsumer dataConsumer = await transport.consumeData(
+        id: id,
+        dataProducerId: producerId,
+        sctpStreamParameters:
+            SctpStreamParameters.fromMap(sctpStreamParameters),
+        label: label,
+        protocol: protocol,
+        appData: appData,
+      );
+
+      dataConsumers.add(dataConsumer);
+
+      // Handle data consumer events
+      dataConsumer.on('close', (_) {
+        dataConsumers.remove(dataConsumer);
+        update();
+      });
+
+      dataConsumer.on('transportclose', (_) {
+        dataConsumers.remove(dataConsumer);
+        update();
+      });
+
+      // Set up data message handler
+      dataConsumer.on('message', (dynamic data) {
+        if (data is Uint8List) {
+          _handleDataMessage(data, dataConsumer);
+        }
+      });
+
+      print('New data consumer created: ${dataConsumer.id}, label: $label');
+      update();
+    } catch (error) {
+      print('Error handling new data consumer: $error');
+    }
+  }
+
+  // Handle remote stream for UI updates
+  void _handleRemoteStream(MediaStream stream, String kind) {
+    // Check if we already have this stream
+    if (!remoteStreams.any((s) => s.id == stream.id)) {
+      remoteStreams.add(stream);
+
+      // Apply audio output selection for audio streams if applicable
+      if (kind == 'audio' && selectedAudioOutput.value != null && kIsWeb) {
+        // Find audio elements with this stream and set the sink ID
+        Future.delayed(Duration(milliseconds: 500), () {
+          final audioElements = document.getElementsByTagName('audio');
+          for (var element in audioElements) {
+            if (element.srcObject == stream) {
+              try {
+                element.setSinkId(selectedAudioOutput.value!.deviceId);
+              } catch (e) {
+                print('Error setting audio output: $e');
+              }
+            }
+          }
+        });
+      }
+    }
+    update();
+  }
+
+  // Handle peer disconnection
+  void _handlePeerClosed(String peerId) {
+    // Close associated consumers
+    consumers.removeWhere((consumer) {
+      final isPeerConsumer =
+          consumer.appData != null && consumer.appData['peerId'] == peerId;
+      if (isPeerConsumer) {
+        consumer.close();
+
+        // Find and remove associated stream
+        final streamToRemove = remoteStreams
+            .firstWhereOrNull((stream) => stream.id == consumer.stream?.id);
+
+        if (streamToRemove != null) {
+          remoteStreams.remove(streamToRemove);
+        }
+      }
+      return isPeerConsumer;
+    });
+
+    // Close associated data consumers
+    dataConsumers.removeWhere((consumer) {
+      final isPeerConsumer =
+          consumer.appData != null && consumer.appData['peerId'] == peerId;
+      if (isPeerConsumer) {
+        consumer.close();
+      }
+      return isPeerConsumer;
+    });
+
+    update();
+  }
+
+  // Toggle mute state
+  void toggleMute() {
+    if (localStream.value != null) {
+      final audioTracks = localStream.value!.getAudioTracks();
+      for (var track in audioTracks) {
+        track.enabled = isMuted.value;
+      }
+      isMuted.value = !isMuted.value;
+
+      // Notify server about mute state if needed
+      signalingService
+          .request('setAudioMuted', {'muted': isMuted.value}).catchError(
+              (error) => print('Error notifying mute state: $error'));
+
+      // Notify peers through data channel
+      if (dataProducer.value != null) {
+        sendDataMessage('media-state', {'muted': isMuted.value},
+            subtype: 'audio');
+      }
+    }
+  }
+
+  // Toggle camera state (on/off)
+  void toggleCamera() {
+    if (localStream.value != null && isVideoCall.value) {
+      final videoTracks = localStream.value!.getVideoTracks();
+      for (var track in videoTracks) {
+        track.enabled = !isCameraOn.value;
+      }
+      isCameraOn.value = !isCameraOn.value;
+
+      // Notify server about camera state if needed
+      signalingService
+          .request('setVideoEnabled', {'enabled': isCameraOn.value}).catchError(
+              (error) => print('Error notifying camera state: $error'));
+
+      // Notify peers through data channel
+      if (dataProducer.value != null) {
+        sendDataMessage('media-state', {'camera': isCameraOn.value},
+            subtype: 'video');
+      }
+    }
+  }
+
+  // Switch between front and back camera (faster method for mobile)
+  Future<void> switchCamera() async {
+    if (localStream.value != null && isVideoCall.value) {
+      try {
+        // Find video producer
+        final videoProducer = producers.firstWhereOrNull((producer) =>
+            producer.kind == 'video' &&
+            producer.appData != null &&
+            producer.appData['mediaType'] == 'video');
+
+        if (videoProducer != null) {
+          // This is a platform-specific implementation
+          // For example on mobile platforms:
+          final MediaStreamTrack track = videoProducer.track;
+          await Helper.switchCamera(track);
+        }
+      } catch (error) {
+        print('Error switching camera: $error');
+      }
+    }
+  }
+
+  // Collect and update network and media statistics
+  Future<void> updateStats() async {
+    if (callState.value != CallState.connected) return;
+
+    try {
+      // Collect stats for all producers
+      for (var producer in producers) {
+        final stats = await producer.getStats();
+        // Process stats and update networkStats
+        _processStats(stats, isLocal: true);
+      }
+
+      // Collect stats for all consumers
+      for (var consumer in consumers) {
+        final stats = await consumer.getStats();
+        // Process stats and update networkStats
+        _processStats(stats, isLocal: false);
+      }
+    } catch (error) {
+      print('Error updating stats: $error');
+    }
+  }
+
+  void _processStats(List<Map<String, dynamic>> stats,
+      {required bool isLocal}) {
+    // Extract and process relevant metrics from RTCStats
+    // This is a simplified example, expand based on your needs
+    for (var stat in stats) {
+      if (stat['type'] == 'outbound-rtp' && isLocal) {
+        networkStats['outboundBitrate'] = stat['bitrateMean'] ?? 0;
+        networkStats['outboundPacketLoss'] = stat['packetLossRate'] ?? 0;
+      } else if (stat['type'] == 'inbound-rtp' && !isLocal) {
+        networkStats['inboundBitrate'] = stat['bitrateMean'] ?? 0;
+        networkStats['inboundPacketLoss'] = stat['packetLossRate'] ?? 0;
+      } else if (stat['type'] == 'candidate-pair' &&
+          stat['nominated'] == true) {
+        networkStats['roundTripTime'] = stat['currentRoundTripTime'] ?? 0;
+      }
+    }
+
+    update();
+  }
+
+  // End current call
+  void endCall() {
+    // Close local stream tracks
+    localStream.value?.getTracks().forEach((track) => track.stop());
+    localStream.value = null;
+
+    // Close data producer
+    dataProducer.value?.close();
+    dataProducer.value = null;
+
+    // Close all producers
+    for (var producer in producers) {
+      producer.close();
+    }
+    producers.clear();
+
+    // Close all consumers
+    for (var consumer in consumers) {
+      consumer.close();
+    }
+    consumers.clear();
+
+    // Close all data consumers
+    for (var consumer in dataConsumers) {
+      consumer.close();
+    }
+    dataConsumers.clear();
+
+    // Clear data messages
+    dataMessages.clear();
+
+    // Close transports
+    if (transportMode.value == TransportMode.unified) {
+      unifiedTransport.value?.close();
+      unifiedTransport.value = null;
+    } else {
+      sendTransport.value?.close();
+      sendTransport.value = null;
+
+      recvTransport.value?.close();
+      recvTransport.value = null;
+    }
+
+    // Clear remote streams
+    remoteStreams.clear();
+
+    // Reset state
+    callState.value = CallState.disconnected;
+    isVideoCall.value = false;
+    isMuted.value = false;
+    isCameraOn.value = true;
+    isScreenSharing.value = false;
+    networkStats.clear();
+
+    // Notify server
+    signalingService.request('leaveRoom', {}).catchError(
+        (error) => print('Error leaving room: $error'));
+
+    update();
+  }
+
+  // Reconnect after connection loss
+  Future<void> reconnect() async {
+    if (callState.value != CallState.failed &&
+        callState.value != CallState.disconnected) {
+      return;
+    }
+
+    try {
+      // First reinitialize the device
+      await initialize();
+
+      // If we were in a call, try to rejoin
+      if (callState.value == CallState.disconnected) {
+        await signalingService.request('rejoinRoom', {});
+
+        // Recreate transports
+        await createTransports();
+
+        // Restart media if needed
+        if (isVideoCall.value) {
+          await startVideoCall();
+        } else {
+          await startAudioCall();
+        }
+      }
+    } catch (error) {
+      lastError.value = 'Failed to reconnect: $error';
+      Get.snackbar('Reconnection Error', lastError.value);
+      print('Reconnection failed: $error');
+    }
+  }
+
+  // Get formatted call duration string (MM:SS format)
+  String getFormattedCallDuration() {
+    final minutes = (callDuration.value ~/ 60).toString().padLeft(2, '0');
+    final seconds = (callDuration.value % 60).toString().padLeft(2, '0');
+    return '$minutes:$seconds';
+  }
+
+  @override
+  void onClose() {
+    endCall();
+    device.value = null;
+    _callDurationWorker?.dispose();
+    super.onClose();
+  }
+}

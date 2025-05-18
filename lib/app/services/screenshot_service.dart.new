@@ -1,27 +1,21 @@
 // lib/app/services/screenshot_service.dart
 
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:screenshot/screenshot.dart';
-
 import '../core/utils/app_constants.dart';
 import 'storage_service.dart';
-
-// Platform helper implementation - contains the actual platform-specific code
-import 'screenshot_platform/screenshot_helper_impl.dart' as impl;
-// Abstract interface definition to maintain type safety
-import 'screenshot_platform/screenshot_helper.dart'
-    show PlatformScreenshotHelper;
 
 class ScreenshotService extends GetxService {
   ScreenshotController _screenshotController = ScreenshotController();
   late final StorageService _storageService;
-
+  
   // Global key for widget tree screenshot
   final GlobalKey screenshotKey = GlobalKey();
 
@@ -49,38 +43,17 @@ class ScreenshotService extends GetxService {
   // Take a screenshot of the entire screen
   Future<Uint8List?> captureScreenshot() async {
     isTakingScreenshot.value = true;
+    
     try {
-      // Create platform-specific helper using the implementation directly
-      // Explicitly use the interface type to ensure the import is used
-      final PlatformScreenshotHelper helper = impl.createHelper();
-
-      // Check and request permissions if needed for this platform
-      if (helper.needsStoragePermissions) {
-        final hasPermission = await _requestStoragePermissions();
-        if (!hasPermission) {
-          print('⚠️ Storage permission not granted, cannot save screenshot');
-          // Show a notification to the user
-          Get.snackbar('Permission Required',
-              'Permission is needed to save screenshots on ${helper.platformName}',
-              duration: Duration(seconds: 3),
-              snackPosition: SnackPosition.BOTTOM);
-        }
-      } else {
-        print(
-            '💻 Running on ${helper.platformName}, no permission checks needed');
-      }
-
       // Use the Screenshot widget's controller to capture the screen
-      print(
-          '📸 Attempting to capture screenshot with Screenshot widget controller');
+      print('📸 Attempting to capture screenshot with Screenshot widget controller');
       final bytes = await _screenshotController.capture();
-
+      
       if (bytes == null) {
-        print(
-            '⚠️ Screenshot controller returned null bytes, using fallback method');
+        print('⚠️ Screenshot controller returned null bytes, using fallback method');
         return _generateFallbackScreenshot();
       }
-
+      
       // Save the screenshot
       final path = await _saveScreenshot(bytes);
       latestScreenshotPath.value = path;
@@ -89,14 +62,14 @@ class ScreenshotService extends GetxService {
     } catch (e) {
       print('❌ Error capturing screenshot with controller: $e');
       print('⚠️ Falling back to generated placeholder image');
-
+      
       // Fallback to generated image if screenshot fails
       return _generateFallbackScreenshot();
     } finally {
       isTakingScreenshot.value = false;
     }
   }
-
+  
   // Generate a fallback screenshot when actual screenshot fails
   Future<Uint8List?> _generateFallbackScreenshot() async {
     try {
@@ -105,7 +78,7 @@ class ScreenshotService extends GetxService {
       final canvas = Canvas(recorder);
       final paint = Paint()..color = Colors.blue;
       canvas.drawRect(Rect.fromLTWH(0, 0, 800, 600), paint);
-
+      
       // Add some text to indicate this is a fallback screenshot
       final textPainter = TextPainter(
         text: TextSpan(
@@ -116,7 +89,7 @@ class ScreenshotService extends GetxService {
       );
       textPainter.layout(maxWidth: 700);
       textPainter.paint(canvas, Offset(50, 50));
-
+      
       // Convert to image
       final picture = recorder.endRecording();
       final img = await picture.toImage(800, 600);
@@ -138,17 +111,15 @@ class ScreenshotService extends GetxService {
   Future<Uint8List?> captureEntireScreen(GlobalKey key) async {
     try {
       print('📸 Attempting to capture specific widget with key: $key');
-
+      
       // Try to find the RenderRepaintBoundary for the key
-      final RenderRepaintBoundary? boundary =
-          key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
-
+      final RenderRepaintBoundary? boundary = key.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+      
       if (boundary != null) {
         // Capture the widget using the render object
         final ui.Image image = await boundary.toImage(pixelRatio: 3.0);
-        final ByteData? byteData =
-            await image.toByteData(format: ui.ImageByteFormat.png);
-
+        final ByteData? byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+        
         if (byteData != null) {
           final Uint8List bytes = byteData.buffer.asUint8List();
           final path = await _saveScreenshot(bytes);
@@ -161,7 +132,7 @@ class ScreenshotService extends GetxService {
       } else {
         print('❌ Could not find render boundary for key: $key');
       }
-
+      
       // Fall back to the main screenshot method if the specific widget capture fails
       print('⚠️ Falling back to main screenshot method');
       return await captureScreenshot();
@@ -175,70 +146,24 @@ class ScreenshotService extends GetxService {
   // Save screenshot to a file and return the path
   Future<String> _saveScreenshot(Uint8List bytes) async {
     try {
-      // Create platform-specific helper if needed
-      // This explicitly uses the implementation to ensure the import is used
-      final PlatformScreenshotHelper helper = impl.createHelper();
-      print('🖥️ Using ${helper.platformName} screenshot helper');
-
+      final tempDir = await getTemporaryDirectory();
       final fileName =
           'kingkiosk_screenshot_${DateTime.now().millisecondsSinceEpoch}.png';
-
-      // Save screenshot using platform-specific implementation
-      final path = await helper.saveScreenshot(bytes, fileName);
-
-      // Try to publish to gallery (only works on mobile platforms)
-      if (helper.needsStoragePermissions) {
-        try {
-          await helper.publishToGallery(
-              bytes, 'KingKiosk_${DateTime.now().millisecondsSinceEpoch}');
-        } catch (e) {
-          print('⚠️ Error publishing to gallery: $e');
-        }
-      }
-
-      // Store the latest screenshot path in storage for persistence
-      if (path.isNotEmpty) {
-        _storageService.write(AppConstants.keyLatestScreenshot, path);
-        print('💾 Screenshot saved to: $path');
-      }
-      return path;
+      final file = File('${tempDir.path}/$fileName');
+      await file.writeAsBytes(bytes);
+      // Also store the latest screenshot path in storage for persistence
+      _storageService.write(AppConstants.keyLatestScreenshot, file.path);
+      return file.path;
     } catch (e) {
       print('❌ Error saving screenshot: $e');
       return '';
     }
   }
 
-  // Request storage permissions based on platform
-  Future<bool> _requestStoragePermissions() async {
-    try {
-      print('📱 Checking storage permissions...');
-
-      // Create platform-specific helper using the implementation directly
-      final PlatformScreenshotHelper helper = impl.createHelper();
-
-      // Check if this platform needs permissions
-      if (!helper.needsStoragePermissions) {
-        print(
-            'ℹ️ Platform ${helper.platformName} does not need storage permissions');
-        return true;
-      }
-
-      print('📱 Requesting permissions for ${helper.platformName}');
-      return await helper.requestPermissions();
-    } catch (e) {
-      print('❌ Error checking storage permissions: $e');
-      return false;
-    }
-  }
-
   // Convert image to base64 for MQTT transmission
   String imageToBase64(Uint8List bytes) {
     try {
-      // Ensure we're using raw image bytes and encoding them properly
-      print('📸 Converting ${bytes.length} bytes of image data to base64');
-      final encoded = base64Encode(bytes);
-      print('📸 Base64 conversion complete, length: ${encoded.length}');
-      return encoded;
+      return base64Encode(bytes);
     } catch (e) {
       print('❌ Error converting image to base64: $e');
       return '';

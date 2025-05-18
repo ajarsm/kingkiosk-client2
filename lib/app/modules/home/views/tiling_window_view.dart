@@ -93,7 +93,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Obx(() {
-        final locked = settingsController.isSettingsLocked.value;        return Stack(
+        final locked = settingsController.isSettingsLocked.value;
+        return Stack(
           children: [
             // Background image for root window (faded, smaller)
             Positioned.fill(
@@ -110,13 +111,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   ),
                 ),
               ),
-            ),            // Windows and overlays
+            ), // Windows and overlays
             Obx(() => Stack(
                   children: controller.tiles
                       .map((tile) => _buildWindowTile(tile, locked))
                       .toList(),
                 )),
-              // Translucent notification indicator in upper right corner
+            // Translucent notification indicator in upper right corner
             const TranslucentNotificationIndicator(
               opacity: 0.4, // Slightly more visible
               size: 28.0,
@@ -615,6 +616,39 @@ class TilingWindowViewState extends State<TilingWindowView> {
             locked: false,
           ),
           SizedBox(width: 8),
+          _buildToolbarButton(
+            icon: Icons.exit_to_app_rounded,
+            label: 'Exit',
+            onPressed: () async {
+              final result = await showDialog<bool>(
+                context: context,
+                builder: (context) => AlertDialog(
+                  title: Text('Enter PIN to Exit Application'),
+                  content: Builder(
+                    builder: (context) {
+                      final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                      return SettingsLockPinPad(
+                        key: pinPadKey,
+                        onPinEntered: (pin) {
+                          if (pin == settingsController.settingsPin.value) {
+                            Navigator.of(context).pop(true);
+                          } else {
+                            pinPadKey.currentState?.showError('Incorrect PIN');
+                          }
+                        },
+                        pinLength: 4,
+                      );
+                    },
+                  ),
+                ),
+              );
+              if (result == true) {
+                _exitApplication();
+              }
+            },
+            locked: false,
+          ),
+          SizedBox(width: 8),
         ],
       ),
     );
@@ -1034,6 +1068,33 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       ),
     );
+  }
+
+  // Helper method to exit the application
+  void _exitApplication() async {
+    // Add a small delay to allow the dialog to close first
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Show a confirmation message
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          'Exiting application...',
+          style: TextStyle(
+            color: Get.isDarkMode ? Colors.black : Colors.white,
+          ),
+        ),
+        backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 1),
+      ),
+    );
+
+    // Add another small delay for the user to see the snackbar
+    await Future.delayed(const Duration(seconds: 1));
+
+    // Exit the application
+    PlatformUtils.exitApplication();
   }
 }
 

@@ -18,13 +18,43 @@ with this simple payload:
 }
 ```
 
+For advanced options, you can use:
+
+```json
+{
+  "command": "screenshot",
+  "notify": true,     // Show notification on device when screenshot is taken
+  "confirm": true     // Get confirmation on a status topic
+}
+```
+
 ## How it Works
 
 When the kiosk receives this command, it will:
 
 1. Capture a screenshot of the current display
-2. Save the screenshot to the device's storage
+2. Save the screenshot to the device's storage based on the platform:
+   - **iOS**: Saved to photos library and app documents
+   - **Android**: Saved to media store and app documents
+   - **Desktop**: Saved to application documents directory
+   - **Web**: Offered as a download (platform limitations apply)
 3. If Home Assistant discovery is enabled, the screenshot will be published as a camera entity to your Home Assistant instance
+
+## Platform-Specific Behavior
+
+### iOS and Android
+- Requires appropriate permissions (handled automatically)
+- Saves to the device gallery/photos app
+- Also saves to app's internal storage
+
+### Desktop (Windows/macOS/Linux)
+- No special permissions required
+- Saves to application documents directory
+
+### Web
+- No permissions required
+- Screenshots are offered as downloads
+- Home Assistant integration functions normally
 
 ## Home Assistant Integration
 
@@ -69,14 +99,27 @@ If screenshots aren't working:
 
 ## Technical Notes
 
-The screenshot feature generates a representation of the current app state and converts it to a base64 encoded string for transmission via MQTT. The image is temporarily stored on the device and can be retrieved from the app's temporary directory.
+The screenshot feature captures the current state of the app and converts it to a base64 encoded string for transmission via MQTT. The image is stored on the device according to platform-specific best practices.
 
 **Implementation Notes:**
-- The current implementation provides a placeholder image that displays the current date and time
-- For security and technical reasons, capturing the actual screen contents may be restricted on certain platforms
-- Image sizing and quality are optimized for MQTT transmission while maintaining reasonable visual quality
+- Uses a platform abstraction layer to handle different environments appropriately
+- Automatically handles permission requests on mobile platforms
+- Provides fallback screenshots when capture fails showing the current date and time
+- Image sizing and quality are optimized for MQTT transmission while maintaining good visual quality
 
-**Limitations:**
-- Due to platform restrictions, the screenshot may not capture the exact visual state of the application
-- Some platforms may require special permissions to capture the actual screen contents
-- The quality and resolution of screenshots are optimized for transmission over MQTT
+**Enhanced Features:**
+- Status reporting via `kingkiosk/[device-name]/screenshot/status` topic when using `confirm: true`
+- Optional notification on device when screenshot is taken
+- Cross-platform support with appropriate behavior on each platform
+
+**Permissions:**
+- **iOS**: Requires Photos Library access
+- **Android**: Requires storage permission (API 28 and below) or media store access
+- **Desktop**: No special permissions required
+- **Web**: Uses browser's security model
+
+**Platform-Specific Storage:**
+- **iOS**: Photos Library + app documents directory
+- **Android**: Media Store + app documents directory
+- **Desktop**: Application documents directory (`~/Documents/KingKiosk/Screenshots/`)
+- **Web**: Browser downloads
