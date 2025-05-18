@@ -8,3 +8,4 @@ export 'widgets/notification_center.dart';
 export 'widgets/notification_item.dart';
 export 'widgets/notification_tier_settings.dart';
 export 'widgets/notification_toast.dart';
+export 'widgets/translucent_notification_indicator.dart';

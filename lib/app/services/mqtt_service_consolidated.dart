@@ -19,6 +19,7 @@ import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/controllers/media_window_controller.dart';
 import 'wyoming_service.dart';
 import 'mqtt_notification_handler.dart';
+import 'media_recovery_service.dart';
 import 'screenshot_service.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
@@ -919,9 +920,80 @@ class MqttService extends GetxService {
         print('[MQTT] Restored system brightness to 1.0');
       } catch (e) {
         print('[MQTT] Error restoring system brightness: $e');
+      }      return;
+    }    // --- Emergency reset command for fixing media black screens ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'reset_media') {
+      print('⚠️ [MQTT] Received emergency media reset command');
+      
+      // Parse optional parameters
+      final bool forceReset = cmdObj['force'] == true || 
+                             cmdObj['force']?.toString().toLowerCase() == 'true';
+      
+      // Check if this is a test request
+      final bool testOnly = cmdObj['test'] == true ||
+                           cmdObj['test']?.toString().toLowerCase() == 'true';
+      
+      try {
+        final mediaRecoveryService = Get.find<MediaRecoveryService>();
+        
+        // Get media health status before reset
+        final healthStatus = mediaRecoveryService.getMediaHealthStatus();
+        print('📊 [MQTT] Media health status: $healthStatus');
+        
+        // If test-only mode, run the test but don't do a reset
+        if (testOnly) {
+          print('🧪 [MQTT] Running media health check test (no reset)');
+          
+          // If you have a MediaHealthCheckTester class, call it directly here.
+          // Otherwise, comment out or implement the test logic as needed.
+          // Example (uncomment if available):
+          // MediaHealthCheckTester.runTest();
+
+          // Publish health status report  
+          if (isConnected.value && _client != null) {
+            publishJsonToTopic(
+              'kingkiosk/${deviceName.value}/status/media_health',
+              healthStatus,
+            );
+          }
+          return;
+        }
+        
+        // Not a test, perform actual reset
+        final result = await mediaRecoveryService.resetAllMediaResources(force: forceReset);
+        
+        // Report result
+        if (result) {
+          print('✅ [MQTT] Media reset completed successfully');
+          
+          // Send status report back to MQTT if enabled
+          try {
+            if (isConnected.value && _client != null) {
+              final topic = 'kingkiosk/${deviceName.value}/status/media_reset';
+              
+              // Create report payload
+              final reportPayload = {
+                'success': true,
+                'timestamp': DateTime.now().toIso8601String(),
+                'resetCount': mediaRecoveryService.recoveryCount.value,
+                'forced': forceReset,
+              };
+              
+              // Publish using the existing method
+              publishJsonToTopic(topic, reportPayload);
+            }
+          } catch (reportError) {
+            print('⚠️ [MQTT] Error sending reset status report: $reportError');
+          }
+        } else {
+          print('⚠️ [MQTT] Media reset was not performed (cooldown or already in progress)');
+        }
+      } catch (e) {
+        print('❌ [MQTT] Error during media reset: $e');
       }
       return;
     }
+    
     // ...existing fallback string command logic...
     print('🎯 Unknown command received: "$command"');
     return;

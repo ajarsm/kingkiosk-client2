@@ -17,9 +17,7 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   // Initialize GetStorage for persistent settings
-  await GetStorage.init();
-
-  // Initialize MediaKit for media playback
+  await GetStorage.init();  // Initialize MediaKit for media playback
   MediaKit.ensureInitialized();
 
   // Initialize window_manager for desktop

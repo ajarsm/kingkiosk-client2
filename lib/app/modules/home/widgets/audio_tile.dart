@@ -205,11 +205,19 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
       _initializePlayer();
     }
   }
-  
-  @override
+    @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Note: We don't dispose the player here since it's managed by MediaPlayerManager
+    // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
+    // But we do need to stop it to release hardware resources
+    try {
+      _playerData.player.pause();
+      
+      // Notify the system that this tile is no longer active
+      print('AudioTile for ${widget.url} disposed');
+    } catch (e) {
+      print('Error cleaning up AudioTile resources: $e');
+    }
     super.dispose();
   }
 

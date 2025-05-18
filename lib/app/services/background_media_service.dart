@@ -5,12 +5,12 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/widgets/image_tile.dart';
+import './media_recovery_service.dart';
 
 /// Service to handle media playback in the background or fullscreen
-class BackgroundMediaService extends GetxService {
-  // Singleton player instance for background audio/video
-  late final Player _player;
-  late final VideoController _videoController;
+class BackgroundMediaService extends GetxService {  // Singleton player instance for background audio/video
+  late Player _player;
+  late VideoController _videoController;
   
   // Observable values
   final isPlaying = false.obs;
@@ -23,15 +23,153 @@ class BackgroundMediaService extends GetxService {
   // Image specific properties
   final currentImage = Rx<String?>(null);
   final isImageDisplayed = false.obs;
-
+  // Health check related properties
+  Timer? _healthCheckTimer;
+  final isHealthy = true.obs;
+  final healthCheckIntervalSeconds = 60.obs; // Default: check every minute
+  final lastHealthCheckTime = Rx<DateTime?>(null);
+  final consecutiveFailures = 0.obs; // Make observable for monitoring
+  final recoveryAttemptCount = 0.obs; // Count recovery attempts
+  
   BackgroundMediaService() {
+    // Initialize player
+    _initializePlayer();
+    
+    // Start health check system
+    _startHealthChecks();
+  }
+    void _initializePlayer() {
     // Initialize player
     _player = Player();
     _videoController = VideoController(_player);
+    print('New media player instance initialized');
+  }
+  
+  /// Start periodic health checks for the media player
+  void _startHealthChecks() {
+    // Cancel any existing timer
+    _healthCheckTimer?.cancel();
+    
+    // Create a new timer that runs regularly
+    _healthCheckTimer = Timer.periodic(
+      Duration(seconds: healthCheckIntervalSeconds.value),
+      (_) => _performHealthCheck()
+    );
+    
+    print('Media player health checks started (every ${healthCheckIntervalSeconds.value}s)');
+  }
+  
+  /// Update health check interval - use this to tune performance vs reliability
+  void setHealthCheckInterval(int seconds) {
+    if (seconds < 5) seconds = 5; // minimum 5 seconds
+    if (seconds > 300) seconds = 300; // maximum 5 minutes
+    
+    healthCheckIntervalSeconds.value = seconds;
+    _startHealthChecks(); // Restart with new interval
+    
+    print('Media health check interval updated to ${seconds}s');
+  }
+  
+  /// Perform a health check on the media player
+  Future<void> _performHealthCheck() async {
+    try {
+      lastHealthCheckTime.value = DateTime.now();
+        // Only check when media is supposed to be playing
+      if (!isPlaying.value || currentMedia.value == null) {
+        isHealthy.value = true;
+        consecutiveFailures.value = 0;
+        return;
+      }
+      
+      // Check if player is in a valid state
+      final isPlayerValid = _player.state.playing == isPlaying.value;
+      final hasValidPosition = _player.state.position.inMilliseconds > 0 || 
+                             mediaType.value == 'image';
+          // Update health status
+      isHealthy.value = isPlayerValid && hasValidPosition;
+      
+      // Log status
+      print('Media health check: ${isHealthy.value ? "HEALTHY ✅" : "UNHEALTHY ❌"} - ${currentMedia.value}');
+      
+      // Handle recovery if needed
+      if (!isHealthy.value) {
+        consecutiveFailures.value++;
+        _handleUnhealthyState();
+      } else {
+        consecutiveFailures.value = 0;
+      }
+    } catch (e) {
+      print('Error during media health check: $e');
+      isHealthy.value = false;
+      consecutiveFailures.value++;
+      _handleUnhealthyState();
+    }
+  }
+    /// Handle unhealthy player state with progressive recovery
+  void _handleUnhealthyState() {
+    if (consecutiveFailures.value >= 3) {
+      print('⚠️ Critical media failure detected! Attempting emergency recovery...');
+      recoveryAttemptCount.value++;
+      
+      // Try to find MediaRecoveryService for full reset
+      try {
+        final recoveryService = Get.find<MediaRecoveryService>();
+        recoveryService.resetAllMediaResources();
+      } catch (e) {
+        print('❌ Could not access MediaRecoveryService, attempting self-recovery');
+        _attemptSelfRecovery();
+      }
+      
+      consecutiveFailures.value = 0;
+    } else {
+      print('⚠️ Media unhealthy, attempting soft recovery (attempt ${consecutiveFailures.value})');
+      _attemptSelfRecovery();
+    }
+  }
+  
+  /// Attempt to recover without full system reset
+  Future<void> _attemptSelfRecovery() async {
+    try {
+      if (currentMedia.value != null) {
+        final url = currentMedia.value!;
+        final wasPlaying = isPlaying.value;
+        final currentType = mediaType.value;
+        
+        // Stop and restart
+        await stop();
+        await Future.delayed(Duration(milliseconds: 500));
+        
+        // Attempt to restart if it was playing
+        if (wasPlaying && url.isNotEmpty) {
+          if (currentType == 'audio') {
+            await playAudio(url);
+          } else if (currentType == 'video') {
+            await playVideo(url);
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Self-recovery attempt failed: $e');
+    }
+  }
+    /// Get health data as a structured object for monitoring
+  Map<String, dynamic> getHealthData() {
+    return {
+      'isHealthy': isHealthy.value,
+      'lastCheckTime': lastHealthCheckTime.value?.toIso8601String(),
+      'checkIntervalSeconds': healthCheckIntervalSeconds.value,
+      'consecutiveFailures': consecutiveFailures.value,
+      'recoveryAttemptCount': recoveryAttemptCount.value,
+      'currentMedia': currentMedia.value,
+      'isPlaying': isPlaying.value,
+      'mediaType': mediaType.value,
+    };
   }
   
   /// Initialize the service
   Future<BackgroundMediaService> init() async {
+    // Start health checks
+    _startHealthChecks();
     return this;
   }
 
@@ -294,24 +432,43 @@ class BackgroundMediaService extends GetxService {
       isPlaying.value = true;
     }
   }
-  
-  /// Stop current playback
+    /// Stop current playback
   Future<void> stop() async {
-    await _player.stop();
-    isPlaying.value = false;
-    currentMedia.value = null;
-    
-    // Also clear image if displayed
-    if (isImageDisplayed.value) {
-      closeImage();
-    } else {
-      mediaType.value = 'none';
-    }
-    
-    // Close fullscreen if open
-    if (isFullscreen.value) {
-      isFullscreen.value = false;
-      Get.back();
+    try {
+      // First stop the player to release hardware resources
+      await _player.stop();
+      isPlaying.value = false;
+      currentMedia.value = null;
+      
+      // Also clear image if displayed
+      if (isImageDisplayed.value) {
+        closeImage();
+      } else {
+        mediaType.value = 'none';
+      }
+      
+      // Close fullscreen if open
+      if (isFullscreen.value) {
+        isFullscreen.value = false;
+        // Use a try-catch for the Get.back() call to prevent crashes if dialog is already closed
+        try {
+          Get.back();
+        } catch (e) {
+          print('Error closing fullscreen dialog: $e');
+        }
+      }
+      
+      // Force resource cleanup after stopping
+      await Future.delayed(Duration(milliseconds: 100));
+      await _player.dispose();
+      
+      // Reinitialize player to ensure clean state
+      _player = Player();
+      _videoController = VideoController(_player);
+      
+      print('BackgroundMediaService player disposed and recreated');
+    } catch (e) {
+      print('Error stopping background media: $e');
     }
   }
   
@@ -334,11 +491,46 @@ class BackgroundMediaService extends GetxService {
   Future<void> seekTo(Duration position) async {
     await _player.seek(position);
   }
-  
   /// Clean up resources
   @override
   void onClose() {
-    _player.dispose();
+    try {
+      // Cancel health check timer
+      _healthCheckTimer?.cancel();
+      _healthCheckTimer = null;
+      
+      // Stop playback first
+      _player.stop();
+      
+      // Ensure we're not in fullscreen
+      if (isFullscreen.value) {
+        isFullscreen.value = false;
+        try {
+          Get.back();
+        } catch (e) {
+          // Ignore errors when trying to close dialogs
+        }
+      }
+      
+      // Close any open images
+      if (isImageDisplayed.value) {
+        closeImage();
+      }
+      
+      // Dispose the player with delay to ensure complete cleanup
+      Timer(Duration(milliseconds: 100), () {
+        try {
+          _player.dispose();
+          print('MediaKit player disposed successfully');
+        } catch (e) {
+          print('Error disposing MediaKit player: $e');
+        }
+      });
+      
+      print('BackgroundMediaService resources cleaned up');
+    } catch (e) {
+      print('Error disposing BackgroundMediaService resources: $e');
+    }
     super.onClose();
   }
 }

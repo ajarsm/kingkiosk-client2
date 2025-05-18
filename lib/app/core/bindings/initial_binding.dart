@@ -11,14 +11,15 @@ import '../../modules/settings/controllers/settings_controller.dart';
 import '../../services/window_manager_service.dart';
 import '../../services/websocket_service.dart';
 import '../../services/screenshot_service.dart';
+import '../../services/media_recovery_service.dart';
 
 class InitialBinding extends Bindings {
   @override
-  void dependencies() {
+  Future<void> dependencies() async {
     // Core services first - order matters!
-    Get.put<StorageService>(StorageService().init(), permanent: true);
-    Get.put<ThemeService>(ThemeService().init(), permanent: true);
-    Get.put<PlatformSensorService>(PlatformSensorService().init(),
+    Get.put<StorageService>(await StorageService().init(), permanent: true);
+    Get.put<ThemeService>(await ThemeService().init(), permanent: true);
+    Get.put<PlatformSensorService>(await PlatformSensorService().init(),
         permanent: true);
 
     // Core controllers
@@ -29,19 +30,19 @@ class InitialBinding extends Bindings {
     Get.put<WebSocketService>(WebSocketService().init(), permanent: true);
     Get.put<AppLifecycleService>(AppLifecycleService().init(), permanent: true);
     Get.put<NavigationService>(NavigationService().init(), permanent: true);
-    Get.put<BackgroundMediaService>(BackgroundMediaService(), permanent: true);
-
-    // Add ScreenshotService after StorageService is initialized
+    Get.put<BackgroundMediaService>(BackgroundMediaService(), permanent: true);    // Add ScreenshotService after StorageService is initialized
     Get.put<ScreenshotService>(ScreenshotService(), permanent: true);
     Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
+    
+    // Register media recovery service
+    Get.put<MediaRecoveryService>(await MediaRecoveryService().init(), permanent: true);
 
     // Eagerly register MQTT service after dependencies are ready
     final storageService = Get.find<StorageService>();
     final sensorService = Get.find<PlatformSensorService>();
     final mqttService = MqttService(storageService, sensorService);
-    mqttService.init().then((service) {
-      Get.put<MqttService>(service, permanent: true);
-      print('MQTT service initialized successfully');
-    });
+    final initializedMqttService = await mqttService.init();
+    Get.put<MqttService>(initializedMqttService, permanent: true);
+    print('MQTT service initialized successfully');
   }
 }

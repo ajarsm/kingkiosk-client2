@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
+import 'dart:async';
 
 // Player manager to keep players persistent across rebuilds
 class MediaPlayerManager {
@@ -8,11 +9,21 @@ class MediaPlayerManager {
   
   factory MediaPlayerManager() => _instance;
   
-  MediaPlayerManager._internal();
+  MediaPlayerManager._internal() {
+    // Start periodic cleanup timer
+    _cleanupTimer = Timer.periodic(Duration(minutes: 5), (_) {
+      _cleanupUnusedPlayers();
+    });
+  }
   
   final Map<String, PlayerWithController> _players = {};
+  Timer? _cleanupTimer;
+  final Map<String, DateTime> _lastAccessTime = {};
   
   PlayerWithController getPlayerFor(String url) {
+    // Update last access time when player is requested
+    _lastAccessTime[url] = DateTime.now();
+    
     if (!_players.containsKey(url)) {
       final player = Player();
       final controller = VideoController(player);
@@ -29,8 +40,20 @@ class MediaPlayerManager {
         final playerData = _players[url]!;
         // Remove from map first to prevent race conditions
         _players.remove(url);
-        // Then dispose the player
-        playerData.player.dispose();
+        
+        // Force cleanup before disposal
+        playerData.player.stop();
+        
+        // Use a delayed disposal to give time for resource cleanup
+        Future.delayed(Duration(milliseconds: 100), () {
+          try {            // Then dispose the player
+            playerData.player.dispose();
+            // VideoController doesn't have a dispose method
+            print('Player for $url successfully disposed');
+          } catch (e) {
+            print('Error in delayed disposal for $url: $e');
+          }
+        });
         return true;
       } catch (e) {
         print('Error disposing player for $url: $e');
@@ -42,9 +65,80 @@ class MediaPlayerManager {
   
   void dispose() {
     for (final playerData in _players.values) {
-      playerData.player.dispose();
+      try {
+        playerData.player.stop();
+        playerData.player.dispose();
+      } catch (e) {
+        print('Error disposing player during manager cleanup: $e');
+      }
     }
     _players.clear();
+    _cleanupTimer?.cancel();
+  }
+  
+  /// Force cleanup all players and reset the manager
+  /// Use this when black screens start appearing, or device seems unstable
+  void resetAllPlayers() {
+    // Make a copy of URLs to avoid modification during iteration
+    final urls = List<String>.from(_players.keys);
+    
+    // First stop all players to release hardware resources
+    for (final url in urls) {
+      try {
+        if (_players.containsKey(url)) {
+          _players[url]!.player.stop();
+        }
+      } catch (e) {
+        print('Error stopping player during reset: $e');
+      }
+    }
+    
+    // Wait briefly to allow hardware resources to be released
+    Future.delayed(Duration(milliseconds: 200), () {
+      // Then dispose all players
+      for (final url in urls) {
+        try {
+          if (_players.containsKey(url)) {
+            _players[url]!.player.dispose();
+            print('Player for $url disposed during reset');
+          }
+        } catch (e) {
+          print('Error disposing player during reset: $e');
+        }
+      }
+      
+      // Clear the map
+      _players.clear();
+      print('All media players reset and disposed');
+      
+      // Force re-initialization of MediaKit
+      MediaKit.ensureInitialized();
+    });
+  }
+  
+  /// Cleanup players that haven't been accessed in a while
+  void _cleanupUnusedPlayers() {
+    final now = DateTime.now();
+    final urlsToRemove = <String>[];
+    
+    // Find players that haven't been used in the last 10 minutes
+    for (final url in _players.keys) {
+      final lastAccess = _lastAccessTime[url] ?? now;
+      if (now.difference(lastAccess).inMinutes > 10) {
+        urlsToRemove.add(url);
+      }
+    }
+    
+    // Dispose unused players
+    for (final url in urlsToRemove) {
+      disposePlayerFor(url);
+      print('Auto-disposed unused player for: $url');
+    }
+    
+    // If more than 5 players are active, force a MediaKit re-initialization
+    if (_players.length > 5) {
+      MediaKit.ensureInitialized();
+    }
   }
 }
 
@@ -167,11 +261,19 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       _initializePlayer();
     }
   }
-  
-  @override
+    @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    // Note: We don't dispose the player here since it's managed by MediaPlayerManager
+    // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
+    // But we do need to stop it to release hardware resources
+    try {
+      _playerData.player.pause();
+      
+      // Notify the system that this tile is no longer active
+      print('MediaTile for ${widget.url} disposed');
+    } catch (e) {
+      print('Error cleaning up MediaTile resources: $e');
+    }
     super.dispose();
   }
 

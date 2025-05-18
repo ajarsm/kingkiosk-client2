@@ -93,8 +93,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Obx(() {
-        final locked = settingsController.isSettingsLocked.value;
-        return Stack(
+        final locked = settingsController.isSettingsLocked.value;        return Stack(
           children: [
             // Background image for root window (faded, smaller)
             Positioned.fill(
@@ -111,13 +110,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   ),
                 ),
               ),
-            ),
-            // Windows and overlays
+            ),            // Windows and overlays
             Obx(() => Stack(
                   children: controller.tiles
                       .map((tile) => _buildWindowTile(tile, locked))
                       .toList(),
                 )),
+              // Translucent notification indicator in upper right corner
+            const TranslucentNotificationIndicator(
+              opacity: 0.4, // Slightly more visible
+              size: 28.0,
+              padding: EdgeInsets.only(top: 20, right: 20),
+            ),
             // Edge handle for toolbar/appbar reveal (mobile and desktop)
             if (PlatformUtils.isMobile)
               Positioned(

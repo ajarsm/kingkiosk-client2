@@ -32,10 +32,27 @@ class MediaWindowController extends KioskWindowController {
         print('Unknown media command: $action');
     }
   }
-
   @override
   void disposeWindow() {
-    playerData.player.dispose();
-    if (onClose != null) onClose!();
+    try {
+      // Stop the player first to release hardware resources immediately
+      playerData.player.stop();
+      
+      // Dispose with a short delay to prevent race conditions
+      Future.delayed(Duration(milliseconds: 50), () {
+        try {
+          playerData.player.dispose();
+          print('Player disposed for media window: $windowName');
+        } catch (e) {
+          print('Error in delayed player disposal: $e');
+        }
+      });
+      
+      if (onClose != null) onClose!();
+    } catch (e) {
+      print('Error disposing media window: $e');
+      // Still try to call onClose even if disposal fails
+      if (onClose != null) onClose!();
+    }
   }
 }

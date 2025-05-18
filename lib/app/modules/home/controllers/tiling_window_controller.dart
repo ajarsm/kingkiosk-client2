@@ -3,12 +3,14 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:media_kit/media_kit.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
+import '../../../services/background_media_service.dart';
 import '../../settings/controllers/settings_controller.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
@@ -542,8 +544,7 @@ class TilingWindowController extends GetxController {
   void selectTile(WindowTile tile) {
     selectedTile.value = tile;
   }
-  
-  /// Closes/removes a window tile
+    /// Closes/removes a window tile
   void closeTile(WindowTile tile) {
     final index = tiles.indexOf(tile);
     if (index >= 0) {
@@ -552,15 +553,31 @@ class TilingWindowController extends GetxController {
         final wm = Get.find<WindowManagerService>();
         final controller = wm.getWindow(tile.id);
         if (controller != null) {
-          controller.disposeWindow();
-          wm.unregisterWindow(tile.id);
+          try {
+            // Force dispose window resources first
+            controller.disposeWindow();
+            wm.unregisterWindow(tile.id);
+          } catch (e) {
+            print('Error disposing window controller: $e');
+          }
         } 
+        
         // Always try to clean up the MediaPlayerManager for media/audio tiles
-        // even if the controller was present
+        // even if the controller wasn't present or failed
         if (tile.type == TileType.audio || tile.type == TileType.media) {
           try {
-            final playerManager = MediaPlayerManager();
-            playerManager.disposePlayerFor(tile.url);
+            // Use a brief delay to allow other disposal operations to complete
+            Future.delayed(Duration(milliseconds: 50), () {
+              final playerManager = MediaPlayerManager();
+              final disposed = playerManager.disposePlayerFor(tile.url);
+              print('MediaPlayer disposed for ${tile.url}: $disposed');
+              
+              // Force a GC suggestion and asset disposal
+              Future.delayed(Duration(milliseconds: 100), () {
+                // This will help suggest to the system to clean up unused resources
+                MediaKit.ensureInitialized();
+              });
+            });
           } catch (e) {
             print('Error disposing player: $e');
           }
@@ -734,5 +751,59 @@ class TilingWindowController extends GetxController {
       baseOffset + (windowCount * incrementOffset) % (_containerBounds.width / 2),
       baseOffset + (windowCount * incrementOffset) % (_containerBounds.height / 2),
     );
+  }
+
+  /// Emergency function to reset all media resources when black screens occur
+  void resetAllMediaResources() {
+    try {
+      print('=== EMERGENCY MEDIA RESET INITIATED ===');
+      
+      // Step 1: Stop background media service
+      try {
+        final backgroundService = Get.find<BackgroundMediaService>();
+        backgroundService.stop();
+        print('Background media service stopped');
+      } catch (e) {
+        print('Error stopping background service: $e');
+      }
+      
+      // Step 2: Close all media/audio tiles
+      final List<WindowTile> mediaToClose = [];
+      for (final tile in tiles) {
+        if (tile.type == TileType.media || tile.type == TileType.audio) {
+          mediaToClose.add(tile);
+        }
+      }
+      
+      for (final tile in mediaToClose) {
+        try {
+          closeTile(tile);
+          print('Closed media tile: ${tile.id}');
+        } catch (e) {
+          print('Error closing tile ${tile.id}: $e');
+        }
+      }
+      
+      // Step 3: Reset MediaPlayerManager
+      try {
+        final manager = MediaPlayerManager();
+        manager.resetAllPlayers();
+        print('Media player manager reset');
+      } catch (e) {
+        print('Error resetting player manager: $e');
+      }
+      
+      // Step 4: Reinitialize MediaKit
+      try {
+        MediaKit.ensureInitialized();
+        print('MediaKit reinitialized');
+      } catch (e) {
+        print('Error reinitializing MediaKit: $e');
+      }
+      
+      print('=== EMERGENCY MEDIA RESET COMPLETED ===');
+    } catch (e) {
+      print('Error during emergency media reset: $e');
+    }
   }
 }
