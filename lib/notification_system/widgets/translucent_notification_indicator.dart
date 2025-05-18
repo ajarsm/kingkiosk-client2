@@ -42,8 +42,8 @@ class _TranslucentNotificationIndicatorState extends State<TranslucentNotificati
   NotificationService? _notificationService;
   late AnimationController _pulseController;
   late Animation<double> _pulseAnimation;
-  double _currentOpacity = 0.0;
-  bool _hasShown = false;
+  final _currentOpacity = 0.0.obs;  // Convert to observable
+  final _hasShown = false.obs;      // Convert to observable
   
   @override
   void initState() {
@@ -72,17 +72,15 @@ class _TranslucentNotificationIndicatorState extends State<TranslucentNotificati
     } catch (e) {
       print('TranslucentNotificationIndicator: NotificationService not found');
     }
-    
-    // Start with opacity 0 and fade in when notifications appear
-    _currentOpacity = 0.0;
+      // Start with opacity 0 and fade in when notifications appear
+    _currentOpacity.value = 0.0;
     
     // Check for notifications after initialization
     Future.delayed(Duration.zero, () {
       if (_notificationService != null && _notificationService!.unreadCount > 0) {
-        setState(() {
-          _currentOpacity = widget.opacity;
-          _hasShown = true;
-        });
+        // Use reactive approach instead of setState
+        _currentOpacity.value = widget.opacity;
+        _hasShown.value = true;
       }
     });
   }
@@ -114,16 +112,13 @@ class _TranslucentNotificationIndicatorState extends State<TranslucentNotificati
         // Only show the indicator if there are unread notifications
         if (unreadCount <= 0) {
           return const SizedBox.shrink();
-        }
-          // If we have notifications and haven't shown yet, fade in
-        if (unreadCount > 0 && !_hasShown) {
-          // Use postFrameCallback to update state after build is complete
+        }          // If we have notifications and haven't shown yet, fade in
+        if (unreadCount > 0 && !_hasShown.value) {
+          // Use GetX reactive approach instead of setState
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
-              setState(() {
-                _currentOpacity = widget.opacity;
-                _hasShown = true;
-              });
+              _currentOpacity.value = widget.opacity;
+              _hasShown.value = true;
             }
           });
         }
@@ -132,9 +127,8 @@ class _TranslucentNotificationIndicatorState extends State<TranslucentNotificati
           onTap: () => _notificationService!.toggleNotificationCenter(),
           child: AnimatedBuilder(
             animation: _pulseAnimation,
-            builder: (context, child) {
-              return AnimatedOpacity(
-                opacity: _currentOpacity,
+            builder: (context, child) {              return AnimatedOpacity(
+                opacity: _currentOpacity.value,
                 duration: widget.animationDuration,
                 child: Transform.scale(
                   scale: _pulseAnimation.value,
