@@ -5,6 +5,9 @@ import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
 import 'wyoming_settings_view.dart';
+import '../../../controllers/call_settings_controller.dart';
+import '../../../controllers/mediasoup_controller.dart';
+import 'local_camera_preview_widget.dart';
 
 class SettingsViewFixed extends GetView<SettingsController> {
   const SettingsViewFixed({Key? key}) : super(key: key);
@@ -39,7 +42,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
                 _buildSystemInfoToggle(),
               ],
             ),
-            
+
             // Web URLs
             _buildSection(
               title: 'Web URLs',
@@ -47,7 +50,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
                 WebUrlSettingsViewFixed(),
               ],
             ),
-            
+
             // MQTT
             _buildSection(
               title: 'IoT & Integrations',
@@ -55,7 +58,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
                 MqttSettingsView(),
               ],
             ),
-            
+
             // Wyoming Satellite
             _buildSection(
               title: 'Wyoming Satellite',
@@ -67,16 +70,17 @@ class SettingsViewFixed extends GetView<SettingsController> {
                 ),
               ],
             ),
-            
+
             // Other connection settings
             _buildSection(
               title: 'Advanced Connection Settings',
               children: [
                 _buildWebSocketSettings(),
                 _buildMediaServerSettings(),
+                _buildMediasoupSettings(), // <-- Added Mediasoup settings UI
               ],
             ),
-            
+
             // App info
             Padding(
               padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
@@ -95,8 +99,9 @@ class SettingsViewFixed extends GetView<SettingsController> {
       ),
     );
   }
-  
-  Widget _buildSection({required String title, required List<Widget> children}) {
+
+  Widget _buildSection(
+      {required String title, required List<Widget> children}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -115,7 +120,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
       ],
     );
   }
-  
+
   Widget _buildThemeToggle() {
     return Card(
       child: ListTile(
@@ -123,14 +128,14 @@ class SettingsViewFixed extends GetView<SettingsController> {
         title: Text('Dark Mode'),
         subtitle: Text('Toggle application theme'),
         trailing: Obx(() => Switch(
-          value: controller.isDarkMode.value,
-          onChanged: (_) => controller.toggleDarkMode(),
-        )),
+              value: controller.isDarkMode.value,
+              onChanged: (_) => controller.toggleDarkMode(),
+            )),
         onTap: () => controller.toggleDarkMode(),
       ),
     );
   }
-  
+
   Widget _buildKioskModeToggle() {
     return Card(
       child: ListTile(
@@ -138,14 +143,14 @@ class SettingsViewFixed extends GetView<SettingsController> {
         title: Text('Kiosk Mode'),
         subtitle: Text('Fullscreen display mode'),
         trailing: Obx(() => Switch(
-          value: controller.kioskMode.value,
-          onChanged: (_) => controller.toggleKioskMode(),
-        )),
+              value: controller.kioskMode.value,
+              onChanged: (_) => controller.toggleKioskMode(),
+            )),
         onTap: () => controller.toggleKioskMode(),
       ),
     );
   }
-  
+
   Widget _buildSystemInfoToggle() {
     return Card(
       child: ListTile(
@@ -153,25 +158,27 @@ class SettingsViewFixed extends GetView<SettingsController> {
         title: Text('System Info'),
         subtitle: Text('Show system information'),
         trailing: Obx(() => Switch(
-          value: controller.showSystemInfo.value,
-          onChanged: (_) {
-            controller.toggleShowSystemInfo();
-            // Also update AppStateController to keep UI in sync
-            if (Get.isRegistered<AppStateController>()) {
-              Get.find<AppStateController>().showSystemInfo.value = controller.showSystemInfo.value;
-            }
-          },
-        )),
+              value: controller.showSystemInfo.value,
+              onChanged: (_) {
+                controller.toggleShowSystemInfo();
+                // Also update AppStateController to keep UI in sync
+                if (Get.isRegistered<AppStateController>()) {
+                  Get.find<AppStateController>().showSystemInfo.value =
+                      controller.showSystemInfo.value;
+                }
+              },
+            )),
         onTap: () {
           controller.toggleShowSystemInfo();
           if (Get.isRegistered<AppStateController>()) {
-            Get.find<AppStateController>().showSystemInfo.value = controller.showSystemInfo.value;
+            Get.find<AppStateController>().showSystemInfo.value =
+                controller.showSystemInfo.value;
           }
         },
       ),
     );
   }
-  
+
   Widget _buildWebSocketSettings() {
     return Card(
       child: Padding(
@@ -197,15 +204,15 @@ class SettingsViewFixed extends GetView<SettingsController> {
       ),
     );
   }
-  
+
   Widget _buildWebSocketUrlField() {
     return Obx(() {
       // Create controller with text and place cursor at the end
-      final textController = TextEditingController(text: controller.websocketUrl.value);
+      final textController =
+          TextEditingController(text: controller.websocketUrl.value);
       textController.selection = TextSelection.fromPosition(
-        TextPosition(offset: textController.text.length)
-      );
-      
+          TextPosition(offset: textController.text.length));
+
       return TextField(
         controller: textController,
         decoration: InputDecoration(
@@ -219,7 +226,7 @@ class SettingsViewFixed extends GetView<SettingsController> {
       );
     });
   }
-  
+
   Widget _buildMediaServerSettings() {
     return Card(
       child: Padding(
@@ -245,15 +252,15 @@ class SettingsViewFixed extends GetView<SettingsController> {
       ),
     );
   }
-  
+
   Widget _buildMediaServerUrlField() {
     return Obx(() {
       // Create controller with text and place cursor at the end
-      final textController = TextEditingController(text: controller.mediaServerUrl.value);
+      final textController =
+          TextEditingController(text: controller.mediaServerUrl.value);
       textController.selection = TextSelection.fromPosition(
-        TextPosition(offset: textController.text.length)
-      );
-      
+          TextPosition(offset: textController.text.length));
+
       return TextField(
         controller: textController,
         decoration: InputDecoration(
@@ -267,9 +274,180 @@ class SettingsViewFixed extends GetView<SettingsController> {
       );
     });
   }
-  
+
+  Widget _buildMediasoupSettings() {
+    final callSettings = Get.find<CallSettingsController>();
+    final mediasoupController = Get.find<MediasoupController>();
+    final ipController =
+        TextEditingController(text: callSettings.mediasoupServerIp.value);
+    final portController = TextEditingController(
+        text: callSettings.mediasoupServerPort.value.toString());
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.settings_input_antenna),
+                SizedBox(width: 8),
+                Text(
+                  'Mediasoup Server',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            Divider(),
+            SizedBox(height: 8),
+            // Mediasoup Server URL (user can enter ws:// or wss://)
+            TextField(
+              controller: ipController,
+              decoration: InputDecoration(
+                labelText: 'Mediasoup Server URL',
+                hintText: 'ws://host:port/ws or wss://host:port/ws',
+                border: OutlineInputBorder(),
+              ),
+              onChanged: (val) {
+                callSettings.mediasoupServerIp.value = val;
+                callSettings.saveSettings();
+              },
+            ),
+            SizedBox(height: 12),
+            // Group audio input and output device dropdowns in a Row
+            Row(
+              children: [
+                Expanded(
+                  child: Obx(() {
+                    final devices = mediasoupController.audioInputDevices;
+                    return DropdownButtonFormField<String>(
+                      value: callSettings.selectedAudioInputId.value.isNotEmpty
+                          ? callSettings.selectedAudioInputId.value
+                          : (devices.isNotEmpty
+                              ? devices.first.deviceId
+                              : null),
+                      items: devices
+                          .map((d) => DropdownMenuItem(
+                                value: d.deviceId,
+                                child: Text(d.label.isNotEmpty
+                                    ? d.label
+                                    : 'Default Mic'),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          callSettings.selectedAudioInputId.value = val;
+                          callSettings.saveSettings();
+                          final device = devices
+                              .firstWhereOrNull((d) => d.deviceId == val);
+                          if (device != null)
+                            mediasoupController.switchAudioInput(device);
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Audio Input',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                  }),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Obx(() {
+                    final devices = mediasoupController.audioOutputDevices;
+                    return DropdownButtonFormField<String>(
+                      value: callSettings.selectedAudioOutputId.value.isNotEmpty
+                          ? callSettings.selectedAudioOutputId.value
+                          : (devices.isNotEmpty
+                              ? devices.first.deviceId
+                              : null),
+                      items: devices
+                          .map((d) => DropdownMenuItem(
+                                value: d.deviceId,
+                                child: Text(d.label.isNotEmpty
+                                    ? d.label
+                                    : 'Default Speaker'),
+                              ))
+                          .toList(),
+                      onChanged: (val) {
+                        if (val != null) {
+                          callSettings.selectedAudioOutputId.value = val;
+                          callSettings.saveSettings();
+                          final device = devices
+                              .firstWhereOrNull((d) => d.deviceId == val);
+                          if (device != null)
+                            mediasoupController.setAudioOutput(device);
+                        }
+                      },
+                      decoration: InputDecoration(
+                        labelText: 'Audio Output',
+                        border: OutlineInputBorder(),
+                      ),
+                    );
+                  }),
+                ),
+              ],
+            ),
+            SizedBox(height: 12),
+            // Video Input Device Dropdown
+            Obx(() {
+              final devices = mediasoupController.videoInputDevices;
+              return DropdownButtonFormField<String>(
+                value: callSettings.selectedVideoInputId.value.isNotEmpty
+                    ? callSettings.selectedVideoInputId.value
+                    : (devices.isNotEmpty ? devices.first.deviceId : null),
+                items: devices
+                    .map((d) => DropdownMenuItem(
+                          value: d.deviceId,
+                          child: Text(
+                              d.label.isNotEmpty ? d.label : 'Default Camera'),
+                        ))
+                    .toList(),
+                onChanged: (val) {
+                  if (val != null) {
+                    callSettings.selectedVideoInputId.value = val;
+                    callSettings.saveSettings();
+                    final device =
+                        devices.firstWhereOrNull((d) => d.deviceId == val);
+                    if (device != null)
+                      mediasoupController.switchVideoInput(device);
+                  }
+                },
+                decoration: InputDecoration(
+                  labelText: 'Video Input Device',
+                  border: OutlineInputBorder(),
+                ),
+              );
+            }),
+            SizedBox(height: 12),
+            // Local video preview for selected camera
+            Obx(() {
+              final selectedId = callSettings.selectedVideoInputId.value;
+              final devices = mediasoupController.videoInputDevices;
+              final device =
+                  devices.firstWhereOrNull((d) => d.deviceId == selectedId) ??
+                      (devices.isNotEmpty ? devices.first : null);
+              return Container(
+                height: 180,
+                decoration: BoxDecoration(
+                  border: Border.all(color: Colors.grey),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: device == null
+                    ? Center(child: Text('No camera found'))
+                    : LocalCameraPreviewWidget(deviceId: device.deviceId),
+              );
+            }),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildPinSettings(SettingsController controller) {
-    final pinController = TextEditingController(text: controller.settingsPin.value);
+    final pinController =
+        TextEditingController(text: controller.settingsPin.value);
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -280,7 +458,9 @@ class SettingsViewFixed extends GetView<SettingsController> {
               children: [
                 Icon(Icons.lock),
                 SizedBox(width: 8),
-                Text('Settings PIN', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Text('Settings PIN',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
               ],
             ),
             Divider(),
@@ -301,7 +481,8 @@ class SettingsViewFixed extends GetView<SettingsController> {
                 }
               },
             ),
-            Text('Changing this PIN will be required to unlock settings.', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            Text('Changing this PIN will be required to unlock settings.',
+                style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
       ),

@@ -32,5 +32,7 @@
 	<string>This application needs access to the camera for video calls</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>This application needs access to the microphone for audio calls</string>
+	<key>NSCameraUseContinuityCameraDeviceType</key>
+	<true/>
 </dict>
 </plist>

@@ -17,6 +17,17 @@ class CallSettingsController extends GetxController {
   final RxBool forceTcp = false.obs;
   final RxInt maxBitrate = 1500.obs; // kbps
 
+  // Mediasoup server settings
+  final RxString mediasoupServerIp = ''.obs;
+  final RxInt mediasoupServerPort = 0.obs;
+  final RxBool autoConnectAudio = false.obs;
+  final RxBool autoConnectVideo = false.obs;
+
+  // Persisted device selections
+  final RxString selectedAudioInputId = ''.obs;
+  final RxString selectedVideoInputId = ''.obs;
+  final RxString selectedAudioOutputId = ''.obs;
+
   // Get video constraints based on current settings
   Map<String, dynamic> getVideoConstraints() {
     Map<String, dynamic> mandatory = {};
@@ -80,6 +91,15 @@ class CallSettingsController extends GetxController {
       'autoGainControl': autoGainControl.value,
       'forceTcp': forceTcp.value,
       'maxBitrate': maxBitrate.value,
+      // Mediasoup fields
+      'mediasoupServerIp': mediasoupServerIp.value,
+      'mediasoupServerPort': mediasoupServerPort.value,
+      'autoConnectAudio': autoConnectAudio.value,
+      'autoConnectVideo': autoConnectVideo.value,
+      // Device selections
+      'selectedAudioInputId': selectedAudioInputId.value,
+      'selectedVideoInputId': selectedVideoInputId.value,
+      'selectedAudioOutputId': selectedAudioOutputId.value,
     });
   }
 
@@ -95,6 +115,15 @@ class CallSettingsController extends GetxController {
       autoGainControl.value = settings['autoGainControl'] ?? true;
       forceTcp.value = settings['forceTcp'] ?? false;
       maxBitrate.value = settings['maxBitrate'] ?? 1500;
+      // Mediasoup fields
+      mediasoupServerIp.value = settings['mediasoupServerIp'] ?? '';
+      mediasoupServerPort.value = settings['mediasoupServerPort'] ?? 0;
+      autoConnectAudio.value = settings['autoConnectAudio'] ?? false;
+      autoConnectVideo.value = settings['autoConnectVideo'] ?? false;
+      // Device selections
+      selectedAudioInputId.value = settings['selectedAudioInputId'] ?? '';
+      selectedVideoInputId.value = settings['selectedVideoInputId'] ?? '';
+      selectedAudioOutputId.value = settings['selectedAudioOutputId'] ?? '';
     }
   }
 

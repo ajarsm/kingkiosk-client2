@@ -643,7 +643,27 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 ),
               );
               if (result == true) {
-                _exitApplication();
+                final confirm = await showDialog<bool>(
+                  context: context,
+                  builder: (context) => AlertDialog(
+                    title: Text('Confirm Exit'),
+                    content:
+                        Text('Are you sure you want to exit the application?'),
+                    actions: [
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(false),
+                        child: Text('No'),
+                      ),
+                      TextButton(
+                        onPressed: () => Navigator.of(context).pop(true),
+                        child: Text('Yes'),
+                      ),
+                    ],
+                  ),
+                );
+                if (confirm == true) {
+                  _exitApplication();
+                }
               }
             },
             locked: false,

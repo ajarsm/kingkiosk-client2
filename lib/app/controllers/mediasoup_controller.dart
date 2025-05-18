@@ -2,15 +2,10 @@
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart';
 import 'package:mediasfu_mediasoup_client/mediasfu_mediasoup_client.dart';
-import 'dart:typed_data';
 import 'dart:convert'; // For jsonEncode/jsonDecode and utf8
 import '../services/websocket_service.dart';
 import '../controllers/call_settings_controller.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
-
-// For web platform detection and conditional code
-// Import dart:html conditionally
-import 'dart:html' if (dart.library.io) 'dart:io' as html;
 
 enum CallState {
   idle,
@@ -118,7 +113,7 @@ class MediasoupController extends GetxController {
   final RxBool isInitialized = false.obs;
 
   // Access the services via GetX dependency injection
-  final SignalingService signalingService = Get.find<SignalingService>();
+  SignalingService signalingService = Get.find<SignalingService>();
   final CallSettingsController settingsController =
       Get.find<CallSettingsController>();
 
@@ -128,6 +123,12 @@ class MediasoupController extends GetxController {
   // Message handlers
   final Rx<Function(DataChannelMessage)> onDataMessage =
       Rx<Function(DataChannelMessage)>((_) {});
+
+  // Track last connected server to avoid unnecessary reconnects
+  String? _lastServerUrl;
+  // Track last auto-connect settings to avoid unnecessary re-produces
+  bool? _lastAutoAudio;
+  bool? _lastAutoVideo;
 
   @override
   void onInit() {
@@ -149,11 +150,110 @@ class MediasoupController extends GetxController {
       }
     });
 
-    // Initialize mediasoup devices
-    initialize();
+    // Listen for settings changes and auto-connect/produce
+    ever(settingsController.mediasoupServerIp,
+        (_) => _checkAutoConnectProduce());
+    ever(settingsController.mediasoupServerPort,
+        (_) => _checkAutoConnectProduce());
+    ever(
+        settingsController.autoConnectAudio, (_) => _checkAutoConnectProduce());
+    ever(
+        settingsController.autoConnectVideo, (_) => _checkAutoConnectProduce());
+
+    // Try auto-connect/produce on startup
+    _checkAutoConnectProduce();
 
     // Enumerate media devices
     enumerateDevices();
+  }
+
+  Future<void> _checkAutoConnectProduce() async {
+    final url = settingsController.mediasoupServerIp.value;
+    final audio = settingsController.autoConnectAudio.value;
+    final video = settingsController.autoConnectVideo.value;
+    final shouldConnect = url.isNotEmpty && (audio || video);
+
+    // If nothing is enabled, disconnect if needed
+    if (!shouldConnect) {
+      if (callState.value == CallState.connected) {
+        endCall();
+      }
+      _lastServerUrl = null;
+      _lastAutoAudio = null;
+      _lastAutoVideo = null;
+      return;
+    }
+
+    // If server changed, reconnect
+    if (_lastServerUrl != url) {
+      await _connectToMediasoupServer(url);
+      _lastServerUrl = url;
+      // Reset last auto state so we re-produce
+      _lastAutoAudio = null;
+      _lastAutoVideo = null;
+    }
+
+    // If not connected, start call as needed
+    if (callState.value != CallState.connected) {
+      if (video) {
+        await startVideoCall();
+      } else if (audio) {
+        await startAudioCall();
+      }
+      _lastAutoAudio = audio;
+      _lastAutoVideo = video;
+      return;
+    }
+
+    // If already connected, but toggles changed, update media production
+    if (_lastAutoAudio != audio || _lastAutoVideo != video) {
+      // If video was enabled but now disabled, stop video
+      if (_lastAutoVideo == true && video == false && isVideoCall.value) {
+        // End call if only video was on
+        endCall();
+        if (audio) {
+          await startAudioCall();
+        }
+      }
+      // If audio was enabled but now disabled, and only audio was on
+      else if (_lastAutoAudio == true &&
+          audio == false &&
+          !video &&
+          !isVideoCall.value) {
+        endCall();
+      }
+      // If video is now enabled, switch to video call
+      else if (video && !_lastAutoVideo!) {
+        endCall();
+        await startVideoCall();
+      }
+      // If audio is now enabled, switch to audio call
+      else if (audio && !_lastAutoAudio! && !video) {
+        endCall();
+        await startAudioCall();
+      }
+      // else: do nothing (already in correct state)
+      _lastAutoAudio = audio;
+      _lastAutoVideo = video;
+    }
+  }
+
+  Future<void> _connectToMediasoupServer(String url) async {
+    try {
+      // Do NOT close the singleton signalingService instance!
+      // Create new signaling service with new server URL
+      signalingService = await SignalingService.createWithUrl(url);
+      // Set up signaling callbacks again
+      signalingService.onNewConsumer.value = _handleNewConsumer;
+      signalingService.onNewDataConsumer.value = _handleNewDataConsumer;
+      signalingService.onPeerClosed.value = _handlePeerClosed;
+      signalingService.onRemoteStream.value = _handleRemoteStream;
+      // Re-initialize mediasoup device
+      await initialize();
+    } catch (e) {
+      lastError.value = 'Failed to connect to Mediasoup server: $e';
+      print(lastError.value);
+    }
   }
 
   void _startCallDurationTimer() {

@@ -3,11 +3,12 @@ import 'package:get/get.dart';
 import 'dart:convert';
 import 'dart:async';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import 'package:web_socket_channel/web_socket_channel.dart';
+import 'package:web_socket_channel/status.dart' as status;
 
 class SignalingService extends GetxService {
-  late GetSocket _socket;
-  final String serverUrl;
-
+  late WebSocketChannel _socket;
+  late final String serverUrl;
   // Request tracking
   final Map<int, Completer<Map<String, dynamic>>> _pendingRequests = {};
   int _requestId = 0;
@@ -16,7 +17,7 @@ class SignalingService extends GetxService {
   final Rx<Function(Map<String, dynamic>)?> onNewConsumer =
       Rx<Function(Map<String, dynamic>)?>(null);
   final Rx<Function(Map<String, dynamic>)?> onNewDataConsumer =
-      Rx<Function(Map<String, dynamic>)?>(null); // Add this line
+      Rx<Function(Map<String, dynamic>)?>(null);
   final Rx<Function(String)?> onPeerClosed = Rx<Function(String)?>(null);
   final Rx<Function(MediaStream, String)?> onRemoteStream =
       Rx<Function(MediaStream, String)?>(null);
@@ -32,31 +33,21 @@ class SignalingService extends GetxService {
   }
 
   void _connect() {
-    // Use GetX's socket implementation
-    _socket = GetSocket(serverUrl);
-
-    // Set up message handling
-    _socket.onMessage(_handleMessage);
-
-    // Handle connection events
-    _socket.onOpen(() {
-      isConnected.value = true;
-      print('Connected to signaling server at $serverUrl');
-    });
-
-    _socket.onClose((_) {
-      isConnected.value = false;
-      print('Disconnected from signaling server');
-      // Automatic reconnection
-      Future.delayed(Duration(seconds: 2), _connect);
-    });
-
-    _socket.onError((error) {
-      print('Signaling server error: $error');
-    });
-
-    // Connect to the server
-    _socket.connect();
+    _socket = WebSocketChannel.connect(Uri.parse(serverUrl));
+    isConnected.value = true;
+    print('Connected to signaling server at $serverUrl');
+    _socket.stream.listen(
+      _handleMessage,
+      onDone: () {
+        isConnected.value = false;
+        print('Disconnected from signaling server');
+        Future.delayed(Duration(seconds: 2), _connect);
+      },
+      onError: (error) {
+        print('Signaling server error: $error');
+      },
+      cancelOnError: true,
+    );
   }
 
   void _handleMessage(dynamic message) {
@@ -66,14 +57,15 @@ class SignalingService extends GetxService {
 
     if (data.containsKey('id')) {
       // Response to a previous request
-      final int id = data['id'];
-      if (_pendingRequests.containsKey(id)) {
+      final id = data['id'];
+      final key = id is int ? id : int.tryParse(id.toString());
+      if (_pendingRequests.containsKey(key)) {
         if (data.containsKey('error')) {
-          _pendingRequests[id]!.completeError(data['error']);
+          _pendingRequests[key]!.completeError(data['error']);
         } else {
-          _pendingRequests[id]!.complete(data['data']);
+          _pendingRequests[key]!.complete(data['data']);
         }
-        _pendingRequests.remove(id);
+        _pendingRequests.remove(key);
       }
     } else if (data.containsKey('method')) {
       // Notification from server
@@ -83,7 +75,7 @@ class SignalingService extends GetxService {
             onNewConsumer.value!(data['data']);
           }
           break;
-        case 'newDataConsumer': // Add this case
+        case 'newDataConsumer':
           if (onNewDataConsumer.value != null) {
             onNewDataConsumer.value!(data['data']);
           }
@@ -110,12 +102,20 @@ class SignalingService extends GetxService {
     };
 
     // Send the request
-    _socket.send(jsonEncode(request));
+    _socket.sink.add(jsonEncode(request));
     return completer.future;
   }
 
   void close() {
-    _socket.close();
+    try {
+      _socket.sink.close(status.goingAway);
+    } catch (_) {}
+  }
+
+  static Future<SignalingService> createWithUrl(String serverUrl) async {
+    final service = SignalingService(serverUrl: serverUrl);
+    await service.init();
+    return service;
   }
 
   @override
