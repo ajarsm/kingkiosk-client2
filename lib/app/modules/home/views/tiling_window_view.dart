@@ -16,8 +16,6 @@ import '../../../controllers/app_state_controller.dart';
 import '../../../modules/settings/controllers/settings_controller.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
-import '../../../services/wyoming_service.dart';
-import 'package:king_kiosk/wyoming_satellite/wyoming_satellite.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
@@ -40,13 +38,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
   // Add a GlobalKey to control the toolbar from the handle
   final GlobalKey<_AutoHidingToolbarState> _autoHidingToolbarKey =
       GlobalKey<_AutoHidingToolbarState>();
-
-  // Wyoming FAB state
-  final WyomingService wyomingService = Get.find<WyomingService>();
-  RxString wyomingFabState = 'idle'.obs; // idle, sending, processing, receiving
-  RxBool isRecording = false.obs;
-  WyomingAudioRecorder? _recorder;
-
   @override
   void initState() {
     super.initState();
@@ -85,7 +76,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
   @override
   void dispose() {
     kioskModeSub.cancel();
-    _recorder?.dispose();
     super.dispose();
   }
 
@@ -190,13 +180,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),
             ), // Overlay Wyoming FAB in top right
-            Obx(() => wyomingService.enabled.value
-                ? Positioned(
-                    top: 24,
-                    right: 24,
-                    child: _buildWyomingFab(),
-                  )
-                : SizedBox.shrink()),
+
             // Notification Center positioned on the right side
             _buildNotificationCenter(),
           ],
@@ -231,17 +215,24 @@ class TilingWindowViewState extends State<TilingWindowView> {
       height: tile.size.height,
       child: Obx(() {
         final isSelected = controller.selectedTile.value?.id == tile.id;
+        final isHighlighted = controller.highlightedTiles.contains(tile.id);
+
+        // Apply highlight if it's selected OR currently highlighted
+        final shouldHighlight = isSelected || isHighlighted;
+
         return GestureDetector(
           onTap: locked ? null : () => controller.selectTile(tile),
-          child: Container(
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
             decoration: BoxDecoration(
               border: Border.all(
-                color: isSelected ? Colors.blue : Colors.grey,
-                width: isSelected ? 2 : 1,
+                color: shouldHighlight ? Colors.blue : Colors.grey,
+                width: shouldHighlight ? 2 : 1,
               ),
               boxShadow: [
                 BoxShadow(
-                  color: isSelected
+                  color: shouldHighlight
                       ? Colors.blue.withOpacity(0.3)
                       : Colors.black.withOpacity(0.1),
                   blurRadius: 5,
@@ -283,10 +274,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8.0),
               child: _getIconForTileType(tile.type),
-            ),
-            // Window title (drag area)
+            ), // Window title (drag area)
             Expanded(
               child: GestureDetector(
+                onPanStart: (_) {
+                  // Highlight window when starting to drag
+                  controller.selectTile(tile);
+                },
                 onPanUpdate: (details) {
                   controller.updateTilePosition(
                     tile,
@@ -316,7 +310,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
                       icon: Icon(Icons.vertical_split, size: 16),
                       padding: EdgeInsets.zero,
                       constraints: BoxConstraints(),
-                      onPressed: () => controller.splitTileVertical(tile),
+                      onPressed: () {
+                        controller.selectTile(tile);
+                        controller.splitTileVertical(tile);
+                      },
                     ),
                   ),
                   Tooltip(
@@ -325,7 +322,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
                       icon: Icon(Icons.horizontal_split, size: 16),
                       padding: EdgeInsets.zero,
                       constraints: BoxConstraints(),
-                      onPressed: () => controller.splitTileHorizontal(tile),
+                      onPressed: () {
+                        controller.selectTile(tile);
+                        controller.splitTileHorizontal(tile);
+                      },
                     ),
                   ),
                 ],
@@ -343,6 +343,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   padding: EdgeInsets.zero,
                   constraints: BoxConstraints(),
                   onPressed: () {
+                    controller.selectTile(tile);
                     if (tile.isMaximized) {
                       controller.restoreTile(tile);
                     } else {
@@ -358,7 +359,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 icon: Icon(Icons.close, size: 16),
                 padding: EdgeInsets.zero,
                 constraints: BoxConstraints(),
-                onPressed: () => controller.closeTile(tile),
+                onPressed: () {
+                  controller.selectTile(tile);
+                  controller.closeTile(tile);
+                },
               ),
             ),
           ],
@@ -420,6 +424,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   Widget _buildResizeHandle(WindowTile tile) {
     return GestureDetector(
+      onPanStart: (_) {
+        // Highlight window when starting to resize
+        controller.selectTile(tile);
+      },
       onPanUpdate: (details) {
         controller.updateTileSize(
           tile,
@@ -1018,76 +1026,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       );
     });
-  }
-
-  Widget _buildWyomingFab() {
-    // Choose icon and color based on state
-    IconData icon;
-    Color color;
-    String tooltip;
-    switch (wyomingFabState.value) {
-      case 'sending':
-        icon = Icons.mic;
-        color = Colors.redAccent;
-        tooltip = 'Sending audio to Wyoming';
-        break;
-      case 'processing':
-        icon = Icons.sync;
-        color = Colors.orangeAccent;
-        tooltip = 'Processing...';
-        break;
-      case 'receiving':
-        icon = Icons.hearing;
-        color = Colors.green;
-        tooltip = 'Receiving Wyoming response';
-        break;
-      default:
-        icon = Icons.mic_none;
-        color = Colors.blueGrey;
-        tooltip = 'Push to talk (Wyoming)';
-    }
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTapDown: (details) async {
-          if (!wyomingService.enabled.value) {
-            Get.snackbar(
-                'Wyoming Disabled', 'Enable Wyoming Satellite in settings');
-            return;
-          }
-          if (!isRecording.value) {
-            wyomingFabState.value = 'sending';
-            isRecording.value = true;
-            _recorder = WyomingAudioRecorder();
-            await _recorder!.start(onAudio: (audio) async {
-              await wyomingService.sendAudio(audio);
-            });
-          }
-        },
-        onTapUp: (details) async {
-          if (isRecording.value) {
-            wyomingFabState.value = 'processing';
-            isRecording.value = false;
-            await _recorder?.stop();
-            wyomingFabState.value = 'idle';
-          }
-        },
-        onTapCancel: () async {
-          if (isRecording.value) {
-            isRecording.value = false;
-            await _recorder?.stop();
-            wyomingFabState.value = 'idle';
-          }
-        },
-        child: FloatingActionButton(
-          heroTag: 'wyoming-fab',
-          backgroundColor: color,
-          tooltip: tooltip,
-          child: Icon(icon, size: 32),
-          onPressed: null, // Use gesture events for push-to-talk
-        ),
-      ),
-    );
   }
 
   // Helper method to exit the application

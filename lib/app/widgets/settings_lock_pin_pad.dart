@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:number_pad_keyboard/number_pad_keyboard.dart';
-import 'package:audioplayers/audioplayers.dart';
+import '../services/audio_service.dart';
 import 'shake_widget.dart';
 
-export 'settings_lock_pin_pad.dart' show SettingsLockPinPad, SettingsLockPinPadState;
+export 'settings_lock_pin_pad.dart'
+    show SettingsLockPinPad, SettingsLockPinPadState;
 
 class SettingsLockPinPad extends StatefulWidget {
   final void Function(String pin) onPinEntered;
@@ -27,7 +28,6 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
   String _enteredPin = '';
   String? _error;
   bool _shake = false;
-  final AudioPlayer _audioPlayer = AudioPlayer();
 
   void _onDigit(int digit) {
     if (_enteredPin.length < widget.pinLength) {
@@ -61,12 +61,9 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
       _error = error;
       _enteredPin = '';
       _shake = true;
-    });
-    // Play error sound (ensure player is stopped and seek to start for Android reliability)
+    }); // Play error sound using AudioService
     try {
-      await _audioPlayer.stop();
-      await _audioPlayer.seek(Duration.zero);
-      await _audioPlayer.play(AssetSource('sounds/wrong.wav'));
+      AudioService.playError();
     } catch (_) {}
     await Future.delayed(const Duration(milliseconds: 500));
     setState(() {
@@ -133,4 +130,3 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
     );
   }
 }
-

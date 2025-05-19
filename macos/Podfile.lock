@@ -1,5 +1,5 @@
 PODS:
-  - audioplayers_darwin (0.0.1):
+  - audio_session (0.0.1):
     - FlutterMacOS
   - battery_plus (0.0.1):
     - FlutterMacOS
@@ -14,19 +14,18 @@ PODS:
     - FlutterMacOS
     - WebRTC-SDK (= 125.6422.06)
   - FlutterMacOS (1.0.0)
+  - just_audio (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - media_kit_libs_macos_video (1.0.4):
     - FlutterMacOS
   - media_kit_video (0.0.1):
-    - FlutterMacOS
-  - nsd_macos (0.0.1):
     - FlutterMacOS
   - OrderedSet (6.0.3)
   - package_info_plus (0.0.1):
     - FlutterMacOS
   - path_provider_foundation (0.0.1):
     - Flutter
-    - FlutterMacOS
-  - record_macos (1.0.0):
     - FlutterMacOS
   - screen_brightness_macos (0.1.0):
     - FlutterMacOS
@@ -43,19 +42,18 @@ PODS:
     - FlutterMacOS
 
 DEPENDENCIES:
-  - audioplayers_darwin (from `Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/macos`)
+  - audio_session (from `Flutter/ephemeral/.symlinks/plugins/audio_session/macos`)
   - battery_plus (from `Flutter/ephemeral/.symlinks/plugins/battery_plus/macos`)
   - device_info_plus (from `Flutter/ephemeral/.symlinks/plugins/device_info_plus/macos`)
   - flutter_inappwebview_macos (from `Flutter/ephemeral/.symlinks/plugins/flutter_inappwebview_macos/macos`)
   - flutter_volume_controller (from `Flutter/ephemeral/.symlinks/plugins/flutter_volume_controller/macos`)
   - flutter_webrtc (from `Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos`)
   - FlutterMacOS (from `Flutter/ephemeral`)
+  - just_audio (from `Flutter/ephemeral/.symlinks/plugins/just_audio/darwin`)
   - media_kit_libs_macos_video (from `Flutter/ephemeral/.symlinks/plugins/media_kit_libs_macos_video/macos`)
   - media_kit_video (from `Flutter/ephemeral/.symlinks/plugins/media_kit_video/macos`)
-  - nsd_macos (from `Flutter/ephemeral/.symlinks/plugins/nsd_macos/macos`)
   - package_info_plus (from `Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos`)
   - path_provider_foundation (from `Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin`)
-  - record_macos (from `Flutter/ephemeral/.symlinks/plugins/record_macos/macos`)
   - screen_brightness_macos (from `Flutter/ephemeral/.symlinks/plugins/screen_brightness_macos/macos`)
   - screen_retriever (from `Flutter/ephemeral/.symlinks/plugins/screen_retriever/macos`)
   - url_launcher_macos (from `Flutter/ephemeral/.symlinks/plugins/url_launcher_macos/macos`)
@@ -69,8 +67,8 @@ SPEC REPOS:
     - WebRTC-SDK
 
 EXTERNAL SOURCES:
-  audioplayers_darwin:
-    :path: Flutter/ephemeral/.symlinks/plugins/audioplayers_darwin/macos
+  audio_session:
+    :path: Flutter/ephemeral/.symlinks/plugins/audio_session/macos
   battery_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/battery_plus/macos
   device_info_plus:
@@ -83,18 +81,16 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/flutter_webrtc/macos
   FlutterMacOS:
     :path: Flutter/ephemeral
+  just_audio:
+    :path: Flutter/ephemeral/.symlinks/plugins/just_audio/darwin
   media_kit_libs_macos_video:
     :path: Flutter/ephemeral/.symlinks/plugins/media_kit_libs_macos_video/macos
   media_kit_video:
     :path: Flutter/ephemeral/.symlinks/plugins/media_kit_video/macos
-  nsd_macos:
-    :path: Flutter/ephemeral/.symlinks/plugins/nsd_macos/macos
   package_info_plus:
     :path: Flutter/ephemeral/.symlinks/plugins/package_info_plus/macos
   path_provider_foundation:
     :path: Flutter/ephemeral/.symlinks/plugins/path_provider_foundation/darwin
-  record_macos:
-    :path: Flutter/ephemeral/.symlinks/plugins/record_macos/macos
   screen_brightness_macos:
     :path: Flutter/ephemeral/.symlinks/plugins/screen_brightness_macos/macos
   screen_retriever:
@@ -109,20 +105,19 @@ EXTERNAL SOURCES:
     :path: Flutter/ephemeral/.symlinks/plugins/window_manager/macos
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: 761f2948df701d05b5db603220c384fb55720012
+  audio_session: eaca2512cf2b39212d724f35d11f46180ad3a33e
   battery_plus: 0495761dc45b8a1631ed5066d4af1990314eac6f
   device_info_plus: b0fafc687fb901e2af612763340f1b0d4352f8e5
   flutter_inappwebview_macos: c2d68649f9f8f1831bfcd98d73fd6256366d9d1d
   flutter_volume_controller: ae08bf0838e4901f299781c3ab5056dfab0c2f74
   flutter_webrtc: 377dbcebdde6fed0fc40de87bcaaa2bffcec9a88
   FlutterMacOS: 8f6f14fa908a6fb3fba0cd85dbd81ec4b251fb24
+  just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   media_kit_libs_macos_video: 85a23e549b5f480e72cae3e5634b5514bc692f65
   media_kit_video: fa6564e3799a0a28bff39442334817088b7ca758
-  nsd_macos: a472240e770b92f6c6df1022403aa29c90d012e3
   OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
   package_info_plus: f0052d280d17aa382b932f399edf32507174e870
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
-  record_macos: 295d70bd5fb47145df78df7b80e6697cd18403c0
   screen_brightness_macos: 2a3ee243f8051c340381e8e51bcedced8360f421
   screen_retriever: 4f97c103641aab8ce183fa5af3b87029df167936
   url_launcher_macos: 0fba8ddabfc33ce0a9afe7c5fef5aab3d8d2d673

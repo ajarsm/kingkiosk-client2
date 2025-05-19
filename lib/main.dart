@@ -8,7 +8,6 @@ import 'app/core/theme/app_theme.dart';
 import 'app/core/bindings/initial_binding.dart';
 import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
-import 'app/services/wyoming_service.dart';
 import 'app/services/screenshot_service.dart';
 
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
@@ -24,7 +23,6 @@ void main() async {
 
   // Initialize window_manager for desktop
   await PlatformUtils.ensureWindowManagerInitialized(); // Register services
-  Get.put(WyomingService());
   Get.put<NotificationService>(GetXNotificationService(), permanent: true);
   // Remove ScreenshotService from here - it will be initialized in InitialBinding
 

@@ -8,7 +8,6 @@ import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:screen_brightness/screen_brightness.dart';
-import '../../wyoming_satellite/wyoming_satellite.dart';
 import '../../notification_system/notification_system.dart';
 import 'storage_service.dart';
 import 'platform_sensor_service.dart';
@@ -17,10 +16,10 @@ import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/controllers/media_window_controller.dart';
-import 'wyoming_service.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
 import 'screenshot_service.dart';
+import 'audio_service.dart'; // Import the AudioService
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -28,7 +27,6 @@ class MqttService extends GetxService {
   // Required dependencies
   final StorageService _storageService;
   final PlatformSensorService _sensorService;
-  final WyomingService _wyomingService = Get.find();
 
   // MQTT client
   MqttServerClient? _client;
@@ -90,24 +88,6 @@ class MqttService extends GetxService {
         print('MQTT DEBUG: Deleted discovery config for windows');
         // Republish config
         publishWindowsDiscoveryConfig();
-      }
-    });
-
-    // Listen for Wyoming events/audio and publish to Home Assistant if enabled
-    ever(_wyomingService.enabled, (enabled) {
-      if (enabled == true) {
-        _wyomingService.isConnected.listen((connected) {
-          if (connected) {
-            _wyomingService.messageStream.listen((msg) {
-              if (msg is WyomingJsonMessage) {
-                publishJsonToTopic('homeassistant/wyoming/event', msg.json);
-              } else if (msg is WyomingBinaryMessage) {
-                publishJsonToTopic(
-                    'homeassistant/wyoming/audio', {'audio': msg.data});
-              }
-            });
-          }
-        });
       }
     });
   }
@@ -612,9 +592,20 @@ class MqttService extends GetxService {
               controller.addAudioTile(title, url);
             }
           } else {
-            print(
-                '🔊 [MQTT] Playing audio in background via BackgroundMediaService: $url, loop=$loop');
-            mediaService.playAudio(url, loop: loop);
+            // Try to use AudioService first for background audio (with caching support)
+            try {
+              print(
+                  '🔊 [MQTT] Playing audio in background via AudioService with caching: $url, loop=$loop');
+              final audioService = Get.find<AudioService>();
+              audioService.playRemoteAudio(url, loop: loop);
+            } catch (e) {
+              print(
+                  '❌ Error playing audio with AudioService: $e, falling back to BackgroundMediaService');
+              // Fallback to MediaKit via BackgroundMediaService if AudioService fails
+              print(
+                  '🔊 [MQTT] Falling back to BackgroundMediaService for audio: $url, loop=$loop');
+              mediaService.playAudio(url, loop: loop);
+            }
           }
         } else if (type == 'video') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Video';

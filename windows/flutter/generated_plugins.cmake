@@ -3,16 +3,13 @@
 #
 
 list(APPEND FLUTTER_PLUGIN_LIST
-  audioplayers_windows
   battery_plus
   flutter_inappwebview_windows
   flutter_volume_controller
   flutter_webrtc
   media_kit_libs_windows_video
   media_kit_video
-  nsd_windows
   permission_handler_windows
-  record_windows
   screen_brightness_windows
   screen_retriever
   url_launcher_windows

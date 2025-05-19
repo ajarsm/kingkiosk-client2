@@ -10,11 +10,9 @@ import '../../controllers/app_state_controller.dart';
 import '../../services/background_media_service.dart';
 import '../../modules/settings/controllers/settings_controller.dart';
 import '../../services/window_manager_service.dart';
-import '../../services/websocket_service.dart';
 import '../../services/screenshot_service.dart';
 import '../../services/media_recovery_service.dart';
-import '../../controllers/call_settings_controller.dart';
-import '../../controllers/mediasoup_controller.dart';
+import '../../services/audio_service.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -39,20 +37,12 @@ class InitialBinding extends Bindings {
     Get.put<ScreenshotService>(ScreenshotService(), permanent: true);
     Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
 
-    // Register signaling and call settings
-    Get.putAsync<SignalingService>(
-      () => SignalingService(serverUrl: 'wss://your-mediasoup-server.com/ws')
-          .init(),
-      permanent: true,
-    );
-    Get.put(CallSettingsController(), permanent: true);
+    // Initialize audio service for sound effects
+    Get.putAsync<AudioService>(() => AudioService().init(), permanent: true);
 
     // Register media recovery service
     Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
         permanent: true);
-
-    // Register MediasoupController
-    Get.lazyPut(() => MediasoupController());
 
     // Eagerly register MQTT service after dependencies are ready
     final storageService = Get.find<StorageService>();
