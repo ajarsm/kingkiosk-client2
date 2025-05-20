@@ -1,0 +1,87 @@
+  // Build the AI Assistant button that shows call state
+  Widget _buildAiAssistantButton() {
+    return Obx(() {
+      // Check if AI is enabled in settings
+      if (!aiAssistantService.isAiEnabled.value) {
+        // AI is disabled, show greyed out button
+        return _buildToolbarButton(
+          icon: Icons.smart_toy,
+          label: 'AI (Off)',
+          onPressed: null,
+          locked: true,
+        );
+      }
+
+      // AI call is active - show call status and button to end
+      if (aiAssistantService.isAiCallActive.value) {
+        // Choose icon based on call state
+        IconData callIcon;
+        Color iconColor;
+        String statusLabel;
+
+        switch (aiAssistantService.aiCallState.value) {
+          case 'connecting':
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.amber;
+            statusLabel = 'Connecting';
+            break;
+          case 'connected':
+          case 'confirmed':
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.green;
+            statusLabel = 'Active';
+            break;
+          case 'failed':
+            callIcon = Icons.smart_toy_outlined;
+            iconColor = Colors.red;
+            statusLabel = 'Failed';
+            break;
+          case 'ended':
+            callIcon = Icons.smart_toy_outlined;
+            iconColor = Colors.grey;
+            statusLabel = 'Ended';
+            break;
+          default:
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.blue;
+            statusLabel = 'In Call';
+        }
+
+        // Return styled button with active call state
+        return InkWell(
+          onTap: () => aiAssistantService.endAiCall(),
+          child: Container(
+            height: 46,
+            constraints: BoxConstraints(minHeight: 46),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(callIcon, color: iconColor, size: 18),
+                    const SizedBox(height: 1),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(color: iconColor, fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+
+      // Default state - AI is enabled but not in a call
+      return _buildToolbarButton(
+        icon: Icons.smart_toy,
+        label: 'AI',
+        onPressed: () => aiAssistantService.callAiAssistant(),
+        locked: false,
+      );
+    });
+  }

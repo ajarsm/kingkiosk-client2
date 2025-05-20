@@ -14,6 +14,8 @@ import '../../services/window_manager_service.dart';
 import '../../services/screenshot_service.dart';
 import '../../services/media_recovery_service.dart';
 import '../../services/audio_service.dart';
+import '../../services/window_close_handler.dart';
+import '../../services/ai_assistant_service.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -39,20 +41,38 @@ class InitialBinding extends Bindings {
     Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
 
     // Initialize audio service for sound effects
-    Get.putAsync<AudioService>(() => AudioService().init(), permanent: true);
-
-    // Register media recovery service
+    Get.putAsync<AudioService>(() => AudioService().init(),
+        permanent: true); // Register media recovery service
     Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
-        permanent: true);    // Eagerly register MQTT service after dependencies are ready
+        permanent: true);
+
+    // Register window close handler for desktop platforms
+    Get.put<WindowCloseHandler>(await WindowCloseHandler().init(),
+        permanent: true);
+
+    // Eagerly register MQTT service after dependencies are ready
     final storageService = Get.find<StorageService>();
     final sensorService = Get.find<PlatformSensorService>();
     final mqttService = MqttService(storageService, sensorService);
-    final initializedMqttService = await mqttService.init();
-    
-    // Initialize SIP UA service for communications
+    final initializedMqttService = await mqttService
+        .init(); // Initialize SIP UA service for communications
     final sipService = SipService(storageService);
     Get.putAsync<SipService>(() => sipService.init(), permanent: true);
     Get.put<MqttService>(initializedMqttService, permanent: true);
     print('MQTT service initialized successfully');
+
+    // Initialize AI Assistant service
+    Future.delayed(Duration(seconds: 2), () {
+      // Delay AI service initialization to ensure SIP service is ready
+      try {
+        final aiAssistantService =
+            AiAssistantService(Get.find<SipService>(), storageService);
+        Get.putAsync<AiAssistantService>(() => aiAssistantService.init(),
+            permanent: true);
+        print('AI Assistant service initialized successfully');
+      } catch (e) {
+        print('Error initializing AI Assistant service: $e');
+      }
+    });
   }
 }

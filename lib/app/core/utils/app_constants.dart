@@ -27,11 +27,14 @@ class AppConstants {
   static const String keySelectedAudioInput = 'selectedAudioInput';
   static const String keySelectedVideoInput = 'selectedVideoInput';
   static const String keySelectedAudioOutput = 'selectedAudioOutput';
-
   // Wyoming Satellite Keys
   static const String keyWyomingHost = 'wyomingHost';
   static const String keyWyomingPort = 'wyomingPort';
   static const String keyWyomingEnabled = 'wyomingEnabled';
+
+  // AI Provider Keys
+  static const String keyAiProviderHost = 'aiProviderHost';
+  static const String keyAiEnabled = 'aiEnabled';
 
   // Screenshot Keys
   static const String keyLatestScreenshot = 'latestScreenshot';

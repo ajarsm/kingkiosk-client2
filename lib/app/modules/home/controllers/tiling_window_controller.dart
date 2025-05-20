@@ -670,7 +670,10 @@ class TilingWindowController extends GetxController {
       // In floating mode, update the position
       final index = tiles.indexWhere((t) => t.id == tile.id);
       if (index >= 0) {
-        tile.position = position;
+        // Constrain window position within container bounds
+        final constrainedPosition =
+            _constrainPositionWithinContainer(position, tile.size);
+        tile.position = constrainedPosition;
         tiles[index] = tile;
       }
     }
@@ -686,7 +689,33 @@ class TilingWindowController extends GetxController {
           math.max(size.width, 250),
           math.max(size.height, 180),
         );
+
+        // Check if current position would place the window outside bounds with new size
+        final currentPos = tile.position;
+        final rightEdge = currentPos.dx + newSize.width;
+        final bottomEdge = currentPos.dy + newSize.height;
+
+        // If window would extend beyond container bounds, adjust position
+        Offset adjustedPosition = currentPos;
+        if (rightEdge > _containerBounds.width) {
+          // Adjust x position to keep window within horizontal bounds
+          adjustedPosition = Offset(
+              math.max(0, _containerBounds.width - newSize.width),
+              adjustedPosition.dy);
+        }
+
+        if (bottomEdge > _containerBounds.height) {
+          // Adjust y position to keep window within vertical bounds
+          adjustedPosition = Offset(adjustedPosition.dx,
+              math.max(0, _containerBounds.height - newSize.height));
+        }
+
+        // Update tile with new size and potentially adjusted position
         tile.size = newSize;
+        if (adjustedPosition != currentPos) {
+          tile.position = adjustedPosition;
+        }
+
         tiles[index] = tile;
       }
     }
@@ -784,6 +813,19 @@ class TilingWindowController extends GetxController {
     }
   }
 
+  /// Constrains a position within the container bounds considering window size
+  Offset _constrainPositionWithinContainer(Offset position, Size windowSize) {
+    // Ensure window doesn't move outside the container bounds
+    final double maxX = _containerBounds.width - windowSize.width;
+    final double maxY = _containerBounds.height - windowSize.height;
+
+    // Apply constraints - keep window within visible container area
+    return Offset(
+      position.dx.clamp(0, maxX > 0 ? maxX : 0),
+      position.dy.clamp(0, maxY > 0 ? maxY : 0),
+    );
+  }
+
   /// Calculate the next position for a floating window
   Offset _calculateNextPosition() {
     // Start at (20, 20) and cascade each window by 30px
@@ -791,12 +833,19 @@ class TilingWindowController extends GetxController {
     const incrementOffset = 30.0;
     final windowCount = tiles.length;
 
-    return Offset(
+    // Generate a cascaded position
+    final rawPosition = Offset(
       baseOffset +
           (windowCount * incrementOffset) % (_containerBounds.width / 2),
       baseOffset +
           (windowCount * incrementOffset) % (_containerBounds.height / 2),
     );
+
+    // Default size for most windows
+    final defaultSize = Size(600, 400);
+
+    // Ensure the position is within bounds
+    return _constrainPositionWithinContainer(rawPosition, defaultSize);
   }
 
   /// Emergency function to reset all media resources when black screens occur

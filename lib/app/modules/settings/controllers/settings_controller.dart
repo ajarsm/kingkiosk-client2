@@ -7,6 +7,7 @@ import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
 import '../../../services/sip_service.dart';
+import '../../../services/ai_assistant_service.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
@@ -61,6 +62,10 @@ class SettingsController extends GetxController {
       'wss'.obs; // Default to wss for secure connection
   final RxBool sipRegistered = false.obs;
 
+  // AI settings
+  final RxBool aiEnabled = false.obs;
+  final RxString aiProviderHost = ''.obs;
+
   // App settings
   final RxBool kioskMode = true.obs;
   final RxBool showSystemInfo = true.obs;
@@ -96,6 +101,8 @@ class SettingsController extends GetxController {
   final TextEditingController deviceNameController = TextEditingController();
   final TextEditingController kioskStartUrlController = TextEditingController();
   final TextEditingController sipServerHostController = TextEditingController();
+  final TextEditingController aiProviderHostController =
+      TextEditingController();
 
   @override
   void onInit() {
@@ -155,6 +162,7 @@ class SettingsController extends GetxController {
     deviceNameController.dispose();
     kioskStartUrlController.dispose();
     sipServerHostController.dispose();
+    aiProviderHostController.dispose();
     super.onClose();
   }
 
@@ -198,6 +206,12 @@ class SettingsController extends GetxController {
             AppConstants.defaultSipServerHost;
     sipProtocol.value =
         _storageService.read<String>(AppConstants.keySipProtocol) ?? 'wss';
+
+    // Load AI settings
+    aiEnabled.value =
+        _storageService.read<bool>(AppConstants.keyAiEnabled) ?? false;
+    aiProviderHost.value =
+        _storageService.read<String>(AppConstants.keyAiProviderHost) ?? '';
 
     // Device name: if not set, use hostname
     String? storedDeviceName =
@@ -267,6 +281,11 @@ class SettingsController extends GetxController {
     sipServerHostController.text = sipServerHost.value;
     sipServerHostController.selection = TextSelection.fromPosition(
       TextPosition(offset: sipServerHostController.text.length),
+    );
+
+    aiProviderHostController.text = aiProviderHost.value;
+    aiProviderHostController.selection = TextSelection.fromPosition(
+      TextPosition(offset: aiProviderHostController.text.length),
     );
   }
 
@@ -386,12 +405,15 @@ class SettingsController extends GetxController {
       snackPosition: SnackPosition.BOTTOM,
     );
 
-    // Connect if enabled
-    if (mqttEnabled.value) {
-      connectMqtt();
-    } else {
-      disconnectMqtt();
-    }
+    // Handle connection changes with async operations safely
+    Future.microtask(() async {
+      // Connect if enabled or disconnect if disabled
+      if (mqttEnabled.value) {
+        connectMqtt();
+      } else {
+        await disconnectMqtt();
+      }
+    });
   }
 
   void setSipProtocol(String protocol) {
@@ -526,16 +548,26 @@ class SettingsController extends GetxController {
     });
   }
 
-  void disconnectMqtt() {
+  Future<void> disconnectMqtt() async {
     if (mqttService != null) {
-      mqttService!.disconnect().then((_) {
+      try {
+        await mqttService!.disconnect();
         mqttConnected.value = false;
         Get.snackbar(
           'MQTT Disconnected',
           'Disconnected from MQTT broker',
           snackPosition: SnackPosition.BOTTOM,
         );
-      });
+      } catch (e) {
+        print('Error disconnecting from MQTT: $e');
+        Get.snackbar(
+          'MQTT Disconnection Error',
+          'Error disconnecting from MQTT: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+      }
     }
   }
 
@@ -580,16 +612,26 @@ class SettingsController extends GetxController {
     });
   }
 
-  void unregisterSip() {
+  Future<void> unregisterSip() async {
     if (sipService != null) {
-      sipService!.unregister().then((_) {
+      try {
+        await sipService!.unregister();
         sipRegistered.value = false;
         Get.snackbar(
           'SIP Unregistered',
           'Unregistered from SIP server',
           snackPosition: SnackPosition.BOTTOM,
         );
-      });
+      } catch (e) {
+        print('Error unregistering SIP: $e');
+        Get.snackbar(
+          'SIP Error',
+          'Error unregistering from SIP server: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+      }
     }
   }
 
@@ -632,15 +674,23 @@ class SettingsController extends GetxController {
   }
 
   void resetAllSettings() {
-    // First disconnect MQTT if connected
-    if (mqttConnected.value && mqttService != null) {
-      disconnectMqtt();
+    // Create an async task to handle services disconnection
+    Future<void> disconnectServices() async {
+      // First disconnect MQTT if connected
+      if (mqttConnected.value && mqttService != null) {
+        await disconnectMqtt();
+        print('MQTT disconnected during settings reset');
+      }
+
+      // Then unregister SIP if registered
+      if (sipRegistered.value && sipService != null) {
+        await unregisterSip();
+        print('SIP unregistered during settings reset');
+      }
     }
 
-    // First unregister SIP if registered
-    if (sipRegistered.value && sipService != null) {
-      unregisterSip();
-    }
+    // Start the async operation but don't wait for it
+    disconnectServices();
 
     // Reset theme
     isDarkMode.value = false;
@@ -657,6 +707,10 @@ class SettingsController extends GetxController {
     sipEnabled.value = false;
     sipServerHost.value = AppConstants.defaultSipServerHost;
 
+    // Reset AI settings
+    aiEnabled.value = false;
+    aiProviderHost.value = '';
+
     // Reset app settings
     kioskMode.value = true;
     showSystemInfo.value = true;
@@ -672,6 +726,8 @@ class SettingsController extends GetxController {
         AppConstants.keyMqttHaDiscovery, mqttHaDiscovery.value);
     _storageService.write(AppConstants.keySipEnabled, sipEnabled.value);
     _storageService.write(AppConstants.keySipServerHost, sipServerHost.value);
+    _storageService.write(AppConstants.keyAiEnabled, aiEnabled.value);
+    _storageService.write(AppConstants.keyAiProviderHost, aiProviderHost.value);
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
     _storageService.write(AppConstants.keyShowSystemInfo, showSystemInfo.value);
 
@@ -690,7 +746,10 @@ class SettingsController extends GetxController {
     mqttEnabled.value = value;
     _storageService.write(AppConstants.keyMqttEnabled, value);
     if (!value && mqttConnected.value) {
-      disconnectMqtt();
+      // Handle disconnect in a fire-and-forget way, but with proper async
+      Future.microtask(() async {
+        await disconnectMqtt();
+      });
     }
   }
 
@@ -750,5 +809,39 @@ class SettingsController extends GetxController {
     kioskStartUrl.value = url;
     kioskStartUrlController.text = url;
     _storageService.write(AppConstants.keyKioskStartUrl, url);
+  }
+
+  void saveAiSettings() {
+    // Get value from text controller
+    aiProviderHost.value = aiProviderHostController.text;
+
+    // Save AI settings
+    _storageService.write(AppConstants.keyAiEnabled, aiEnabled.value);
+    _storageService.write(AppConstants.keyAiProviderHost, aiProviderHost.value);
+
+    // Also reload settings in the AI assistant service if available
+    try {
+      final aiService = Get.find<AiAssistantService>();
+      aiService.reloadSettings();
+    } catch (_) {
+      // Service may not be available yet; ignore
+    }
+
+    Get.snackbar(
+      'Settings Saved',
+      'AI settings have been updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  void toggleAiEnabled(bool value) {
+    aiEnabled.value = value;
+    _storageService.write(AppConstants.keyAiEnabled, value);
+  }
+
+  void saveAiProviderHost(String host) {
+    aiProviderHost.value = host;
+    aiProviderHostController.text = host;
+    _storageService.write(AppConstants.keyAiProviderHost, host);
   }
 }

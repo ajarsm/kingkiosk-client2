@@ -66,7 +66,7 @@ class SettingsControllerFixed extends SettingsController {
     Get.find<StorageService>().write('settingsPin', pin);
   }
 
-  void resetAllSettings() {
+  Future<void> resetAllSettings() async {
     // Reset all settings to their default values
     isDarkMode.value = false;
     kioskMode.value = true;
@@ -94,7 +94,12 @@ class SettingsControllerFixed extends SettingsController {
 
     // Disconnect from any active connections
     if (mqttConnected.value) {
-      disconnectMqtt();
+      await disconnectMqtt();
+    }
+
+    // Unregister from SIP if registered
+    if (sipRegistered.value) {
+      await unregisterSip();
     }
 
     // Save the updated settings to storage
@@ -152,16 +157,27 @@ class SettingsControllerFixed extends SettingsController {
     });
   }
 
-  void disconnectMqtt() {
+  @override
+  Future<void> disconnectMqtt() async {
     if (mqttService != null) {
-      mqttService!.disconnect().then((_) {
+      try {
+        await mqttService!.disconnect();
         mqttConnected.value = false;
         Get.snackbar(
           'MQTT Disconnected',
           'Disconnected from MQTT broker',
           snackPosition: SnackPosition.BOTTOM,
         );
-      });
+      } catch (e) {
+        print('Error disconnecting from MQTT: $e');
+        Get.snackbar(
+          'MQTT Disconnection Error',
+          'Error disconnecting from MQTT: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+      }
     }
   }
 
@@ -213,6 +229,30 @@ class SettingsControllerFixed extends SettingsController {
     // Update SIP service if available and save the setting
     if (sipService != null) {
       sipService!.setProtocol(protocol);
+    }
+  }
+
+  @override
+  Future<void> unregisterSip() async {
+    if (sipService != null) {
+      try {
+        await sipService!.unregister();
+        sipRegistered.value = false;
+        Get.snackbar(
+          'SIP Unregistered',
+          'Unregistered from SIP server',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } catch (e) {
+        print('Error unregistering SIP: $e');
+        Get.snackbar(
+          'SIP Error',
+          'Error unregistering from SIP server: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+      }
     }
   }
 }

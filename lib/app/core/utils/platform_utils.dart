@@ -4,6 +4,9 @@ import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'dart:io' show exit;
+import '../../services/app_lifecycle_service.dart';
+import '../../services/sip_service.dart';
+import '../../services/mqtt_service_consolidated.dart';
 
 class PlatformUtils {
   /// Checks if the current platform is a desktop platform (Windows, macOS, Linux)
@@ -94,8 +97,23 @@ class PlatformUtils {
 
   /// Exit the application
   static Future<void> exitApplication() async {
-    // First disable kiosk mode
-    await disableKioskMode();
+    try {
+      // First unregister from all services for clean shutdown
+      if (Get.isRegistered<AppLifecycleService>()) {
+        // Use the lifecycle service to perform clean disconnection
+        final lifecycleService = Get.find<AppLifecycleService>();
+        await lifecycleService.performCleanShutdown();
+      } else {
+        // Direct service cleanup if lifecycle service is not available
+        await _cleanupServices();
+      }
+
+      // Then disable kiosk mode
+      await disableKioskMode();
+    } catch (e) {
+      print('Error during shutdown: $e');
+      // Continue with exit even if cleanup fails
+    }
 
     // Close the app using the appropriate method for each platform
     if (isDesktop) {
@@ -109,5 +127,36 @@ class PlatformUtils {
       exit(0); // Fallback for other platforms
     }
     // Web can't be exited programmatically
+  }
+
+  /// Helper method to clean up services when exiting
+  static Future<void> _cleanupServices() async {
+    // Enhanced for more thorough cleanup
+    print('Performing comprehensive cleanup of all services before exit');
+
+    // Unregister SIP if available
+    if (Get.isRegistered<SipService>()) {
+      try {
+        final sipService = Get.find<SipService>();
+        print('Unregistering SIP service before exit');
+        await sipService.unregister();
+      } catch (e) {
+        print('Error unregistering SIP: $e');
+      }
+    }
+
+    // Disconnect MQTT if available
+    if (Get.isRegistered<MqttService>()) {
+      try {
+        final mqttService = Get.find<MqttService>();
+        print('Disconnecting MQTT service before exit');
+        await mqttService.disconnect();
+      } catch (e) {
+        print('Error disconnecting MQTT: $e');
+      }
+    }
+
+    // Give a small delay to ensure all cleanup operations complete
+    await Future.delayed(Duration(milliseconds: 300));
   }
 }

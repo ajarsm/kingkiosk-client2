@@ -339,27 +339,36 @@ class MqttService extends GetxService {
     }
   }
 
-  /// Disconnect from the MQTT broker
+  /// Disconnect from the MQTT broker with improved error handling
   Future<void> disconnect() async {
     if (_client != null) {
       try {
         // Publish offline status before disconnecting
         publishStatus('offline');
+        debugPrint('MQTT offline status published');
 
         // Stop stats update timer
         _stopStatsUpdate();
+        debugPrint('MQTT stats update timer stopped');
+
+        // Short delay to ensure offline status is sent
+        await Future.delayed(Duration(milliseconds: 100));
 
         // Disconnect
         _client!.disconnect();
         isConnected.value = false;
-        print('MQTT Disconnected');
+        debugPrint('MQTT Disconnected successfully');
       } catch (e) {
-        print('MQTT Disconnect error: $e');
+        debugPrint('MQTT Disconnect error: $e');
+        // Still mark as disconnected even if there was an error
+        isConnected.value = false;
       }
+    } else {
+      debugPrint('MQTT Disconnect: No active client');
     }
   }
 
-  /// Publish device status (online/offline)
+  /// Publish the device status (online/offline)
   void publishStatus(String status) {
     if (_client != null &&
         _client!.connectionStatus!.state == MqttConnectionState.connected) {
@@ -375,23 +384,60 @@ class MqttService extends GetxService {
     }
   }
 
-  /// Publish a JSON payload to an arbitrary topic (for diagnostics, etc.)
+  /// Publish a JSON payload to an MQTT topic
   void publishJsonToTopic(String topic, Map<String, dynamic> payload,
-      {bool retain = true}) {
-    if (!isConnected.value || _client == null) {
-      print('MQTT not connected, cannot publish to $topic');
-      return;
+      {bool retain = false}) {
+    if (_client != null &&
+        _client!.connectionStatus != null &&
+        _client!.connectionStatus!.state == MqttConnectionState.connected) {
+      try {
+        final builder = MqttClientPayloadBuilder();
+        final jsonString = jsonEncode(payload);
+        builder.addString(jsonString);
+
+        _client!.publishMessage(
+          topic,
+          MqttQos.atLeastOnce,
+          builder.payload!,
+          retain: retain,
+        );
+
+        debugPrint(
+            'Published JSON to $topic: ${jsonString.substring(0, min(100, jsonString.length))}${jsonString.length > 100 ? '...' : ''}');
+      } catch (e) {
+        debugPrint('Error publishing JSON to topic $topic: $e');
+      }
+    } else {
+      debugPrint('Cannot publish to $topic: MQTT client not connected');
     }
-    final builder = MqttClientPayloadBuilder();
-    builder.addString(jsonEncode(payload));
-    _client!.publishMessage(
-      topic,
-      MqttQos.atLeastOnce,
-      builder.payload!,
-      retain: retain,
-    );
-    print(
-        'MQTT: Published JSON to $topic: ${jsonEncode(payload)} (retain=$retain)');
+  }
+
+  /// Clean up resources when service is closed
+  @override
+  void onClose() {
+    debugPrint('MQTT service onClose called - performing clean shutdown');
+
+    try {
+      // First publish offline status if connected
+      if (_client != null &&
+          _client!.connectionStatus != null &&
+          _client!.connectionStatus!.state == MqttConnectionState.connected) {
+        publishStatus('offline');
+        debugPrint('Published offline status before disconnect');
+      }
+
+      // Ensure proper disconnection when service is destroyed
+      disconnect();
+
+      // Cancel any active timer
+      _stopStatsUpdate();
+
+      debugPrint('MQTT service shutdown completed');
+    } catch (e) {
+      debugPrint('Error during MQTT service shutdown: $e');
+    }
+
+    super.onClose();
   }
 
   /// Start timer to periodically update device stats

@@ -7,6 +7,7 @@ import '../widgets/web_view_tile.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
 import '../widgets/image_tile.dart';
+import '../widgets/auto_hide_title_bar.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -18,6 +19,7 @@ import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
+import '../../../services/ai_assistant_service.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
 
 class TilingWindowView extends StatefulWidget {
@@ -33,6 +35,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
   late final AppStateController appStateController;
   late final PlatformSensorService sensorService;
   late final SettingsController settingsController;
+  // Optional reference to AI assistant service
+  AiAssistantService? aiAssistantService;
   late final StreamSubscription kioskModeSub;
 
   // Add a GlobalKey to control the toolbar from the handle
@@ -46,6 +50,24 @@ class TilingWindowViewState extends State<TilingWindowView> {
     appStateController = Get.find<AppStateController>();
     sensorService = Get.find<PlatformSensorService>();
     settingsController = Get.find<SettingsController>();
+
+    // Try to find AI Assistant service if available
+    try {
+      aiAssistantService = Get.find<AiAssistantService>();
+    } catch (e) {
+      // AI Assistant service may not be ready yet
+      debugPrint('AI Assistant service not available yet: $e');
+
+      // Set up delayed retry
+      Future.delayed(Duration(seconds: 3), () {
+        try {
+          aiAssistantService = Get.find<AiAssistantService>();
+          setState(() {}); // Refresh UI once service is available
+        } catch (e) {
+          debugPrint('Still cannot find AI Assistant service: $e');
+        }
+      });
+    }
 
     // Listen to kioskMode changes
     kioskModeSub = settingsController.kioskMode.listen((enabled) {
@@ -219,42 +241,32 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
         // Apply highlight if it's selected OR currently highlighted
         final shouldHighlight = isSelected || isHighlighted;
-
-        return GestureDetector(
-          onTap: locked ? null : () => controller.selectTile(tile),
-          child: AnimatedContainer(
-            duration: const Duration(milliseconds: 300),
-            curve: Curves.easeInOut,
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: shouldHighlight ? Colors.blue : Colors.grey,
-                width: shouldHighlight ? 2 : 1,
+        return MouseRegion(
+          onEnter: (_) {
+            print('DEBUG: Mouse entered window ${tile.name}');
+          },
+          child: GestureDetector(
+            onTap: locked ? null : () => controller.selectTile(tile),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 300),
+              curve: Curves.easeInOut,
+              decoration: BoxDecoration(
+                border: Border.all(
+                  color: shouldHighlight ? Colors.blue : Colors.grey,
+                  width: shouldHighlight ? 2 : 1,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: shouldHighlight
+                        ? Colors.blue.withOpacity(0.3)
+                        : Colors.black.withOpacity(0.1),
+                    blurRadius: 5,
+                    spreadRadius: 1,
+                  ),
+                ],
               ),
-              boxShadow: [
-                BoxShadow(
-                  color: shouldHighlight
-                      ? Colors.blue.withOpacity(0.3)
-                      : Colors.black.withOpacity(0.1),
-                  blurRadius: 5,
-                  spreadRadius: 1,
-                ),
-              ],
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                // Title bar and controls: lock pointer events when locked
-                _buildTitleBar(tile, locked),
-                // Window content: always interactive
-                Expanded(
-                  child: _buildTileContent(tile),
-                ),
-                // Only show resize handle in floating mode and when not locked
-                if (!controller.tilingMode.value && !locked)
-                  _buildResizeHandle(tile),
-                // Force rebuild on lock state change to ensure drag is re-enabled
-                if (locked) SizedBox.shrink(),
-              ],
+              // We'll let the AutoHideTitleBar handle the entire window
+              child: _buildTitleBar(tile, locked),
             ),
           ),
         );
@@ -263,111 +275,25 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }
 
   Widget _buildTitleBar(WindowTile tile, bool locked) {
-    return AbsorbPointer(
-      absorbing: locked,
-      child: Container(
-        height: 30,
-        color: Get.isDarkMode ? Colors.grey[800] : Colors.grey[200],
-        child: Row(
-          children: [
-            // Window icon
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8.0),
-              child: _getIconForTileType(tile.type),
-            ), // Window title (drag area)
-            Expanded(
-              child: GestureDetector(
-                onPanStart: (_) {
-                  // Highlight window when starting to drag
-                  controller.selectTile(tile);
-                },
-                onPanUpdate: (details) {
-                  controller.updateTilePosition(
-                    tile,
-                    Offset(
-                      tile.position.dx + details.delta.dx,
-                      tile.position.dy + details.delta.dy,
-                    ),
-                  );
-                },
-                child: Text(
-                  tile.name,
-                  style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 12,
-                  ),
-                  overflow: TextOverflow.ellipsis,
-                ),
-              ),
-            ),
-            // Split buttons (only in tiling mode)
-            if (controller.tilingMode.value)
-              Row(
-                children: [
-                  Tooltip(
-                    message: "Split Vertically (Top/Bottom)",
-                    child: IconButton(
-                      icon: Icon(Icons.vertical_split, size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                      onPressed: () {
-                        controller.selectTile(tile);
-                        controller.splitTileVertical(tile);
-                      },
-                    ),
-                  ),
-                  Tooltip(
-                    message: "Split Horizontally (Left/Right)",
-                    child: IconButton(
-                      icon: Icon(Icons.horizontal_split, size: 16),
-                      padding: EdgeInsets.zero,
-                      constraints: BoxConstraints(),
-                      onPressed: () {
-                        controller.selectTile(tile);
-                        controller.splitTileHorizontal(tile);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-            // Maximize/Restore button (only in floating mode)
-            if (!controller.tilingMode.value)
-              Tooltip(
-                message:
-                    tile.isMaximized ? "Restore Window" : "Maximize Window",
-                child: IconButton(
-                  icon: Icon(
-                    tile.isMaximized ? Icons.filter_none : Icons.crop_square,
-                    size: 16,
-                  ),
-                  padding: EdgeInsets.zero,
-                  constraints: BoxConstraints(),
-                  onPressed: () {
-                    controller.selectTile(tile);
-                    if (tile.isMaximized) {
-                      controller.restoreTile(tile);
-                    } else {
-                      controller.maximizeTile(tile);
-                    }
-                  },
-                ),
-              ),
-            // Close button
-            Tooltip(
-              message: "Close Window",
-              child: IconButton(
-                icon: Icon(Icons.close, size: 16),
-                padding: EdgeInsets.zero,
-                constraints: BoxConstraints(),
-                onPressed: () {
-                  controller.selectTile(tile);
-                  controller.closeTile(tile);
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
+    return AutoHideTitleBar(
+      tile: tile,
+      locked: locked,
+      icon: _getIconForTileType(tile.type),
+      isTilingMode: controller.tilingMode.value,
+      onSelectTile: (tile) => controller.selectTile(tile),
+      onUpdatePosition: (tile, offset) =>
+          controller.updateTilePosition(tile, offset),
+      onSplitVertical: (tile) => controller.splitTileVertical(tile),
+      onSplitHorizontal: (tile) => controller.splitTileHorizontal(tile),
+      onMaximize: (tile) => controller.maximizeTile(tile),
+      onRestore: (tile) => controller.restoreTile(tile),
+      onClose: (tile) => controller.closeTile(tile),
+      contentBuilder: (tile) => _buildTileContent(tile),
+      onSizeChanged: !controller.tilingMode.value && !locked
+          ? (tile, size) => controller.updateTileSize(tile, size)
+          : null,
+      initiallyVisible: true,
+      alwaysVisible: false, // Set to true for debugging if needed
     );
   }
 
@@ -421,35 +347,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
             url: tile.url, imageUrls: tile.imageUrls, showControls: true);
     }
   }
-
-  Widget _buildResizeHandle(WindowTile tile) {
-    return GestureDetector(
-      onPanStart: (_) {
-        // Highlight window when starting to resize
-        controller.selectTile(tile);
-      },
-      onPanUpdate: (details) {
-        controller.updateTileSize(
-          tile,
-          Size(
-            tile.size.width + details.delta.dx,
-            tile.size.height + details.delta.dy,
-          ),
-        );
-      },
-      child: MouseRegion(
-        cursor: SystemMouseCursors.resizeDownRight,
-        child: Container(
-          height: 20,
-          alignment: Alignment.centerRight,
-          child: Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: Icon(Icons.drag_handle, size: 16, color: Colors.grey),
-          ),
-        ),
-      ),
-    );
-  }
+  // Resize handle is now managed by AutoHideTitleBar
 
   Widget _buildToolbar(BuildContext context, bool locked) {
     return Container(
@@ -514,6 +412,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
               onPressed: locked ? null : () => _showSystemInfoDialog(context),
               locked: locked,
             ),
+            _buildAiAssistantButton(),
           ],
           // Center lock icon
           Expanded(
@@ -590,6 +489,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
           _buildCompactSystemInfo(),
           // Notification Badge
           NotificationBadge(),
+          SizedBox(width: 8),
+          // AI Assistant Button
+          _buildAiAssistantButton(),
           SizedBox(width: 8),
           _buildToolbarButton(
             icon: Icons.settings_rounded,
@@ -1053,6 +955,101 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
     // Exit the application
     PlatformUtils.exitApplication();
+  }
+
+  // Build the AI Assistant button that shows call state
+  Widget _buildAiAssistantButton() {
+    // If AI assistant service is not available yet, show a loading icon
+    if (aiAssistantService == null) {
+      return _buildToolbarButton(
+        icon: Icons.smart_toy_outlined,
+        label: 'AI Loading',
+        onPressed: null,
+        locked: true,
+      );
+    }
+
+    return Obx(() {
+      // Check if AI is enabled in settings
+      if (!aiAssistantService!.isAiEnabled.value) {
+        // AI is disabled, show greyed out button
+        return _buildToolbarButton(
+          icon: Icons.smart_toy,
+          label: 'AI (Off)',
+          onPressed: null,
+          locked: true,
+        );
+      }
+      // AI call is active - show call status and button to end
+      if (aiAssistantService!.isAiCallActive.value) {
+        // Choose icon based on call state
+        IconData callIcon;
+        Color iconColor;
+        String statusLabel;
+
+        switch (aiAssistantService!.aiCallState.value) {
+          case 'connecting':
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.amber;
+            statusLabel = 'Connecting';
+            break;
+          case 'connected':
+          case 'confirmed':
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.green;
+            statusLabel = 'Active';
+            break;
+          case 'failed':
+            callIcon = Icons.smart_toy_outlined;
+            iconColor = Colors.red;
+            statusLabel = 'Failed';
+            break;
+          case 'ended':
+            callIcon = Icons.smart_toy_outlined;
+            iconColor = Colors.grey;
+            statusLabel = 'Ended';
+            break;
+          default:
+            callIcon = Icons.smart_toy;
+            iconColor = Colors.blue;
+            statusLabel = 'In Call';
+        }
+        // Return styled button with active call state
+        return InkWell(
+          onTap: () => aiAssistantService!.endAiCall(),
+          child: Container(
+            height: 46,
+            constraints: BoxConstraints(minHeight: 46),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12.0),
+              child: SingleChildScrollView(
+                scrollDirection: Axis.vertical,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(callIcon, color: iconColor, size: 18),
+                    const SizedBox(height: 1),
+                    Text(
+                      statusLabel,
+                      style: TextStyle(color: iconColor, fontSize: 10),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      }
+      // Default state - AI is enabled but not in a call
+      return _buildToolbarButton(
+        icon: Icons.smart_toy,
+        label: 'AI',
+        onPressed: () => aiAssistantService!.callAiAssistant(),
+        locked: false,
+      );
+    });
   }
 }
 

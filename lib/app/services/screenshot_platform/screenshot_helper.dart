@@ -36,4 +36,7 @@ class PlatformScreenshotHelperFactory {
 
 /// This is defined externally in screenshot_helper_impl.dart
 /// We just declare the signature here to maintain type safety
-external PlatformScreenshotHelper createHelper();
+PlatformScreenshotHelper createHelper() {
+  throw UnsupportedError(
+      'Implementation should be provided by platform-specific code');
+}

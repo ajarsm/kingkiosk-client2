@@ -55,6 +55,10 @@ class SipService extends GetxService implements SipUaHelperListener {
       enabled.value =
           _storageService.read<bool>(AppConstants.keySipEnabled) ?? false;
 
+      // Load device name - critical for registration
+      deviceName.value =
+          _storageService.read<String>(AppConstants.keyDeviceName) ?? '';
+
       // Register for SIP UA events
       _helper.addSipUaHelperListener(this);
 
@@ -64,10 +68,17 @@ class SipService extends GetxService implements SipUaHelperListener {
       // Load selected device IDs from storage and set selected devices
       await loadSelectedDevices();
 
-      // Auto-register if enabled
+      // Auto-register if enabled and we have a device name
       if (enabled.value) {
-        Future.delayed(Duration(seconds: 2), () {
-          register();
+        // Give a bit more time for other services to initialize
+        Future.delayed(Duration(seconds: 3), () {
+          if (deviceName.value.isNotEmpty) {
+            debugPrint(
+                'Auto-registering SIP with device name: ${deviceName.value}');
+            register();
+          } else {
+            debugPrint('Cannot auto-register SIP: missing device name');
+          }
         });
       }
 
@@ -81,11 +92,21 @@ class SipService extends GetxService implements SipUaHelperListener {
   /// Cleanup on service destruction
   void dispose() {
     try {
-      unregister();
+      // Ensure we're unregistered when the service is disposed
+      if (isRegistered.value) {
+        unregister();
+      }
     } catch (e) {
       debugPrint('Error unregistering SIP: $e');
     }
     _helper.removeSipUaHelperListener(this);
+  }
+
+  @override
+  void onClose() {
+    // Make sure to clean up when GetX service is closed
+    dispose();
+    super.onClose();
   }
 
   /// Register with SIP server

@@ -9,7 +9,7 @@ class WebViewTile extends StatefulWidget {
   final String url;
   final int? refreshKey;
   final String? windowId; // New: window ID for MQTT and window management
-  
+
   const WebViewTile({
     Key? key,
     required this.url,
@@ -21,7 +21,8 @@ class WebViewTile extends StatefulWidget {
   State<WebViewTile> createState() => _WebViewTileState();
 }
 
-class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+class _WebViewTileState extends State<WebViewTile>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late WebViewData _webViewData;
   bool _isLoading = true;
   bool _hasError = false;
@@ -30,7 +31,6 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
 
   @override
   bool get wantKeepAlive => true; // Keep state alive when widget is not visible
-  
   @override
   void initState() {
     super.initState();
@@ -38,52 +38,51 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
     PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
     WidgetsBinding.instance.addObserver(this);
     _webViewData = WebViewManager().getWebViewFor(widget.url);
-    print('🔄 [REFRESH] WebViewTile.initState - url: ${widget.url}, refreshKey: ${widget.refreshKey}, windowId: ${widget.windowId}');
   }
 
   @override
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);
-    print('🔄 [REFRESH] WebViewTile.didUpdateWidget - url: ${widget.url}, oldRefreshKey: ${oldWidget.refreshKey}, newRefreshKey: ${widget.refreshKey}, oldWindowId: ${oldWidget.windowId}, newWindowId: ${widget.windowId}');
-    
+
     // If URL changed OR refreshKey changed (for refresh command)
-    if (oldWidget.url != widget.url || oldWidget.refreshKey != widget.refreshKey || oldWidget.windowId != widget.windowId) {
-      print('🔄 [REFRESH] WebViewTile forcing reset due to URL, refreshKey, or windowId change');
-      
+    if (oldWidget.url != widget.url ||
+        oldWidget.refreshKey != widget.refreshKey ||
+        oldWidget.windowId != widget.windowId) {
       // Reset the WebViewData
       _webViewData = WebViewManager().getWebViewFor(widget.url);
-      
+
       setState(() {
         _isLoading = true;
         _hasError = false;
       });
     }
   }
-  
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-  
+
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    
-    print('🔄 [REFRESH] WebViewTile.build - url: ${widget.url}, refreshKey: ${widget.refreshKey}, windowId: ${widget.windowId}');
-    
-    // Use default key for InAppWebView; let WebViewTile's key control widget recreation
+
     final webViewWidget = InAppWebView(
+      key: ValueKey('webview_${widget.url}_${widget.refreshKey ?? 0}'),
       initialUrlRequest: URLRequest(
         url: WebUri(widget.url),
       ),
       initialSettings: InAppWebViewSettings(
-        supportZoom: true,
-        useHybridComposition: true,
         javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        transparentBackground: false,
+        supportZoom: true,
+        verticalScrollBarEnabled: true,
+        horizontalScrollBarEnabled: true,
+        allowsInlineMediaPlayback: true,
       ),
       onWebViewCreated: (controller) {
-        print('🔄 [REFRESH] WebView created');
         if (!_webViewData.isInitialized) {
           _webViewData.controller.complete(controller);
           _webViewData.isInitialized = true;
@@ -91,7 +90,6 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
         // Register WebWindowController when the webview is created
         if (widget.windowId != null) {
           final wm = Get.find<WindowManagerService>();
-          // Unregister any existing controller for this window ID to avoid duplicates
           wm.unregisterWindow(widget.windowId!);
           final webController = WebWindowController(
             windowName: widget.windowId!,
@@ -101,17 +99,14 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
             },
           );
           wm.registerWindow(webController);
-          print('🔄 [REFRESH] Registered WebWindowController for windowId: ${widget.windowId}');
         }
       },
       onLoadStart: (controller, url) {
-        print('🔄 [REFRESH] WebView loading started: $url');
         setState(() {
           _isLoading = true;
         });
       },
       onLoadStop: (controller, url) {
-        print('🔄 [REFRESH] WebView loading completed: $url');
         setState(() {
           _isLoading = false;
         });
@@ -123,10 +118,8 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
           _errorMessage = error.description;
         });
       },
-      // Console messages are disabled to reduce noise
       onConsoleMessage: (controller, consoleMessage) {
-        // Uncomment the line below if you need to debug web content
-        // print("WebView Console: ${consoleMessage.message}");
+        print("WebView Console [${widget.url}]: ${consoleMessage.message}");
       },
     );
 
@@ -140,7 +133,9 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
             Text('Failed to load web content'),
             SizedBox(height: 8),
             Text(
-              _errorMessage.isNotEmpty ? _errorMessage : 'Unable to load: ${widget.url}',
+              _errorMessage.isNotEmpty
+                  ? _errorMessage
+                  : 'Unable to load: ${widget.url}',
               style: TextStyle(fontSize: 12),
               textAlign: TextAlign.center,
             ),
@@ -151,8 +146,8 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
                   _hasError = false;
                   _isLoading = true;
                 });
-                _webViewData.controller.future.then((controller) {
-                  controller.reload();
+                _webViewData.safelyExecute((controller) async {
+                  await controller.reload();
                 });
               },
               child: Text('Retry'),
@@ -166,8 +161,15 @@ class _WebViewTileState extends State<WebViewTile> with AutomaticKeepAliveClient
       children: [
         webViewWidget,
         if (_isLoading && !_hasError)
-          const Center(
-            child: CircularProgressIndicator(),
+          Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                CircularProgressIndicator(),
+                SizedBox(height: 16),
+                Text('Loading ${widget.url}...'),
+              ],
+            ),
           ),
       ],
     );

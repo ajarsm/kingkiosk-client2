@@ -4,6 +4,7 @@ import '../controllers/settings_controller_compat.dart';
 import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
 import 'communications_settings_view.dart';
+import 'ai_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
 
 class SettingsViewFixed extends GetView<SettingsControllerFixed> {
@@ -50,13 +51,18 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               children: [
                 MqttSettingsView(),
               ],
-            ),
-
-            // Communications
+            ), // Communications
             _buildSection(
               title: 'Communications',
               children: [
                 CommunicationsSettingsView(),
+              ],
+            ),
+            // AI Settings
+            _buildSection(
+              title: 'AI Assistant',
+              children: [
+                const AiSettingsView(),
               ],
             ),
 

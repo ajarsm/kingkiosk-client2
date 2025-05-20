@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:number_pad_keyboard/number_pad_keyboard.dart';
-import '../services/audio_service.dart';
+import '../services/audio_service_concurrent.dart';
 import 'shake_widget.dart';
 
 export 'settings_lock_pin_pad.dart'
@@ -57,14 +57,19 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
   }
 
   Future<void> _triggerError(String error) async {
+    // Play error sound using AudioService concurrently with animation
+    try {
+      // Call error sound without awaiting to allow concurrent execution with animation
+      AudioServiceConcurrent.playErrorConcurrent();
+    } catch (_) {}
+
     setState(() {
       _error = error;
       _enteredPin = '';
       _shake = true;
-    }); // Play error sound using AudioService
-    try {
-      AudioService.playError();
-    } catch (_) {}
+    });
+
+    // Reset shake state after animation completes
     await Future.delayed(const Duration(milliseconds: 500));
     setState(() {
       _shake = false;
