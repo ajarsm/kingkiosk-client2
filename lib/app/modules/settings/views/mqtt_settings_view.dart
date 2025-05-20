@@ -3,13 +3,12 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
 
 /// MQTT settings view with proper connection handling and sensor republishing
-class MqttSettingsView extends GetView<SettingsController> {
+class MqttSettingsView extends GetView<SettingsControllerFixed> {
   const MqttSettingsView({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Use the globally registered controller
-    final controller = Get.find<SettingsController>();
+    // Controller is automatically provided by GetView
     return Card(
       margin: const EdgeInsets.symmetric(vertical: 8.0),
       child: Padding(
@@ -28,21 +27,21 @@ class MqttSettingsView extends GetView<SettingsController> {
               ],
             ),
             const SizedBox(height: 16.0),
-            
+
             // Enable MQTT
             _buildMqttEnabledSwitch(controller),
-            
+
             // MQTT Configuration (only shown when enabled)
             Obx(() {
               if (!controller.mqttEnabled.value) {
                 return const SizedBox.shrink();
               }
-              
+
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const SizedBox(height: 16.0),
-                  
+
                   // Broker URL
                   TextFormField(
                     decoration: const InputDecoration(
@@ -54,7 +53,7 @@ class MqttSettingsView extends GetView<SettingsController> {
                     onChanged: controller.saveMqttBrokerUrl,
                   ),
                   const SizedBox(height: 8.0),
-                  
+
                   // Broker Port
                   TextFormField(
                     decoration: const InputDecoration(
@@ -70,7 +69,7 @@ class MqttSettingsView extends GetView<SettingsController> {
                     },
                   ),
                   const SizedBox(height: 8.0),
-                  
+
                   // Username
                   TextFormField(
                     decoration: const InputDecoration(
@@ -82,7 +81,7 @@ class MqttSettingsView extends GetView<SettingsController> {
                     onChanged: controller.saveMqttUsername,
                   ),
                   const SizedBox(height: 8.0),
-                  
+
                   // Password
                   TextFormField(
                     decoration: const InputDecoration(
@@ -95,7 +94,7 @@ class MqttSettingsView extends GetView<SettingsController> {
                     onChanged: controller.saveMqttPassword,
                   ),
                   const SizedBox(height: 8.0),
-                  
+
                   // Device Name
                   TextFormField(
                     decoration: const InputDecoration(
@@ -107,14 +106,14 @@ class MqttSettingsView extends GetView<SettingsController> {
                     onChanged: controller.saveDeviceName,
                   ),
                   const SizedBox(height: 16.0),
-                  
+
                   // Home Assistant Discovery
                   _buildHomeAssistantSwitch(controller),
                   const SizedBox(height: 16.0),
-                  
+
                   // Connection buttons
                   _buildConnectionButtons(controller),
-                  
+
                   // Republish sensors button
                   _buildRepublishSensorsButton(controller),
                 ],
@@ -125,86 +124,92 @@ class MqttSettingsView extends GetView<SettingsController> {
       ),
     );
   }
-  
-  Widget _buildMqttEnabledSwitch(SettingsController controller) {
+
+  Widget _buildMqttEnabledSwitch(SettingsControllerFixed controller) {
     return Obx(() => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text('Enable MQTT'),
-        Switch(
-          value: controller.mqttEnabled.value,
-          onChanged: controller.toggleMqttEnabled,
-        ),
-      ],
-    ));
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Enable MQTT'),
+            Switch(
+              value: controller.mqttEnabled.value,
+              onChanged: controller.toggleMqttEnabled,
+            ),
+          ],
+        ));
   }
-  
-  Widget _buildHomeAssistantSwitch(SettingsController controller) {
+
+  Widget _buildHomeAssistantSwitch(SettingsControllerFixed controller) {
     return Obx(() => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text('Home Assistant Discovery'),
-        Switch(
-          value: controller.mqttHaDiscovery.value,
-          onChanged: controller.toggleMqttHaDiscovery,
-        ),
-      ],
-    ));
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text('Home Assistant Discovery'),
+            Switch(
+              value: controller.mqttHaDiscovery.value,
+              onChanged: controller.toggleMqttHaDiscovery,
+            ),
+          ],
+        ));
   }
-  
-  Widget _buildConnectionButtons(SettingsController controller) {
+
+  Widget _buildConnectionButtons(SettingsControllerFixed controller) {
     return Obx(() => Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: [
-        ElevatedButton.icon(
-          icon: const Icon(Icons.link),
-          label: const Text('Connect'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.green[700],
-            foregroundColor: Colors.white,
-          ),
-          onPressed: controller.mqttConnected.value ? null : controller.connectMqtt,
-        ),
-        const SizedBox(width: 16.0),
-        ElevatedButton.icon(
-          icon: const Icon(Icons.link_off),
-          label: const Text('Disconnect'),
-          style: ElevatedButton.styleFrom(
-            backgroundColor: Colors.red[700],
-            foregroundColor: Colors.white,
-          ),
-          onPressed: controller.mqttConnected.value ? controller.disconnectMqtt : null,
-        ),
-        const SizedBox(width: 16.0),
-        // Connection status indicator
-        _buildConnectionIndicator(controller),
-      ],
-    ));
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            ElevatedButton.icon(
+              icon: const Icon(Icons.link),
+              label: const Text('Connect'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.green[700],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: controller.mqttConnected.value
+                  ? null
+                  : controller.connectMqtt,
+            ),
+            const SizedBox(width: 16.0),
+            ElevatedButton.icon(
+              icon: const Icon(Icons.link_off),
+              label: const Text('Disconnect'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red[700],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: controller.mqttConnected.value
+                  ? controller.disconnectMqtt
+                  : null,
+            ),
+            const SizedBox(width: 16.0),
+            // Connection status indicator
+            _buildConnectionIndicator(controller),
+          ],
+        ));
   }
-  
-  Widget _buildConnectionIndicator(SettingsController controller) {
+
+  Widget _buildConnectionIndicator(SettingsControllerFixed controller) {
     return Obx(() => Container(
-      width: 12,
-      height: 12,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        color: controller.mqttConnected.value ? Colors.green : Colors.red,
-      ),
-    ));
+          width: 12,
+          height: 12,
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: controller.mqttConnected.value ? Colors.green : Colors.red,
+          ),
+        ));
   }
-  
-  Widget _buildRepublishSensorsButton(SettingsController controller) {
+
+  Widget _buildRepublishSensorsButton(SettingsControllerFixed controller) {
     return Padding(
       padding: const EdgeInsets.only(top: 16.0),
       child: Obx(() => ElevatedButton.icon(
-        icon: const Icon(Icons.refresh),
-        label: const Text('Republish All Sensors'),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: Colors.blue[700],
-          foregroundColor: Colors.white,
-        ),
-        onPressed: controller.mqttConnected.value ? controller.forceRepublishSensors : null,
-      )),
+            icon: const Icon(Icons.refresh),
+            label: const Text('Republish All Sensors'),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.blue[700],
+              foregroundColor: Colors.white,
+            ),
+            onPressed: controller.mqttConnected.value
+                ? controller.forceRepublishSensors
+                : null,
+          )),
     );
   }
 }

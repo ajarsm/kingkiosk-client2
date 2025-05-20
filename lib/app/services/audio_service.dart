@@ -26,7 +26,7 @@ class AudioService extends GetxService {
   Future<AudioService> init() async {
     // Initialize the sound players in advance
     await _initializePlayer(wrongPin, 'assets/sounds/wrong.wav');
-    await _initializePlayer(success, 'assets/sounds/success.wav');
+    await _initializePlayer(success, 'assets/sounds/correct.wav');
     await _initializePlayer(notification, 'assets/sounds/notification.wav');
 
     // Add any other sounds from the assets folder as needed

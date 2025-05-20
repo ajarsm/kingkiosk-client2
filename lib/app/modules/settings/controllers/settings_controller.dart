@@ -6,6 +6,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
+import '../../../services/sip_service.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
@@ -14,6 +15,7 @@ class SettingsController extends GetxController {
   // Services
   final StorageService _storageService = Get.find<StorageService>();
   late MqttService? _mqttService;
+  late SipService? _sipService;
 
   // Robust getter for MqttService to handle late registration
   MqttService? get mqttService {
@@ -25,6 +27,18 @@ class SettingsController extends GetxController {
       }
     }
     return _mqttService;
+  }
+
+  // Getter for SipService
+  SipService? get sipService {
+    if (_sipService == null) {
+      try {
+        _sipService = Get.find<SipService>();
+      } catch (_) {
+        // Still not available
+      }
+    }
+    return _sipService;
   }
 
   // Theme settings
@@ -39,6 +53,13 @@ class SettingsController extends GetxController {
   final RxString deviceName = ''.obs;
   final RxBool mqttHaDiscovery = false.obs;
   final RxBool mqttConnected = false.obs;
+
+  // SIP settings
+  final RxBool sipEnabled = false.obs;
+  final RxString sipServerHost = AppConstants.defaultSipServerHost.obs;
+  final RxString sipProtocol =
+      'wss'.obs; // Default to wss for secure connection
+  final RxBool sipRegistered = false.obs;
 
   // App settings
   final RxBool kioskMode = true.obs;
@@ -74,6 +95,7 @@ class SettingsController extends GetxController {
   final TextEditingController mqttPasswordController = TextEditingController();
   final TextEditingController deviceNameController = TextEditingController();
   final TextEditingController kioskStartUrlController = TextEditingController();
+  final TextEditingController sipServerHostController = TextEditingController();
 
   @override
   void onInit() {
@@ -85,6 +107,14 @@ class SettingsController extends GetxController {
     } catch (e) {
       print('MQTT Service not available: $e');
       _mqttService = null;
+    }
+
+    // Try to find SIP service (may not be available during tests)
+    try {
+      _sipService = Get.find<SipService>();
+    } catch (e) {
+      print('SIP Service not available: $e');
+      _sipService = null;
     }
 
     // Load settings PIN from storage
@@ -106,6 +136,14 @@ class SettingsController extends GetxController {
         mqttConnected.value = connected;
       });
     }
+
+    // Ensure sipRegistered stays in sync with the actual service
+    if (sipService != null) {
+      sipRegistered.value = sipService!.isRegistered.value;
+      ever(sipService!.isRegistered, (bool registered) {
+        sipRegistered.value = registered;
+      });
+    }
   }
 
   @override
@@ -116,6 +154,7 @@ class SettingsController extends GetxController {
     mqttPasswordController.dispose();
     deviceNameController.dispose();
     kioskStartUrlController.dispose();
+    sipServerHostController.dispose();
     super.onClose();
   }
 
@@ -151,6 +190,15 @@ class SettingsController extends GetxController {
     mqttHaDiscovery.value =
         _storageService.read<bool>(AppConstants.keyMqttHaDiscovery) ?? false;
 
+    // Load SIP settings
+    sipEnabled.value =
+        _storageService.read<bool>(AppConstants.keySipEnabled) ?? false;
+    sipServerHost.value =
+        _storageService.read<String>(AppConstants.keySipServerHost) ??
+            AppConstants.defaultSipServerHost;
+    sipProtocol.value =
+        _storageService.read<String>(AppConstants.keySipProtocol) ?? 'wss';
+
     // Device name: if not set, use hostname
     String? storedDeviceName =
         _storageService.read<String>(AppConstants.keyDeviceName);
@@ -174,6 +222,9 @@ class SettingsController extends GetxController {
 
     // Initialize MQTT connection status
     _initMqttStatus();
+
+    // Initialize SIP registration status
+    _initSipStatus();
   }
 
   Future<String> _getHostname() async {
@@ -212,6 +263,11 @@ class SettingsController extends GetxController {
     kioskStartUrlController.selection = TextSelection.fromPosition(
       TextPosition(offset: kioskStartUrlController.text.length),
     );
+
+    sipServerHostController.text = sipServerHost.value;
+    sipServerHostController.selection = TextSelection.fromPosition(
+      TextPosition(offset: sipServerHostController.text.length),
+    );
   }
 
   void autoConnectMqttIfEnabled() {
@@ -237,6 +293,28 @@ class SettingsController extends GetxController {
       // Listen to connection status changes
       ever(mqttService!.isConnected, (bool connected) {
         mqttConnected.value = connected;
+      });
+    }
+  }
+
+  void _initSipStatus() {
+    // Initialize SIP registration status
+    if (sipService != null) {
+      // Set device name in SIP service (critical for registration)
+      sipService!.deviceName.value = deviceName.value;
+
+      // Set initial registration status
+      sipRegistered.value = sipService!.isRegistered.value;
+
+      // Listen to registration status changes
+      ever(sipService!.isRegistered, (bool registered) {
+        sipRegistered.value = registered;
+      });
+
+      // Listen to device name changes to update SIP service
+      ever(deviceName, (String name) {
+        sipService!.deviceName.value = name;
+        print('Updated SIP device name to: $name');
       });
     }
   }
@@ -316,7 +394,51 @@ class SettingsController extends GetxController {
     }
   }
 
-  // WebSocket and WebRTC settings methods removed
+  void setSipProtocol(String protocol) {
+    if (protocol != 'ws' && protocol != 'wss') {
+      print('Invalid SIP protocol: $protocol. Must be "ws" or "wss"');
+      return;
+    }
+
+    sipProtocol.value = protocol;
+    _storageService.write(AppConstants.keySipProtocol, protocol);
+
+    // Update SIP service if available
+    if (sipService != null) {
+      sipService!.protocol.value = protocol;
+
+      // Re-register if already registered
+      if (sipRegistered.value) {
+        sipService!.unregister();
+        Future.delayed(Duration(milliseconds: 500), () {
+          sipService!.register();
+        });
+      }
+    }
+  }
+
+  void saveSipSettings() {
+    // Get values from text controllers
+    sipServerHost.value = sipServerHostController.text;
+
+    // Save SIP settings
+    _storageService.write(AppConstants.keySipEnabled, sipEnabled.value);
+    _storageService.write(AppConstants.keySipServerHost, sipServerHost.value);
+    _storageService.write(AppConstants.keySipProtocol, sipProtocol.value);
+
+    Get.snackbar(
+      'Settings Saved',
+      'SIP settings have been updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
+
+    // Register if enabled
+    if (sipEnabled.value) {
+      registerSip();
+    } else {
+      unregisterSip();
+    }
+  }
 
   void saveWebUrlSettings() {
     // Get values from text controllers
@@ -343,8 +465,15 @@ class SettingsController extends GetxController {
         .toLowerCase();
     deviceName.value = sanitized;
     _storageService.write(AppConstants.keyDeviceName, sanitized);
+
+    // Update MQTT service if available
     if (mqttService != null) {
       mqttService!.deviceName.value = sanitized;
+    }
+
+    // Update SIP service if available
+    if (sipService != null) {
+      sipService!.deviceName.value = sanitized;
     }
   }
 
@@ -410,6 +539,60 @@ class SettingsController extends GetxController {
     }
   }
 
+  void registerSip() {
+    if (sipService == null) {
+      print('SIP Service not available');
+      return;
+    }
+    // Only attempt to register if not already registered
+    if (sipService!.isRegistered.value) {
+      print('SIP already registered, skipping registration attempt');
+      return;
+    }
+
+    // Update SIP service settings
+    sipService!.serverHost.value = sipServerHost.value;
+    sipService!.deviceName.value = deviceName.value;
+    sipService!.protocol.value = sipProtocol.value;
+
+    print(
+        'Attempting to register SIP server: ${sipProtocol.value}://${sipServerHost.value}');
+    sipService!.register().then((success) {
+      if (success) {
+        sipRegistered.value = true;
+        Get.snackbar(
+          'SIP Registered',
+          'Registered to SIP server: ${sipProtocol.value}://${sipServerHost.value}',
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 3),
+        );
+      } else {
+        sipRegistered.value = false;
+        Get.snackbar(
+          'SIP Error',
+          'Failed to register to SIP server, check settings',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+          duration: Duration(seconds: 5),
+        );
+      }
+    });
+  }
+
+  void unregisterSip() {
+    if (sipService != null) {
+      sipService!.unregister().then((_) {
+        sipRegistered.value = false;
+        Get.snackbar(
+          'SIP Unregistered',
+          'Unregistered from SIP server',
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      });
+    }
+  }
+
   /// Force republish all sensors to Home Assistant
   void forceRepublishSensors() {
     if (mqttService == null) {
@@ -454,6 +637,11 @@ class SettingsController extends GetxController {
       disconnectMqtt();
     }
 
+    // First unregister SIP if registered
+    if (sipRegistered.value && sipService != null) {
+      unregisterSip();
+    }
+
     // Reset theme
     isDarkMode.value = false;
 
@@ -464,6 +652,10 @@ class SettingsController extends GetxController {
     mqttUsername.value = '';
     mqttPassword.value = '';
     mqttHaDiscovery.value = false;
+
+    // Reset SIP
+    sipEnabled.value = false;
+    sipServerHost.value = AppConstants.defaultSipServerHost;
 
     // Reset app settings
     kioskMode.value = true;
@@ -478,6 +670,8 @@ class SettingsController extends GetxController {
     _storageService.write(AppConstants.keyMqttPassword, mqttPassword.value);
     _storageService.write(
         AppConstants.keyMqttHaDiscovery, mqttHaDiscovery.value);
+    _storageService.write(AppConstants.keySipEnabled, sipEnabled.value);
+    _storageService.write(AppConstants.keySipServerHost, sipServerHost.value);
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
     _storageService.write(AppConstants.keyShowSystemInfo, showSystemInfo.value);
 
@@ -515,6 +709,14 @@ class SettingsController extends GetxController {
     }
   }
 
+  void toggleSipEnabled(bool value) {
+    sipEnabled.value = value;
+    _storageService.write(AppConstants.keySipEnabled, value);
+    if (!value && sipRegistered.value) {
+      unregisterSip();
+    }
+  }
+
   void saveMqttBrokerUrl(String url) {
     mqttBrokerUrl.value = url;
     mqttBrokerUrlController.text = url;
@@ -536,6 +738,12 @@ class SettingsController extends GetxController {
     mqttPassword.value = password;
     mqttPasswordController.text = password;
     _storageService.write(AppConstants.keyMqttPassword, password);
+  }
+
+  void saveSipServerHost(String host) {
+    sipServerHost.value = host;
+    sipServerHostController.text = host;
+    _storageService.write(AppConstants.keySipServerHost, host);
   }
 
   void saveKioskStartUrl(String url) {

@@ -1,18 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../controllers/settings_controller.dart';
+import '../controllers/settings_controller_compat.dart';
 import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
+import 'communications_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
-import '../../../widgets/settings_pin_dialog.dart';
 
-class SettingsViewFixed extends GetView<SettingsController> {
+class SettingsViewFixed extends GetView<SettingsControllerFixed> {
   const SettingsViewFixed({Key? key}) : super(key: key);
-
   @override
   Widget build(BuildContext context) {
-    // Use the globally registered controller
-    final controller = Get.find<SettingsController>();
+    // Controller is automatically provided by GetView
     return Scaffold(
       appBar: AppBar(
         title: Text('Settings'),
@@ -51,6 +49,14 @@ class SettingsViewFixed extends GetView<SettingsController> {
               title: 'IoT & Integrations',
               children: [
                 MqttSettingsView(),
+              ],
+            ),
+
+            // Communications
+            _buildSection(
+              title: 'Communications',
+              children: [
+                CommunicationsSettingsView(),
               ],
             ),
 
@@ -151,9 +157,9 @@ class SettingsViewFixed extends GetView<SettingsController> {
       ),
     );
   }
-  // Advanced Connection Settings removed
 
-  Widget _buildPinSettings(SettingsController controller) {
+  // Advanced Connection Settings removed
+  Widget _buildPinSettings(SettingsControllerFixed controller) {
     final pinController =
         TextEditingController(text: controller.settingsPin.value);
     return Card(

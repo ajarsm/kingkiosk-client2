@@ -4,6 +4,7 @@ import '../../services/storage_service.dart';
 import '../../services/platform_sensor_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/mqtt_service_consolidated.dart';
+import '../../services/sip_service.dart';
 import '../../services/app_lifecycle_service.dart';
 import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
@@ -42,13 +43,15 @@ class InitialBinding extends Bindings {
 
     // Register media recovery service
     Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
-        permanent: true);
-
-    // Eagerly register MQTT service after dependencies are ready
+        permanent: true);    // Eagerly register MQTT service after dependencies are ready
     final storageService = Get.find<StorageService>();
     final sensorService = Get.find<PlatformSensorService>();
     final mqttService = MqttService(storageService, sensorService);
     final initializedMqttService = await mqttService.init();
+    
+    // Initialize SIP UA service for communications
+    final sipService = SipService(storageService);
+    Get.putAsync<SipService>(() => sipService.init(), permanent: true);
     Get.put<MqttService>(initializedMqttService, permanent: true);
     print('MQTT service initialized successfully');
   }

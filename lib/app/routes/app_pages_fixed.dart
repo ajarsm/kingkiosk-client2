@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import '../modules/settings/bindings/settings_binding.dart';
+import '../modules/settings/bindings/settings_compat_binding.dart';
 import '../modules/settings/views/settings_view_fixed.dart';
 import '../modules/home/bindings/home_binding_fixed.dart';
 import '../modules/home/views/tiling_window_view.dart';
@@ -11,7 +12,7 @@ import '../modules/splash/bindings/splash_binding.dart';
 // Routes class to replace external part
 class Routes {
   Routes._();
-  
+
   static const SPLASH = '/splash';
   static const HOME = '/home';
   static const SETTINGS = '/settings';
@@ -37,7 +38,10 @@ class AppPagesFixed {
     GetPage(
       name: Routes.SETTINGS,
       page: () => const SettingsViewFixed(),
-      binding: SettingsBinding(),
+      binding: BindingsBuilder(() {
+        SettingsBinding().dependencies();
+        SettingsCompatBinding().dependencies();
+      }),
     ),
     GetPage(
       name: Routes.DEVICE_TEST,

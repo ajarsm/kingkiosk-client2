@@ -4,13 +4,12 @@ import '../controllers/settings_controller_compat.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../modules/home/controllers/tiling_window_controller.dart';
 
-class WebUrlSettingsViewFixed extends GetView<SettingsController> {
+class WebUrlSettingsViewFixed extends GetView<SettingsControllerFixed> {
   const WebUrlSettingsViewFixed({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    // Use the globally registered controller
-    final controller = Get.find<SettingsController>();
+    // Controller is automatically provided by GetView
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -29,15 +28,15 @@ class WebUrlSettingsViewFixed extends GetView<SettingsController> {
             ),
             Divider(),
             SizedBox(height: 16),
-            
+
             // Start URL
             _buildUrlInput(controller),
             SizedBox(height: 16),
-            
+
             // Quick URL selection
             _buildQuickUrlSelection(controller),
             SizedBox(height: 16),
-            
+
             // Open URL button
             _buildOpenUrlButton(controller),
           ],
@@ -46,14 +45,14 @@ class WebUrlSettingsViewFixed extends GetView<SettingsController> {
     );
   }
 
-  Widget _buildUrlInput(SettingsController controller) {
+  Widget _buildUrlInput(SettingsControllerFixed controller) {
     return Obx(() {
       // Create controller with text and place cursor at the end
-      final textController = TextEditingController(text: controller.kioskStartUrl.value);
+      final textController =
+          TextEditingController(text: controller.kioskStartUrl.value);
       textController.selection = TextSelection.fromPosition(
-        TextPosition(offset: textController.text.length)
-      );
-      
+          TextPosition(offset: textController.text.length));
+
       return TextField(
         controller: textController,
         decoration: InputDecoration(
@@ -80,7 +79,7 @@ class WebUrlSettingsViewFixed extends GetView<SettingsController> {
     });
   }
 
-  Widget _buildQuickUrlSelection(SettingsController controller) {
+  Widget _buildQuickUrlSelection(SettingsControllerFixed controller) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -92,19 +91,19 @@ class WebUrlSettingsViewFixed extends GetView<SettingsController> {
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: AppConstants.sampleWebItems.map((item) => 
-            ActionChip(
-              label: Text(item['name']!),
-              onPressed: () => controller.saveKioskStartUrl(item['url']!),
-              avatar: Icon(Icons.link, size: 16),
-            )
-          ).toList(),
+          children: AppConstants.sampleWebItems
+              .map((item) => ActionChip(
+                    label: Text(item['name']!),
+                    onPressed: () => controller.saveKioskStartUrl(item['url']!),
+                    avatar: Icon(Icons.link, size: 16),
+                  ))
+              .toList(),
         ),
       ],
     );
   }
 
-  Widget _buildOpenUrlButton(SettingsController controller) {
+  Widget _buildOpenUrlButton(SettingsControllerFixed controller) {
     return ElevatedButton.icon(
       onPressed: () {
         // Get the tiling window controller
@@ -112,19 +111,17 @@ class WebUrlSettingsViewFixed extends GetView<SettingsController> {
           Get.snackbar('Error', 'Please enter a URL first');
           return;
         }
-        
+
         try {
           final tileController = Get.find<TilingWindowController>();
-          
+
           // Add a new tile with the current URL
           tileController.addWebViewTile(
-            'Web View', 
-            controller.kioskStartUrl.value
-          );
-          
+              'Web View', controller.kioskStartUrl.value);
+
           // Show feedback to user
           Get.snackbar(
-            'New Window Created', 
+            'New Window Created',
             'Loaded URL: ${controller.kioskStartUrl.value}',
             snackPosition: SnackPosition.BOTTOM,
           );

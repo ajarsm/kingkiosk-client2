@@ -20,6 +20,14 @@ class AppConstants {
   static const String keyDeviceName = 'deviceName';
   static const String keyMqttHaDiscovery =
       'mqttHaDiscovery'; // Enable Home Assistant discovery
+  // SIP Communication Keys
+  static const String keySipEnabled = 'sipEnabled';
+  static const String keySipServerHost = 'sipServerHost';
+  static const String keySipProtocol = 'sipProtocol';
+  static const String keySelectedAudioInput = 'selectedAudioInput';
+  static const String keySelectedVideoInput = 'selectedVideoInput';
+  static const String keySelectedAudioOutput = 'selectedAudioOutput';
+
   // Wyoming Satellite Keys
   static const String keyWyomingHost = 'wyomingHost';
   static const String keyWyomingPort = 'wyomingPort';
@@ -34,6 +42,7 @@ class AppConstants {
   static const String defaultMqttBrokerUrl = 'broker.emqx.io';
   static const int defaultMqttBrokerPort = 1883;
   static const String defaultKioskStartUrl = 'https://flutter.dev';
+  static const String defaultSipServerHost = 'sip.example.com';
 
   // Media Sample URLs
   static const List<Map<String, String>> sampleMediaItems = [
