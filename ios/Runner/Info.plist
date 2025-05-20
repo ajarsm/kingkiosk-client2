@@ -51,6 +51,10 @@
 		<string>King Kiosk needs access to save screenshots to your photo library</string>
 		<key>NSPhotoLibraryAddUsageDescription</key>
 		<string>King Kiosk needs access to save screenshots to your photo library</string>
+		<key>NSCameraUsageDescription</key>
+		<string>King Kiosk needs access to your camera for video calls and camera preview.</string>
+		<key>NSMicrophoneUsageDescription</key>
+		<string>King Kiosk needs access to your microphone for calls and audio recording.</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_wyoming._tcp</string>

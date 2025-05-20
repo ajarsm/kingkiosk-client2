@@ -5,6 +5,7 @@ import '../services/storage_service.dart';
 import '../core/utils/app_constants.dart';
 import '../services/sip_service.dart';
 import '../modules/settings/controllers/settings_controller.dart';
+import '../core/utils/permissions_manager.dart';
 
 /// Service for handling AI assistant calls
 class AiAssistantService extends GetxService {
@@ -141,6 +142,20 @@ class AiAssistantService extends GetxService {
   /// Dial the AI assistant
   Future<bool> callAiAssistant() async {
     try {
+      // Request camera/mic permissions before making a call (mobile only)
+      final hasPermission =
+          await PermissionsManager.requestCameraAndMicPermissions();
+      if (!hasPermission) {
+        Get.snackbar(
+          'Permission Required',
+          'Camera and microphone permissions are required to make a call.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.8),
+          colorText: Colors.white,
+        );
+        return false;
+      }
+
       // Check if AI is enabled and configured
       if (!isAiEnabled.value) {
         debugPrint('AI assistant not enabled');

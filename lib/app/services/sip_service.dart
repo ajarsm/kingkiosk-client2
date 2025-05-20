@@ -451,6 +451,18 @@ class SipService extends GetxService implements SipUaHelperListener {
 
   // Call handling methods
 
+  /// Format a dial string as a SIP URI if needed
+  String formatDialString(String input) {
+    // If input is a valid IPv4 address or domain, format as SIP URI
+    final ipRegex = RegExp(r'^(?:\d{1,3}\.){3}\d{1,3}\$');
+    final domainRegex = RegExp(r'^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\$');
+    if ((ipRegex.hasMatch(input) || domainRegex.hasMatch(input)) &&
+        !input.startsWith('sip:')) {
+      return 'sip:' + input;
+    }
+    return input;
+  }
+
   /// Make a call to a SIP address
   Future<bool> makeCall(String target, {bool video = false}) async {
     if (!isRegistered.value) {
@@ -488,7 +500,10 @@ class SipService extends GetxService implements SipUaHelperListener {
         },
       };
 
-      final result = await _helper.call(target,
+      // Format the target as a SIP URI if needed
+      final formattedTarget = formatDialString(target);
+
+      final result = await _helper.call(formattedTarget,
           voiceOnly: !video, customOptions: customOptions);
 
       // Call object will be assigned in callStateChanged callback

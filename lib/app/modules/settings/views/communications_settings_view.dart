@@ -90,6 +90,13 @@ class CommunicationsSettingsView extends StatelessWidget {
                       border: OutlineInputBorder(),
                     ),
                     controller: controller.sipServerHostController,
+                    onChanged: (value) {
+                      controller.saveSipServerHost(value);
+                      if (controller.sipService != null) {
+                        controller.sipService!.serverHost.value = value;
+                        controller.sipService!.register();
+                      }
+                    },
                   ),
                   const SizedBox(height: 8.0),
 

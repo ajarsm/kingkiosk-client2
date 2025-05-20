@@ -8,32 +8,39 @@ class AiSettingsView extends GetView<SettingsController> {
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      child: Padding(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.smart_toy, color: Colors.blue),
-                SizedBox(width: 8),
-                Text(
-                  'AI Assistant Settings',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-              ],
-            ),
-            SizedBox(height: 16),
-            _buildAiToggle(),
-            SizedBox(height: 16),
-            _buildAiProviderField(),
-            SizedBox(height: 16),
-            _buildSaveButton(),
-          ],
+    return Obx(() {
+      final commsEnabled = controller.sipEnabled.value;
+      if (!commsEnabled) {
+        // Hide AI settings if communications is disabled
+        return SizedBox.shrink();
+      }
+      return Card(
+        child: Padding(
+          padding: const EdgeInsets.all(16.0),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(Icons.smart_toy, color: Colors.blue),
+                  SizedBox(width: 8),
+                  Text(
+                    'AI Assistant Settings',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                ],
+              ),
+              SizedBox(height: 16),
+              _buildAiToggle(),
+              SizedBox(height: 16),
+              _buildAiProviderField(),
+              SizedBox(height: 16),
+              _buildSaveButton(),
+            ],
+          ),
         ),
-      ),
-    );
+      );
+    });
   }
 
   Widget _buildAiToggle() {
@@ -41,14 +48,18 @@ class AiSettingsView extends GetView<SettingsController> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'Enable AI Assistant',
+              controller.sipEnabled.value
+                  ? 'Enable AI Assistant'
+                  : '', // Hide label if comms is off
               style: TextStyle(fontWeight: FontWeight.w500),
             ),
             Switch(
               value: controller.aiEnabled.value,
-              onChanged: (value) {
-                controller.toggleAiEnabled(value);
-              },
+              onChanged: controller.sipEnabled.value
+                  ? (value) {
+                      controller.toggleAiEnabled(value);
+                    }
+                  : null, // Disable toggle if comms is off
             ),
           ],
         ));
@@ -89,9 +100,11 @@ class AiSettingsView extends GetView<SettingsController> {
 
   Widget _buildSaveButton() {
     return ElevatedButton(
-      onPressed: () {
-        controller.saveAiSettings();
-      },
+      onPressed: controller.sipEnabled.value
+          ? () {
+              controller.saveAiSettings();
+            }
+          : null, // Disable save if comms is off
       child: Text('Save AI Settings'),
     );
   }

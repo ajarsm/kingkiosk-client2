@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
+import '../../../core/utils/permissions_manager.dart'; // Import PermissionsManager
 
 /// A widget that displays a live preview of the selected video device
 class CameraPreviewWidget extends StatefulWidget {
@@ -46,6 +47,18 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 
   Future<void> _initRenderers() async {
+    // Request camera permission before initializing renderer (mobile only)
+    final hasPermission =
+        await PermissionsManager.requestCameraAndMicPermissions();
+    if (!hasPermission) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = false;
+        });
+      }
+      print('Camera/mic permission not granted. Cannot start camera preview.');
+      return;
+    }
     await _localRenderer.initialize();
     _startCamera();
   }
