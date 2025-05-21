@@ -1,78 +1,79 @@
 // lib/notification_system/services/getx_notification_service.dart
 
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:uuid/uuid.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
-
 import '../models/notification_models.dart';
 import '../models/notification_config.dart';
 import '../utils/html_sanitizer.dart';
 import '../utils/platform_helper.dart';
 import '../widgets/notification_toast.dart';
 import 'notification_service.dart';
+import '../../app/core/utils/audio_utils.dart';
 
-class GetXNotificationService extends GetxController implements NotificationService {
-  static GetXNotificationService get instance => 
+class GetXNotificationService extends GetxController
+    implements NotificationService {
+  static GetXNotificationService get instance =>
       Get.find<NotificationService>() as GetXNotificationService;
-  
+
   // Reactive state variables
   final RxList<AppNotification> _notifications = <AppNotification>[].obs;
   final RxBool _isNotificationCenterOpen = false.obs;
   final RxInt _unreadCount = 0.obs;
-  final Rx<NotificationConfig> _config = NotificationConfig.forTier(NotificationTier.standard).obs;
-  
+  final Rx<NotificationConfig> _config =
+      NotificationConfig.forTier(NotificationTier.standard).obs;
+
   // Storage keys
   static const String _storageBox = 'notificationSystem';
   static const String _notificationsKey = 'notifications';
   static const String _configKey = 'config';
-  
+
   // Storage instance
   final _storage = GetStorage(_storageBox);
-  
+
   // Constructor with optional initialization
   GetXNotificationService() {
     // Initialize counts
     _updateUnreadCount();
-    
+
     // Load saved data if available
     loadFromStorage();
   }
-  
+
   // Static initialization method - call this before using the service
   static Future<void> init() async {
     await GetStorage.init(_storageBox);
   }
-  
+
   // Stream getters
   @override
-  Stream<List<AppNotification>> get notificationsStream => _notifications.stream;
-  
+  Stream<List<AppNotification>> get notificationsStream =>
+      _notifications.stream;
+
   @override
   Stream<int> get unreadCountStream => _unreadCount.stream;
-  
+
   @override
-  Stream<bool> get notificationCenterVisibilityStream => _isNotificationCenterOpen.stream;
-  
+  Stream<bool> get notificationCenterVisibilityStream =>
+      _isNotificationCenterOpen.stream;
+
   @override
   Stream<NotificationConfig> get configStream => _config.stream;
-  
+
   // Regular getters
   @override
   List<AppNotification> get notifications => _notifications;
-  
+
   @override
   int get unreadCount => _unreadCount.value;
-  
+
   @override
   bool get isNotificationCenterOpen => _isNotificationCenterOpen.value;
-  
+
   @override
   NotificationConfig get config => _config.value;
-  
+
   // Configuration methods
   @override
   void setTier(NotificationTier tier) {
@@ -81,7 +82,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
     _enforceHistoryLimit();
     saveToStorage();
   }
-  
+
   @override
   void setMaxNotifications(int maxNotifications) {
     // Custom limit (not tied to a specific tier)
@@ -92,7 +93,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
     _enforceHistoryLimit();
     saveToStorage();
   }
-  
+
   // Notification management methods
   @override
   void addNotification({
@@ -104,7 +105,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
   }) {
     // Sanitize HTML if needed
     final sanitizedMessage = isHtml ? HtmlSanitizer.sanitize(message) : message;
-    
+
     final notification = AppNotification(
       id: const Uuid().v4(),
       title: title,
@@ -114,26 +115,35 @@ class GetXNotificationService extends GetxController implements NotificationServ
       thumbnail: thumbnail,
       isHtml: isHtml,
     );
-    
+
     // Add to the list
     _notifications.add(notification);
-    
+
+    // Play notification sound
+    try {
+      // Use AudioPlayerCompat to play notification sound (just_audio, cached)
+      AudioPlayerCompat.playNotification();
+    } catch (e) {
+      print('Error playing notification sound: $e');
+    }
+
     // Enforce the history limit
     _enforceHistoryLimit();
-    
+
     // Update unread count
     _updateUnreadCount();
-    
+
     // Show a toast notification
     _showToast(notification);
-    
+
     // Save to storage
     saveToStorage();
   }
-  
+
   @override
   void markAsRead(String id) {
-    final index = _notifications.indexWhere((notification) => notification.id == id);
+    final index =
+        _notifications.indexWhere((notification) => notification.id == id);
     if (index != -1) {
       _notifications[index].isRead = true;
       _notifications.refresh(); // Trigger UI update
@@ -141,7 +151,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
       saveToStorage();
     }
   }
-  
+
   @override
   void markAllAsRead() {
     for (var notification in _notifications) {
@@ -151,26 +161,26 @@ class GetXNotificationService extends GetxController implements NotificationServ
     _updateUnreadCount();
     saveToStorage();
   }
-  
+
   @override
   void removeNotification(String id) {
     _notifications.removeWhere((notification) => notification.id == id);
     _updateUnreadCount();
     saveToStorage();
   }
-  
+
   @override
   void clearAll() {
     _notifications.clear();
     _updateUnreadCount();
     saveToStorage();
   }
-  
+
   @override
   void toggleNotificationCenter() {
     _isNotificationCenterOpen.value = !_isNotificationCenterOpen.value;
   }
-  
+
   // Persistence methods using GetStorage
   @override
   Future<void> loadFromStorage() async {
@@ -184,18 +194,19 @@ class GetXNotificationService extends GetxController implements NotificationServ
           maxNotifications: configMap['maxNotifications'],
         );
       }
-      
+
       // Load notifications
       final notificationsData = _storage.read(_notificationsKey);
       if (notificationsData != null) {
-        final notificationsList = List<Map<String, dynamic>>.from(notificationsData);
+        final notificationsList =
+            List<Map<String, dynamic>>.from(notificationsData);
         _notifications.value = notificationsList
             .map((map) => AppNotification.fromMap(map))
             .toList();
-        
+
         // Enforce limit on load
         _enforceHistoryLimit();
-        
+
         // Update unread count
         _updateUnreadCount();
       }
@@ -203,7 +214,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
       print('Error loading notification data: $e');
     }
   }
-  
+
   @override
   Future<void> saveToStorage() async {
     try {
@@ -213,7 +224,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
         'maxNotifications': _config.value.maxNotifications,
       };
       _storage.write(_configKey, configMap);
-      
+
       // Save notifications
       final notificationsList = _notifications.map((n) => n.toMap()).toList();
       _storage.write(_notificationsKey, notificationsList);
@@ -221,30 +232,31 @@ class GetXNotificationService extends GetxController implements NotificationServ
       print('Error saving notification data: $e');
     }
   }
-  
+
   // Internal helper methods
   void _updateUnreadCount() {
-    _unreadCount.value = _notifications.where((notification) => !notification.isRead).length;
+    _unreadCount.value =
+        _notifications.where((notification) => !notification.isRead).length;
   }
-  
+
   void _enforceHistoryLimit() {
     if (_config.value.isLimited) {
       final maxAllowed = _config.value.maxNotifications;
-      
+
       if (_notifications.length > maxAllowed) {
         // Sort by timestamp (newest first) before trimming
         _notifications.sort((a, b) => b.timestamp.compareTo(a.timestamp));
-        
+
         // Keep only the most recent n notifications
         _notifications.value = _notifications.take(maxAllowed).toList();
       }
     }
   }
-  
+
   void _showToast(AppNotification notification) {
     // Determine if desktop based on screen width
     final isDesktop = PlatformHelper.isDesktop;
-    
+
     final customContent = NotificationToast(
       notification: notification,
       onTap: () {
@@ -254,7 +266,7 @@ class GetXNotificationService extends GetxController implements NotificationServ
       },
       isDesktop: isDesktop,
     );
-    
+
     Get.rawSnackbar(
       duration: const Duration(seconds: 3),
       snackStyle: SnackStyle.FLOATING,
