@@ -56,7 +56,7 @@ void main() {
       body: InAppWebView(
         initialUrlRequest: URLRequest(url: WebUri('https://example.com')),
         initialSettings: InAppWebViewSettings(
-          useHybridComposition: false,
+          useHybridComposition: true,
           javaScriptEnabled: true,
         ),
         onLoadStop: (controller, url) {

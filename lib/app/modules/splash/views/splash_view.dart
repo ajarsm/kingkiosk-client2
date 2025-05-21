@@ -21,45 +21,64 @@ class SplashView extends GetView<SplashController> {
           ),
           // Foreground content
           Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                // App title (optional)
-                Text(
-                  'Kiosk App',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    shadows: [
-                      Shadow(
-                        blurRadius: 8,
-                        color: Colors.black54,
-                        offset: Offset(2, 2),
+            child: Card(
+              elevation: 16,
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(40)),
+              color: Colors.white.withOpacity(0.10),
+              child: Padding(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 40, vertical: 48),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    ShaderMask(
+                      shaderCallback: (rect) => LinearGradient(
+                        colors: [Colors.blueAccent, Colors.cyanAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(rect),
+                      child: Icon(Icons.wifi, size: 64, color: Colors.white),
+                    ),
+                    SizedBox(height: 32),
+                    Text(
+                      'Kiosk App',
+                      style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white,
+                        shadows: [
+                          Shadow(
+                            blurRadius: 8,
+                            color: Colors.black54,
+                            offset: Offset(2, 2),
+                          ),
+                        ],
                       ),
-                    ],
-                  ),
+                    ),
+                    SizedBox(height: 40),
+                    CircularProgressIndicator(
+                      valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                    ),
+                    SizedBox(height: 20),
+                    Obx(() => Text(
+                          controller.initStatus.value,
+                          style: TextStyle(
+                            fontSize: 16,
+                            color: Colors.white70,
+                            shadows: [
+                              Shadow(
+                                blurRadius: 6,
+                                color: Colors.black45,
+                                offset: Offset(1, 1),
+                              ),
+                            ],
+                          ),
+                        )),
+                  ],
                 ),
-                const SizedBox(height: 40),
-                CircularProgressIndicator(
-                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                ),
-                const SizedBox(height: 20),
-                Obx(() => Text(
-                  controller.initStatus.value,
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white70,
-                    shadows: [
-                      Shadow(
-                        blurRadius: 6,
-                        color: Colors.black45,
-                        offset: Offset(1, 1),
-                      ),
-                    ],
-                  ),
-                )),
-              ],
+              ),
             ),
           ),
         ],

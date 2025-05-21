@@ -236,11 +236,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
       width: tile.size.width,
       height: tile.size.height,
       child: Obx(() {
-        final isSelected = controller.selectedTile.value?.id == tile.id;
-        final isHighlighted = controller.highlightedTiles.contains(tile.id);
-
-        // Apply highlight if it's selected OR currently highlighted
-        final shouldHighlight = isSelected || isHighlighted;
         return MouseRegion(
           onEnter: (_) {
             print('DEBUG: Mouse entered window ${tile.name}');
@@ -252,20 +247,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
               curve: Curves.easeInOut,
               decoration: BoxDecoration(
                 border: Border.all(
-                  color: shouldHighlight ? Colors.blue : Colors.grey,
-                  width: shouldHighlight ? 2 : 1,
+                  color: Colors.transparent, // No visible border
+                  width: 0,
                 ),
                 boxShadow: [
                   BoxShadow(
-                    color: shouldHighlight
-                        ? Colors.blue.withOpacity(0.3)
-                        : Colors.black.withOpacity(0.1),
+                    color: Colors.black.withOpacity(0.10),
                     blurRadius: 5,
                     spreadRadius: 1,
                   ),
                 ],
+                borderRadius: BorderRadius.circular(24),
               ),
-              // We'll let the AutoHideTitleBar handle the entire window
               child: _buildTitleBar(tile, locked),
             ),
           ),

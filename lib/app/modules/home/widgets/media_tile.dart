@@ -6,24 +6,24 @@ import 'dart:async';
 // Player manager to keep players persistent across rebuilds
 class MediaPlayerManager {
   static final MediaPlayerManager _instance = MediaPlayerManager._internal();
-  
+
   factory MediaPlayerManager() => _instance;
-  
+
   MediaPlayerManager._internal() {
     // Start periodic cleanup timer
     _cleanupTimer = Timer.periodic(Duration(minutes: 5), (_) {
       _cleanupUnusedPlayers();
     });
   }
-  
+
   final Map<String, PlayerWithController> _players = {};
   Timer? _cleanupTimer;
   final Map<String, DateTime> _lastAccessTime = {};
-  
+
   PlayerWithController getPlayerFor(String url) {
     // Update last access time when player is requested
     _lastAccessTime[url] = DateTime.now();
-    
+
     if (!_players.containsKey(url)) {
       final player = Player();
       final controller = VideoController(player);
@@ -31,7 +31,7 @@ class MediaPlayerManager {
     }
     return _players[url]!;
   }
-  
+
   /// Safely dispose a specific player by URL
   /// Returns true if a player was found and disposed
   bool disposePlayerFor(String url) {
@@ -40,13 +40,14 @@ class MediaPlayerManager {
         final playerData = _players[url]!;
         // Remove from map first to prevent race conditions
         _players.remove(url);
-        
+
         // Force cleanup before disposal
         playerData.player.stop();
-        
+
         // Use a delayed disposal to give time for resource cleanup
         Future.delayed(Duration(milliseconds: 100), () {
-          try {            // Then dispose the player
+          try {
+            // Then dispose the player
             playerData.player.dispose();
             // VideoController doesn't have a dispose method
             print('Player for $url successfully disposed');
@@ -62,7 +63,7 @@ class MediaPlayerManager {
     }
     return false;
   }
-  
+
   void dispose() {
     for (final playerData in _players.values) {
       try {
@@ -75,13 +76,13 @@ class MediaPlayerManager {
     _players.clear();
     _cleanupTimer?.cancel();
   }
-  
+
   /// Force cleanup all players and reset the manager
   /// Use this when black screens start appearing, or device seems unstable
   void resetAllPlayers() {
     // Make a copy of URLs to avoid modification during iteration
     final urls = List<String>.from(_players.keys);
-    
+
     // First stop all players to release hardware resources
     for (final url in urls) {
       try {
@@ -92,7 +93,7 @@ class MediaPlayerManager {
         print('Error stopping player during reset: $e');
       }
     }
-    
+
     // Wait briefly to allow hardware resources to be released
     Future.delayed(Duration(milliseconds: 200), () {
       // Then dispose all players
@@ -106,21 +107,21 @@ class MediaPlayerManager {
           print('Error disposing player during reset: $e');
         }
       }
-      
+
       // Clear the map
       _players.clear();
       print('All media players reset and disposed');
-      
+
       // Force re-initialization of MediaKit
       MediaKit.ensureInitialized();
     });
   }
-  
+
   /// Cleanup players that haven't been accessed in a while
   void _cleanupUnusedPlayers() {
     final now = DateTime.now();
     final urlsToRemove = <String>[];
-    
+
     // Find players that haven't been used in the last 10 minutes
     for (final url in _players.keys) {
       final lastAccess = _lastAccessTime[url] ?? now;
@@ -128,13 +129,13 @@ class MediaPlayerManager {
         urlsToRemove.add(url);
       }
     }
-    
+
     // Dispose unused players
     for (final url in urlsToRemove) {
       disposePlayerFor(url);
       print('Auto-disposed unused player for: $url');
     }
-    
+
     // If more than 5 players are active, force a MediaKit re-initialization
     if (_players.length > 5) {
       MediaKit.ensureInitialized();
@@ -146,14 +147,14 @@ class PlayerWithController {
   final Player player;
   final VideoController controller;
   bool isInitialized = false;
-  
+
   PlayerWithController(this.player, this.controller);
 }
 
 class MediaTile extends StatefulWidget {
   final String url;
   final bool loop;
-  
+
   const MediaTile({
     Key? key,
     required this.url,
@@ -164,15 +165,17 @@ class MediaTile extends StatefulWidget {
   State<MediaTile> createState() => _MediaTileState();
 }
 
-class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+class _MediaTileState extends State<MediaTile>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late final PlayerWithController _playerData;
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
   Duration _position = Duration.zero;
-  
+
   @override
-  bool get wantKeepAlive => true; // Keep this widget alive when it's not visible  @override
+  bool get wantKeepAlive =>
+      true; // Keep this widget alive when it's not visible  @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
@@ -189,7 +192,7 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       });
     }
   }
-  
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Handle app lifecycle changes to prevent restarts
@@ -201,6 +204,7 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       _position = _playerData.player.state.position;
     }
   }
+
   Future<void> _initializePlayer() async {
     if (_playerData.isInitialized) {
       // If already initialized, just update our state
@@ -215,10 +219,10 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       _playerData.player.streams.position.listen((position) {
         _position = position;
       });
-      
+
       // Wait for player to initialize
       await _playerData.player.open(Media(widget.url));
-      
+
       // Set playlist mode safely after player is initialized
       try {
         if (widget.loop) {
@@ -230,10 +234,10 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
         print('Warning: Could not set playlist mode: $e');
         // Continue anyway - better to play without loop than to fail
       }
-      
+
       // Mark as initialized
       _playerData.isInitialized = true;
-      
+
       // Set the state to reflect that the player is initialized
       if (mounted) {
         setState(() {
@@ -261,14 +265,15 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
       _initializePlayer();
     }
   }
-    @override
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
     // But we do need to stop it to release hardware resources
     try {
       _playerData.player.pause();
-      
+
       // Notify the system that this tile is no longer active
       print('MediaTile for ${widget.url} disposed');
     } catch (e) {
@@ -277,28 +282,53 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
-    
-    if (_hasError) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
+  Widget _buildErrorWidget(String message) {
+    return Center(
+      child: Card(
+        elevation: 12,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        color: Colors.red.shade50.withOpacity(0.95),
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.all(40.0),
           child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.error_outline, color: Colors.red, size: 48),
-              SizedBox(height: 16),
-              Text('Failed to load video'),
-              SizedBox(height: 8),
-              Text(
-                _errorMessage,
-                style: TextStyle(fontSize: 12),
-                textAlign: TextAlign.center,
+              ShaderMask(
+                shaderCallback: (rect) => LinearGradient(
+                  colors: [Colors.redAccent, Colors.orangeAccent],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ).createShader(rect),
+                child: Icon(Icons.error_rounded, color: Colors.white, size: 64),
               ),
-              SizedBox(height: 16),
-              ElevatedButton(
+              SizedBox(height: 22),
+              Text('Failed to load media',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: Colors.red.shade700)),
+              SizedBox(height: 12),
+              AnimatedDefaultTextStyle(
+                duration: Duration(milliseconds: 400),
+                style: TextStyle(fontSize: 14, color: Colors.red.shade400),
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: 28),
+              ElevatedButton.icon(
+                icon: Icon(Icons.refresh_rounded),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                ),
                 onPressed: () {
                   setState(() {
                     _hasError = false;
@@ -306,12 +336,21 @@ class _MediaTileState extends State<MediaTile> with AutomaticKeepAliveClientMixi
                   });
                   _initializePlayer();
                 },
-                child: Text('Retry'),
+                label: Text('Retry', style: TextStyle(fontSize: 17)),
               ),
             ],
           ),
         ),
-      );
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    if (_hasError) {
+      return _buildErrorWidget(_errorMessage);
     }
 
     if (!_isInitialized) {

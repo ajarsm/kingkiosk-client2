@@ -5,7 +5,7 @@ import 'media_tile.dart'; // Import to reuse the PlayerManager
 
 class AudioTile extends StatefulWidget {
   final String url;
-  
+
   const AudioTile({
     Key? key,
     required this.url,
@@ -15,15 +15,17 @@ class AudioTile extends StatefulWidget {
   State<AudioTile> createState() => _AudioTileState();
 }
 
-class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
+class _AudioTileState extends State<AudioTile>
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late final PlayerWithController _playerData;
   bool _isInitialized = false;
   bool _hasError = false;
   String _errorMessage = '';
   Duration _position = Duration.zero;
-  
+
   @override
-  bool get wantKeepAlive => true; // Keep this widget alive when it's not visible
+  bool get wantKeepAlive =>
+      true; // Keep this widget alive when it's not visible
 
   @override
   void initState() {
@@ -32,7 +34,7 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
     _playerData = MediaPlayerManager().getPlayerFor(widget.url);
     _initializePlayer();
   }
-  
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     // Handle app lifecycle changes to prevent restarts
@@ -63,13 +65,13 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
           });
         }
       });
-      
+
       // Wait for player to initialize
       await _playerData.player.open(Media(widget.url));
-      
+
       // Mark as initialized
       _playerData.isInitialized = true;
-      
+
       // Set the state to reflect that the player is initialized
       if (mounted) {
         setState(() {
@@ -86,12 +88,12 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
       }
     }
   }
-  
+
   // A compact audio player UI suitable for smaller containers
   Widget _buildCompactAudioPlayer() {
     final duration = _playerData.player.state.duration;
     final position = _position;
-    
+
     return Padding(
       padding: const EdgeInsets.all(8.0),
       child: Column(
@@ -110,7 +112,7 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
               overflow: TextOverflow.ellipsis,
             ),
           ),
-          
+
           // Progress bar
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8.0),
@@ -121,17 +123,18 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
               ),
               child: Slider(
                 value: position.inMilliseconds.toDouble(),
-                max: duration.inMilliseconds > 0 
-                    ? duration.inMilliseconds.toDouble() 
+                max: duration.inMilliseconds > 0
+                    ? duration.inMilliseconds.toDouble()
                     : 1.0,
                 onChanged: (value) {
-                  _playerData.player.seek(Duration(milliseconds: value.toInt()));
+                  _playerData.player
+                      .seek(Duration(milliseconds: value.toInt()));
                 },
                 activeColor: Colors.blue,
               ),
             ),
           ),
-          
+
           // Time and controls row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -141,7 +144,7 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
                 _formatDuration(position) + ' / ' + _formatDuration(duration),
                 style: TextStyle(color: Colors.white70, fontSize: 12),
               ),
-              
+
               // Playback controls
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -150,7 +153,8 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
                     iconSize: 24,
                     icon: Icon(Icons.replay_10, color: Colors.white),
                     padding: EdgeInsets.all(4),
-                    onPressed: () => _playerData.player.seek(position - Duration(seconds: 10)),
+                    onPressed: () => _playerData.player
+                        .seek(position - Duration(seconds: 10)),
                   ),
                   StreamBuilder<bool>(
                     stream: _playerData.player.streams.playing,
@@ -159,7 +163,9 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
                       return IconButton(
                         iconSize: 32,
                         icon: Icon(
-                          isPlaying ? Icons.pause_circle_filled : Icons.play_circle_filled,
+                          isPlaying
+                              ? Icons.pause_circle_filled
+                              : Icons.play_circle_filled,
                           color: Colors.white,
                         ),
                         padding: EdgeInsets.all(4),
@@ -177,7 +183,8 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
                     iconSize: 24,
                     icon: Icon(Icons.forward_10, color: Colors.white),
                     padding: EdgeInsets.all(4),
-                    onPressed: () => _playerData.player.seek(position + Duration(seconds: 10)),
+                    onPressed: () => _playerData.player
+                        .seek(position + Duration(seconds: 10)),
                   ),
                 ],
               ),
@@ -187,12 +194,71 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
       ),
     );
   }
-  
+
   String _formatDuration(Duration duration) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     String twoDigitMinutes = twoDigits(duration.inMinutes.remainder(60));
     String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     return "$twoDigitMinutes:$twoDigitSeconds";
+  }
+
+  Widget _buildErrorWidget(String message) {
+    return Center(
+      child: Card(
+        elevation: 12,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        color: Colors.red.shade50.withOpacity(0.95),
+        child: AnimatedContainer(
+          duration: Duration(milliseconds: 400),
+          curve: Curves.easeInOut,
+          padding: const EdgeInsets.all(40.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ShaderMask(
+                shaderCallback: (rect) => LinearGradient(
+                  colors: [Colors.redAccent, Colors.orangeAccent],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ).createShader(rect),
+                child: Icon(Icons.error_rounded, color: Colors.white, size: 64),
+              ),
+              SizedBox(height: 22),
+              Text('Failed to load audio',
+                  style: TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 20,
+                      color: Colors.red.shade700)),
+              SizedBox(height: 12),
+              AnimatedDefaultTextStyle(
+                duration: Duration(milliseconds: 400),
+                style: TextStyle(fontSize: 14, color: Colors.red.shade400),
+                child: Text(
+                  message,
+                  textAlign: TextAlign.center,
+                ),
+              ),
+              SizedBox(height: 28),
+              ElevatedButton.icon(
+                icon: Icon(Icons.refresh_rounded),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.redAccent,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  padding: EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                ),
+                onPressed: () {
+                  // Implement reload logic if needed
+                },
+                label: Text('Retry', style: TextStyle(fontSize: 17)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -205,14 +271,15 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
       _initializePlayer();
     }
   }
-    @override
+
+  @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
     // But we do need to stop it to release hardware resources
     try {
       _playerData.player.pause();
-      
+
       // Notify the system that this tile is no longer active
       print('AudioTile for ${widget.url} disposed');
     } catch (e) {
@@ -224,38 +291,9 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
-    
+
     if (_hasError) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(Icons.error_outline, color: Colors.red, size: 48),
-              SizedBox(height: 16),
-              Text('Failed to load audio'),
-              SizedBox(height: 8),
-              Text(
-                _errorMessage,
-                style: TextStyle(fontSize: 12),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 16),
-              ElevatedButton(
-                onPressed: () {
-                  setState(() {
-                    _hasError = false;
-                    _isInitialized = false;
-                  });
-                  _initializePlayer();
-                },
-                child: Text('Retry'),
-              ),
-            ],
-          ),
-        ),
-      );
+      return _buildErrorWidget(_errorMessage);
     }
 
     if (!_isInitialized) {
@@ -267,24 +305,22 @@ class _AudioTileState extends State<AudioTile> with AutomaticKeepAliveClientMixi
     // For audio, use a more compact audio player that adapts to its container
     return Material(
       color: Colors.grey.shade800,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // Use compact controls when space is limited
-          final bool useCompactControls = constraints.maxHeight < 200;
-          
-          return Container(
-            width: constraints.maxWidth,
-            height: constraints.maxHeight,
-            child: useCompactControls 
-                ? _buildCompactAudioPlayer()
-                : Video(
-                    controller: _playerData.controller,
-                    controls: MaterialDesktopVideoControls,
-                    fill: Colors.transparent,
-                  ),
-          );
-        }
-      ),
+      child: LayoutBuilder(builder: (context, constraints) {
+        // Use compact controls when space is limited
+        final bool useCompactControls = constraints.maxHeight < 200;
+
+        return Container(
+          width: constraints.maxWidth,
+          height: constraints.maxHeight,
+          child: useCompactControls
+              ? _buildCompactAudioPlayer()
+              : Video(
+                  controller: _playerData.controller,
+                  controls: MaterialDesktopVideoControls,
+                  fill: Colors.transparent,
+                ),
+        );
+      }),
     );
   }
 }

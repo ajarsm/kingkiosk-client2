@@ -12,7 +12,7 @@ class DeviceTestView extends GetView<DeviceTestController> {
     // Make sure performance monitor is registered
     final performanceService = Get.put(PerformanceMonitorService().init());
     performanceService.startMonitoring();
-    
+
     return WillPopScope(
       onWillPop: () async {
         performanceService.stopMonitoring();
@@ -38,13 +38,15 @@ class DeviceTestView extends GetView<DeviceTestController> {
               SizedBox(height: 16),
               _buildTestCategory(
                 title: 'Web View Test',
-                description: 'Tests the device\'s ability to display web content',
+                description:
+                    'Tests the device\'s ability to display web content',
                 buttonText: 'Run Web View Test',
                 onPressed: controller.runWebViewTest,
               ),
               _buildTestCategory(
                 title: 'MQTT Connection Test',
-                description: 'Tests the device\'s ability to maintain MQTT connections',
+                description:
+                    'Tests the device\'s ability to maintain MQTT connections',
                 buttonText: 'Run MQTT Test',
                 onPressed: controller.runMqttTest,
               ),
@@ -56,14 +58,15 @@ class DeviceTestView extends GetView<DeviceTestController> {
               ),
               _buildTestCategory(
                 title: 'Memory Stress Test',
-                description: 'Tests the device\'s ability to handle memory pressure',
+                description:
+                    'Tests the device\'s ability to handle memory pressure',
                 buttonText: 'Run Memory Test',
                 onPressed: controller.runMemoryTest,
               ),
               SizedBox(height: 16),
               Obx(() => controller.isTestRunning.value
-                ? _buildCurrentTestPanel()
-                : SizedBox.shrink()),
+                  ? _buildCurrentTestPanel()
+                  : SizedBox.shrink()),
               SizedBox(height: 16),
               _buildDeviceInfoPanel(performanceService),
             ],
@@ -72,67 +75,81 @@ class DeviceTestView extends GetView<DeviceTestController> {
       ),
     );
   }
-  
+
   Widget _buildStatusCard(PerformanceMonitorService performanceService) {
     return Card(
+      elevation: 10,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
+      margin: EdgeInsets.symmetric(vertical: 12, horizontal: 0),
       child: Padding(
-        padding: const EdgeInsets.all(16.0),
+        padding: const EdgeInsets.all(24.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(
-              'Performance Metrics',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ShaderMask(
+              shaderCallback: (rect) => LinearGradient(
+                colors: [Colors.blueAccent, Colors.cyanAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(rect),
+              child: Text(
+                'Performance Metrics',
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1.1,
+                ),
+              ),
             ),
             SizedBox(height: 16),
             Obx(() => _buildMetricRow(
-              'Frame Rate',
-              '${performanceService.frameRate.value.toStringAsFixed(1)} FPS',
-              performanceService.frameRate.value >= 30 
-                ? Colors.green 
-                : performanceService.frameRate.value >= 20 
-                  ? Colors.orange 
-                  : Colors.red,
-            )),
+                  'Frame Rate',
+                  '${performanceService.frameRate.value.toStringAsFixed(1)} FPS',
+                  performanceService.frameRate.value >= 30
+                      ? Colors.green
+                      : performanceService.frameRate.value >= 20
+                          ? Colors.orange
+                          : Colors.red,
+                )),
             SizedBox(height: 8),
             Obx(() => _buildMetricRow(
-              'Slow Frames',
-              '${performanceService.slowFrameCount.value}',
-              performanceService.slowFrameCount.value < 100 
-                ? Colors.green 
-                : performanceService.slowFrameCount.value < 500 
-                  ? Colors.orange 
-                  : Colors.red,
-            )),
+                  'Slow Frames',
+                  '${performanceService.slowFrameCount.value}',
+                  performanceService.slowFrameCount.value < 100
+                      ? Colors.green
+                      : performanceService.slowFrameCount.value < 500
+                          ? Colors.orange
+                          : Colors.red,
+                )),
             SizedBox(height: 8),
             Obx(() => _buildMetricRow(
-              'Frozen Frames',
-              '${performanceService.frozenFrameCount.value}',
-              performanceService.frozenFrameCount.value < 5 
-                ? Colors.green 
-                : performanceService.frozenFrameCount.value < 15 
-                  ? Colors.orange 
-                  : Colors.red,
-            )),
+                  'Frozen Frames',
+                  '${performanceService.frozenFrameCount.value}',
+                  performanceService.frozenFrameCount.value < 5
+                      ? Colors.green
+                      : performanceService.frozenFrameCount.value < 15
+                          ? Colors.orange
+                          : Colors.red,
+                )),
           ],
         ),
       ),
     );
   }
-  
+
   Widget _buildMetricRow(String label, String value, Color valueColor) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 16)),
-        Text(
-          value, 
-          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: valueColor)
-        ),
+        Text(value,
+            style: TextStyle(
+                fontSize: 16, fontWeight: FontWeight.bold, color: valueColor)),
       ],
     );
   }
-  
+
   Widget _buildTestCategory({
     required String title,
     required String description,
@@ -167,7 +184,7 @@ class DeviceTestView extends GetView<DeviceTestController> {
       ),
     );
   }
-  
+
   Widget _buildCurrentTestPanel() {
     return Card(
       color: Colors.blue.shade50,
@@ -179,8 +196,8 @@ class DeviceTestView extends GetView<DeviceTestController> {
             Row(
               children: [
                 SizedBox(
-                  width: 24, 
-                  height: 24, 
+                  width: 24,
+                  height: 24,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 ),
                 SizedBox(width: 16),
@@ -193,18 +210,19 @@ class DeviceTestView extends GetView<DeviceTestController> {
             SizedBox(height: 16),
             Obx(() => Text(controller.currentTestDescription.value)),
             SizedBox(height: 16),
-            Obx(() => LinearProgressIndicator(value: controller.testProgress.value)),
+            Obx(() =>
+                LinearProgressIndicator(value: controller.testProgress.value)),
             SizedBox(height: 16),
             Obx(() => Text(
-              '${(controller.testProgress.value * 100).toInt()}% Complete',
-              style: TextStyle(fontWeight: FontWeight.bold),
-            )),
+                  '${(controller.testProgress.value * 100).toInt()}% Complete',
+                  style: TextStyle(fontWeight: FontWeight.bold),
+                )),
           ],
         ),
       ),
     );
   }
-  
+
   Widget _buildDeviceInfoPanel(PerformanceMonitorService performanceService) {
     return Card(
       child: Padding(
@@ -217,23 +235,27 @@ class DeviceTestView extends GetView<DeviceTestController> {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
-            Obx(() => _buildInfoRow('Model', performanceService.deviceModel.value)),
+            Obx(() =>
+                _buildInfoRow('Model', performanceService.deviceModel.value)),
             SizedBox(height: 8),
-            Obx(() => _buildInfoRow('Android Version', performanceService.androidVersion.value)),
+            Obx(() => _buildInfoRow(
+                'Android Version', performanceService.androidVersion.value)),
             SizedBox(height: 8),
-            Obx(() => _buildInfoRow('Processor Cores', '${performanceService.processorCores.value}')),
+            Obx(() => _buildInfoRow('Processor Cores',
+                '${performanceService.processorCores.value}')),
           ],
         ),
       ),
     );
   }
-  
+
   Widget _buildInfoRow(String label, String value) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(label, style: TextStyle(fontSize: 16)),
-        Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        Text(value,
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
       ],
     );
   }

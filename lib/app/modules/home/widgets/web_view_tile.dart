@@ -125,53 +125,150 @@ class _WebViewTileState extends State<WebViewTile>
 
     if (_hasError) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, color: Colors.red, size: 48),
-            SizedBox(height: 16),
-            Text('Failed to load web content'),
-            SizedBox(height: 8),
-            Text(
-              _errorMessage.isNotEmpty
-                  ? _errorMessage
-                  : 'Unable to load: ${widget.url}',
-              style: TextStyle(fontSize: 12),
-              textAlign: TextAlign.center,
+        child: Card(
+          elevation: 12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(32),
+          ),
+          color: Colors.red.shade50.withOpacity(0.95),
+          child: AnimatedContainer(
+            duration: Duration(milliseconds: 400),
+            curve: Curves.easeInOut,
+            padding: const EdgeInsets.all(40.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ShaderMask(
+                  shaderCallback: (rect) => LinearGradient(
+                    colors: [Colors.redAccent, Colors.orangeAccent],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(rect),
+                  child:
+                      Icon(Icons.error_rounded, color: Colors.white, size: 64),
+                ),
+                SizedBox(height: 22),
+                Text('Failed to load web content',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                        color: Colors.red.shade700)),
+                SizedBox(height: 12),
+                AnimatedDefaultTextStyle(
+                  duration: Duration(milliseconds: 400),
+                  style: TextStyle(fontSize: 14, color: Colors.red.shade400),
+                  child: Text(
+                    _errorMessage.isNotEmpty
+                        ? _errorMessage
+                        : 'Unable to load: ${widget.url}',
+                    textAlign: TextAlign.center,
+                  ),
+                ),
+                SizedBox(height: 28),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.refresh_rounded),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(18),
+                    ),
+                    padding: EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                  ),
+                  onPressed: () {
+                    setState(() {
+                      _hasError = false;
+                      _isLoading = true;
+                    });
+                    _webViewData.safelyExecute((controller) async {
+                      await controller.reload();
+                    });
+                  },
+                  label: Text('Retry', style: TextStyle(fontSize: 17)),
+                ),
+              ],
             ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                setState(() {
-                  _hasError = false;
-                  _isLoading = true;
-                });
-                _webViewData.safelyExecute((controller) async {
-                  await controller.reload();
-                });
-              },
-              child: Text('Retry'),
-            ),
-          ],
+          ),
         ),
       );
     }
 
-    return Stack(
-      children: [
-        webViewWidget,
-        if (_isLoading && !_hasError)
-          Center(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Loading ${widget.url}...'),
-              ],
-            ),
+    return AnimatedContainer(
+      duration: Duration(milliseconds: 400),
+      curve: Curves.easeInOut,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            Colors.blue.shade50,
+            Colors.blue.shade100,
+            Colors.blue.shade200,
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(24),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.blue.withOpacity(0.08),
+            blurRadius: 18,
+            offset: Offset(0, 6),
           ),
-      ],
+        ],
+      ),
+      child: Stack(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(24),
+            child: webViewWidget,
+          ),
+          if (_isLoading && !_hasError)
+            Center(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  AnimatedContainer(
+                    duration: Duration(milliseconds: 600),
+                    curve: Curves.easeInOut,
+                    width: _isLoading ? 56 : 0,
+                    height: _isLoading ? 56 : 0,
+                    child: ShaderMask(
+                      shaderCallback: (rect) => LinearGradient(
+                        colors: [
+                          Colors.blueAccent,
+                          Colors.lightBlueAccent,
+                          Colors.cyanAccent,
+                        ],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(rect),
+                      child: Icon(Icons.language_rounded,
+                          size: 56, color: Colors.white),
+                    ),
+                  ),
+                  SizedBox(height: 18),
+                  AnimatedDefaultTextStyle(
+                    duration: Duration(milliseconds: 400),
+                    style: TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                      color: Colors.blueGrey.shade700,
+                    ),
+                    child: Text('Loading page...'),
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    widget.url,
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.blueGrey.shade400,
+                        fontStyle: FontStyle.italic),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

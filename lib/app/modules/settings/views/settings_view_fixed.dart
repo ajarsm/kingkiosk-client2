@@ -36,6 +36,28 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                 _buildThemeToggle(),
                 _buildKioskModeToggle(),
                 _buildSystemInfoToggle(),
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+                  child: ListTile(
+                    leading: ShaderMask(
+                      shaderCallback: (rect) => LinearGradient(
+                        colors: [Colors.blueAccent, Colors.cyanAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(rect),
+                      child: Icon(Icons.settings_rounded, color: Colors.white),
+                    ),
+                    title: Text('App Settings',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('General application settings'),
+                    trailing: Icon(Icons.arrow_forward_ios_rounded,
+                        color: Colors.blueGrey.shade300),
+                    onTap: () => controller.saveAppSettings(),
+                  ),
+                ),
               ],
             ),
 
@@ -66,6 +88,50 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               ],
             ),
 
+            // Security Settings
+            _buildSection(
+              title: 'Security',
+              children: [
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+                  child: ListTile(
+                    leading: ShaderMask(
+                      shaderCallback: (rect) => LinearGradient(
+                        colors: [Colors.blueAccent, Colors.cyanAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(rect),
+                      child: Icon(Icons.security_rounded, color: Colors.white),
+                    ),
+                    title: Text('Security',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle: Text('PIN and access control'),
+                    trailing: Icon(Icons.arrow_forward_ios_rounded,
+                        color: Colors.blueGrey.shade300),
+                    onTap: () {
+                      // No saveSecuritySettings method exists; open PIN dialog or show info instead
+                      Get.snackbar(
+                        'Security',
+                        'PIN and access control settings are managed above.',
+                        snackPosition: SnackPosition.BOTTOM,
+                        backgroundColor:
+                            Colors.blueGrey.shade900.withOpacity(0.9),
+                        colorText: Colors.white,
+                        margin: EdgeInsets.all(16),
+                        borderRadius: 16,
+                        icon: Icon(Icons.security_rounded,
+                            color: Colors.cyanAccent),
+                        duration: Duration(seconds: 3),
+                      );
+                    },
+                  ),
+                ),
+              ],
+            ),
+
             // App info
             Padding(
               padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
@@ -87,30 +153,54 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
 
   Widget _buildSection(
       {required String title, required List<Widget> children}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8.0),
-          child: Text(
-            title,
-            style: TextStyle(
-              fontSize: 20.0,
-              fontWeight: FontWeight.bold,
+    return Card(
+      elevation: 6,
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 20.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ShaderMask(
+              shaderCallback: (rect) => LinearGradient(
+                colors: [Colors.blueAccent, Colors.cyanAccent],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ).createShader(rect),
+              child: Text(
+                title,
+                style: TextStyle(
+                  fontSize: 22.0,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 1.1,
+                ),
+              ),
             ),
-          ),
+            SizedBox(height: 12.0),
+            ...children,
+          ],
         ),
-        ...children,
-        SizedBox(height: 16.0),
-      ],
+      ),
     );
   }
 
   Widget _buildThemeToggle() {
     return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
       child: ListTile(
-        leading: Icon(Icons.brightness_6),
-        title: Text('Dark Mode'),
+        leading: ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            colors: [Colors.blueAccent, Colors.cyanAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Icon(Icons.brightness_6, color: Colors.white),
+        ),
+        title: Text('Dark Mode', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Toggle application theme'),
         trailing: Obx(() => Switch(
               value: controller.isDarkMode.value,
@@ -123,9 +213,20 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
 
   Widget _buildKioskModeToggle() {
     return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
       child: ListTile(
-        leading: Icon(Icons.tv),
-        title: Text('Kiosk Mode'),
+        leading: ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            colors: [Colors.blueAccent, Colors.cyanAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Icon(Icons.tv, color: Colors.white),
+        ),
+        title:
+            Text('Kiosk Mode', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Fullscreen display mode'),
         trailing: Obx(() => Switch(
               value: controller.kioskMode.value,
@@ -138,9 +239,20 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
 
   Widget _buildSystemInfoToggle() {
     return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
       child: ListTile(
-        leading: Icon(Icons.info_outline),
-        title: Text('System Info'),
+        leading: ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            colors: [Colors.blueAccent, Colors.cyanAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Icon(Icons.info_outline, color: Colors.white),
+        ),
+        title:
+            Text('System Info', style: TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text('Show system information'),
         trailing: Obx(() => Switch(
               value: controller.showSystemInfo.value,
