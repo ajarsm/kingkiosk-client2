@@ -1037,7 +1037,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
       return _buildToolbarButton(
         icon: Icons.smart_toy,
         label: 'AI',
-        onPressed: () => aiAssistantService!.callAiAssistant(),
+        onPressed: () {
+          if (aiAssistantService!.isAiCallActive.value) {
+            aiAssistantService!.endAiCall();
+          } else {
+            aiAssistantService!.callAiAssistant();
+          }
+        },
         locked: false,
       );
     });
