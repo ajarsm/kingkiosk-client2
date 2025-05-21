@@ -490,8 +490,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
           // Notification Badge
           NotificationBadge(),
           SizedBox(width: 8),
-          // AI Assistant Button
-          _buildAiAssistantButton(),
           SizedBox(width: 8),
           _buildToolbarButton(
             icon: Icons.settings_rounded,
