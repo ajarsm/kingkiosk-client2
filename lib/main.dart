@@ -9,9 +9,11 @@ import 'app/core/bindings/initial_binding.dart';
 import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
 import 'app/services/screenshot_service.dart';
+import 'app/services/audio_service.dart';
 
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
 import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
+import 'package:king_kiosk/notification_system/models/notification_models.dart';
 
 void main() async {
   // Ensure Flutter is initialized
@@ -21,8 +23,38 @@ void main() async {
   await GetStorage.init(); // Initialize MediaKit for media playback
   MediaKit.ensureInitialized();
 
+  // Initialize AudioService first to ensure sounds work
+  print('📱 Initializing AudioService at app startup');
+  final audioService = AudioService();
+  await audioService.init();
+  Get.put(audioService, permanent: true);
+
+  // Test notification sound if enabled
+  if (const bool.fromEnvironment('TEST_NOTIFICATION_SOUND',
+      defaultValue: false)) {
+    print('📱 Testing notification sound playback...');
+    await AudioService.playNotification();
+  }
+
+  // Initialize notification system
+  await GetXNotificationService.init();
+
+  // Auto-test notification if enabled
+  if (const bool.fromEnvironment('SHOW_TEST_NOTIFICATION',
+      defaultValue: false)) {
+    print('📱 Auto-testing notification with sound...');
+    final notificationService = Get.find<NotificationService>();
+    await notificationService.addNotification(
+      title: 'Test Notification',
+      message: 'This is a test notification with sound!',
+      priority: NotificationPriority.high,
+    );
+  }
+
   // Initialize window_manager for desktop
-  await PlatformUtils.ensureWindowManagerInitialized(); // Register services
+  await PlatformUtils.ensureWindowManagerInitialized();
+
+  // Register services
   Get.put<NotificationService>(GetXNotificationService(), permanent: true);
   // Remove ScreenshotService from here - it will be initialized in InitialBinding
 

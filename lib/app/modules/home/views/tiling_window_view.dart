@@ -128,21 +128,23 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   children: controller.tiles
                       .map((tile) => _buildWindowTile(tile, locked))
                       .toList(),
-                )),
-            // Translucent notification indicator in upper right corner
+                )), // Translucent notification indicator in upper right corner
             const TranslucentNotificationIndicator(
               opacity: 0.4, // Slightly more visible
               size: 28.0,
               padding: EdgeInsets.only(top: 20, right: 20),
             ),
-            // Edge handle for toolbar/appbar reveal (mobile and desktop)
-            if (PlatformUtils.isMobile)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
+            // Floating AI button for call hangup
+            _buildFloatingAiButton(),
+            // Edge handle for toolbar/appbar reveal (mobile and desktop)            if (PlatformUtils.isMobile)
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: Center(
                 child: GestureDetector(
-                  behavior: HitTestBehavior.translucent,
+                  behavior: HitTestBehavior
+                      .opaque, // Only detect gestures on the visible handle
                   onDoubleTap: () {
                     _autoHidingToolbarKey.currentState?.showToolbar();
                   },
@@ -150,39 +152,43 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     _autoHidingToolbarKey.currentState?.showToolbar();
                   },
                   child: Container(
+                    width:
+                        60, // Only make the handle itself receive touch events
                     height: 24,
                     alignment: Alignment.topCenter,
                     color: Colors.transparent,
-                    child: Center(
-                      child: Container(
-                        width: 60,
-                        height: 6,
-                        decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.7),
-                          borderRadius: BorderRadius.circular(3),
-                        ),
+                    child: Container(
+                      width: 60,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        color: Colors.white.withOpacity(0.7),
+                        borderRadius: BorderRadius.circular(3),
                       ),
                     ),
                   ),
                 ),
               ),
+            ),
             if (PlatformUtils.isDesktop)
               Positioned(
                 top: 0,
                 left: 0,
                 right: 0,
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior.translucent,
-                    onTap: () {
-                      _autoHidingToolbarKey.currentState?.showToolbar();
-                    },
-                    child: Container(
-                      height: 16,
-                      alignment: Alignment.topCenter,
-                      color: Colors.transparent,
-                      child: Center(
+                child: Center(
+                  child: MouseRegion(
+                    cursor: SystemMouseCursors.click,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior
+                          .opaque, // Only detect gestures on the visible handle
+                      onTap: () {
+                        _autoHidingToolbarKey.currentState?.showToolbar();
+                      },
+                      child: Container(
+                        width:
+                            60, // Only make the handle itself receive touch events
+                        height: 16,
+                        alignment: Alignment.topCenter,
+                        color: Colors.transparent,
                         child: Container(
                           width: 60,
                           height: 4,
@@ -205,6 +211,44 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
             // Notification Center positioned on the right side
             _buildNotificationCenter(),
+
+            // Translucent AI hangup button in upper right when call is active
+            if (aiAssistantService != null)
+              Obx(() {
+                if (aiAssistantService!.isAiCallActive.value) {
+                  return Positioned(
+                    top: 24,
+                    right: 24,
+                    child: GestureDetector(
+                      onTap: () => aiAssistantService!.endAiCall(),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          color: Colors.blueGrey.withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(32),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.10),
+                              blurRadius: 8,
+                              offset: Offset(0, 2),
+                            ),
+                          ],
+                        ),
+                        padding: EdgeInsets.all(14),
+                        child: Icon(
+                          Icons.smart_toy,
+                          color: Colors.blueAccent.withOpacity(0.85),
+                          size: 36,
+                        ),
+                      ),
+                    ),
+                  );
+                } else {
+                  return SizedBox.shrink();
+                }
+              }),
+
+            // Floating AI button for quickly hanging up during calls
+            _buildFloatingAiButton(),
           ],
         );
       }),
@@ -240,27 +284,24 @@ class TilingWindowViewState extends State<TilingWindowView> {
           onEnter: (_) {
             print('DEBUG: Mouse entered window ${tile.name}');
           },
-          child: GestureDetector(
-            onTap: locked ? null : () => controller.selectTile(tile),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: Colors.transparent, // No visible border
-                  width: 0,
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.10),
-                    blurRadius: 5,
-                    spreadRadius: 1,
-                  ),
-                ],
-                borderRadius: BorderRadius.circular(24),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 300),
+            curve: Curves.easeInOut,
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Colors.transparent,
+                width: 0,
               ),
-              child: _buildTitleBar(tile, locked),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.transparent,
+                  blurRadius: 0,
+                  spreadRadius: 0,
+                ),
+              ],
+              borderRadius: BorderRadius.circular(24),
             ),
+            child: _buildTitleBar(tile, locked),
           ),
         );
       }),
@@ -315,40 +356,42 @@ class TilingWindowViewState extends State<TilingWindowView> {
             print(
                 '🔄 [REFRESH] Building WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
             return WebViewTile(
-              key: ValueKey('${tile.id}_$refreshKey'),
               url: tile.url,
               refreshKey: refreshKey,
               windowId: tile.id,
             );
           });
         } else {
-          // Fallback: just show the webview without refresh support
-          print(
-              '⚠️ [REFRESH] No WebWindowController found for window: ${tile.id}, using regular WebViewTile but passing windowId');
+          // Create the WebViewTile without a controller - it will self-register
           return WebViewTile(
-            key: ValueKey(tile.id),
             url: tile.url,
             windowId: tile.id,
           );
         }
+
       case TileType.media:
-        return MediaTile(url: tile.url);
+        return MediaTile(
+          url: tile.url,
+          loop: tile.loop,
+        );
+
       case TileType.audio:
-        return AudioTile(url: tile.url);
+        return AudioTile(
+          url: tile.url,
+        );
+
       case TileType.image:
         return ImageTile(
-            url: tile.url, imageUrls: tile.imageUrls, showControls: true);
+          url: tile.url,
+          imageUrls: tile.imageUrls,
+        );
     }
   }
-  // Resize handle is now managed by AutoHideTitleBar
 
-  Widget _buildToolbar(BuildContext context, bool locked) {
+  Widget _buildBottomToolbar(bool locked) {
     return Container(
-      height: 64,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
       decoration: BoxDecoration(
-        color: Theme.of(context).appBarTheme.backgroundColor ??
-            Theme.of(context).primaryColor,
+        color: Colors.black87,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.08),
@@ -1045,6 +1088,91 @@ class TilingWindowViewState extends State<TilingWindowView> {
           }
         },
         locked: false,
+      );
+    });
+  }
+
+  // Toolbar for the kiosk with all buttons and controls
+  Widget _buildToolbar(BuildContext context, bool locked) {
+    return _buildBottomToolbar(locked);
+  }
+
+  // Floating AI button for quickly hanging up during calls
+  Widget _buildFloatingAiButton() {
+    if (aiAssistantService == null) {
+      return const SizedBox.shrink(); // No button if service not available
+    }
+
+    return Obx(() {
+      // Only show the button when an AI call is active
+      if (!aiAssistantService!.isAiCallActive.value) {
+        return const SizedBox.shrink(); // Hide when no active call
+      }
+
+      // Choose icon based on call state
+      IconData callIcon;
+      Color iconColor;
+      Color bgColor;
+
+      switch (aiAssistantService!.aiCallState.value) {
+        case 'connecting':
+          callIcon = Icons.call_end_rounded;
+          iconColor = Colors.white;
+          bgColor = Colors.amber.withOpacity(0.7);
+          break;
+        case 'connected':
+        case 'confirmed':
+          callIcon = Icons.call_end_rounded;
+          iconColor = Colors.white;
+          bgColor = Colors.red.withOpacity(0.7);
+          break;
+        case 'failed':
+          return const SizedBox.shrink(); // Hide button on call failure
+        case 'ended':
+          return const SizedBox.shrink(); // Hide button when call ended
+        default:
+          callIcon = Icons.call_end_rounded;
+          iconColor = Colors.white;
+          bgColor = Colors.red.withOpacity(0.7);
+      } // Return a translucent floating button in the corner that doesn't block input events to what's below
+      return Positioned(
+        top: 16,
+        right: 16,
+        child: Material(
+          elevation: 3,
+          color: Colors.transparent,
+          borderRadius: BorderRadius.circular(24),
+          child: InkWell(
+            borderRadius: BorderRadius.circular(24),
+            onTap: () => aiAssistantService!.endAiCall(),
+            child: Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: bgColor,
+                borderRadius: BorderRadius.circular(24),
+                border: Border.all(
+                  color: Colors.white.withOpacity(0.4),
+                  width: 1,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(callIcon, color: iconColor, size: 24),
+                  const SizedBox(width: 8),
+                  Text(
+                    'End Call',
+                    style: TextStyle(
+                      color: iconColor,
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       );
     });
   }

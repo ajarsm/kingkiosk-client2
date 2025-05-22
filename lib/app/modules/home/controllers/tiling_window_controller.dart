@@ -313,7 +313,7 @@ class TilingWindowController extends GetxController {
     }
     selectedTile.value = newTile;
 
-    // --- Register WebWindowController for MQTT/web control ---
+    // --- Register WebWindowController for MQTT/web control if we already have a controller ---
     if (webViewController != null) {
       final controller = WebWindowController(
         windowName: newTile.id, // Use unique tile ID for MQTT routing
@@ -324,7 +324,8 @@ class TilingWindowController extends GetxController {
       );
       Get.find<WindowManagerService>().registerWindow(controller);
     }
-    // --------------------------------------------------------
+    // Note: If no webViewController provided, the WebViewTile will register itself
+    // when the WebView is created in its onWebViewCreated callback.
 
     // Save window state after adding tile
     _saveWindowState();

@@ -11,6 +11,7 @@ import '../utils/platform_helper.dart';
 import '../widgets/notification_toast.dart';
 import 'notification_service.dart';
 import '../../app/core/utils/audio_utils.dart';
+import '../../app/services/audio_service.dart';
 
 class GetXNotificationService extends GetxController
     implements NotificationService {
@@ -44,6 +45,24 @@ class GetXNotificationService extends GetxController
   // Static initialization method - call this before using the service
   static Future<void> init() async {
     await GetStorage.init(_storageBox);
+
+    // Make sure AudioService is initialized before notifications arrive
+    try {
+      if (!Get.isRegistered<AudioService>()) {
+        print('Initializing AudioService during notification system startup');
+        final audioService = AudioService();
+        await audioService.init();
+        Get.put(audioService);
+      } else {
+        print('AudioService already registered');
+      }
+
+      // Pre-load notification sound to ensure it works when needed
+      await AudioService.playNotification();
+    } catch (e) {
+      print(
+          'Warning: Could not initialize AudioService during notification system startup: $e');
+    }
   }
 
   // Stream getters
@@ -96,13 +115,13 @@ class GetXNotificationService extends GetxController
 
   // Notification management methods
   @override
-  void addNotification({
+  Future<void> addNotification({
     required String title,
     required String message,
     NotificationPriority priority = NotificationPriority.normal,
     NotificationThumbnail? thumbnail,
     bool isHtml = false,
-  }) {
+  }) async {
     // Sanitize HTML if needed
     final sanitizedMessage = isHtml ? HtmlSanitizer.sanitize(message) : message;
 
@@ -121,10 +140,32 @@ class GetXNotificationService extends GetxController
 
     // Play notification sound
     try {
-      // Use AudioPlayerCompat to play notification sound (just_audio, cached)
-      AudioPlayerCompat.playNotification();
+      print('📢 Playing notification sound for new notification');
+
+      // Use enhanced audio compatibility layer
+      await AudioPlayerCompat.playNotification();
     } catch (e) {
-      print('Error playing notification sound: $e');
+      print('⚠️ Error playing notification sound: $e');
+
+      // Try direct static method as backup with more logging
+      try {
+        print(
+            '📢 Trying backup notification sound via AudioService.playNotification()');
+        await AudioService.playNotification();
+        print('✅ Backup notification sound succeeded');
+      } catch (e2) {
+        print('❌ Backup notification sound also failed: $e2');
+        print('📢 Creating one-time player as final attempt');
+
+        // One final attempt with direct player creation
+        try {
+          final player = AudioPlayer();
+          await player.play(AssetSource('notification'));
+          print('✅ Final attempt notification sound succeeded');
+        } catch (e3) {
+          print('❌ All notification sound methods failed: $e3');
+        }
+      }
     }
 
     // Enforce the history limit

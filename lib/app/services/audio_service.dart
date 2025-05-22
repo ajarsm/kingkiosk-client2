@@ -1,4 +1,3 @@
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:just_audio/just_audio.dart';
 import 'dart:io';
@@ -24,17 +23,25 @@ class AudioService extends GetxService {
   static const String notification = 'notification';
 
   Future<AudioService> init() async {
+    print('🔊 AudioService init() called');
     // Initialize the sound players in advance
-    await _initializePlayer(wrongPin, 'assets/sounds/wrong.wav');
-    await _initializePlayer(success, 'assets/sounds/correct.wav');
-    await _initializePlayer(notification, 'assets/sounds/notification.wav');
-
-    // Add any other sounds from the assets folder as needed
     try {
-      // Add custom initialization logic for additional sounds here if needed
-      print('Audio service initialized successfully');
+      print('🔊 Initializing wrong pin sound...');
+      await _initializePlayer(wrongPin, 'assets/sounds/wrong.wav');
+
+      print('🔊 Initializing success sound...');
+      await _initializePlayer(success, 'assets/sounds/correct.wav');
+
+      print('🔊 Initializing notification sound...');
+      await _initializePlayer(notification, 'assets/sounds/notification.wav');
+
+      // Verify players were created
+      print('🔊 Initialized players: ${_players.keys.join(', ')}');
+
+      // Add any other sounds from the assets folder as needed
+      print('🔊 Audio service initialized successfully');
     } catch (e) {
-      print('Warning: Error initializing additional audio files: $e');
+      print('⚠️ Warning: Error initializing audio files: $e');
     }
 
     _isInitialized.value = true;
@@ -44,36 +51,64 @@ class AudioService extends GetxService {
   /// Initialize a player with a specific sound
   Future<void> _initializePlayer(String key, String assetPath) async {
     try {
+      print('🔊 Initializing player for sound key: $key, path: $assetPath');
       final player = AudioPlayer();
-      // Try to load from cached file first
-      final cachedFile = await _getCachedFile(key);
 
-      if (cachedFile != null && await cachedFile.exists()) {
-        // Use cached file
-        await player.setFilePath(cachedFile.path);
-      } else {
-        // Load from assets and cache
-        await player.setAsset(assetPath);
-        // Cache the file for future use
-        await _cacheAssetFile(key, assetPath);
+      // Use the helper method to safely set the audio asset
+      final success = await _safelySetAudioAsset(player, assetPath);
+      if (!success) {
+        throw Exception('Failed to set audio asset for $key');
       }
 
       _players[key] = player;
+      print('🔊 Successfully initialized player for $key');
     } catch (e) {
-      print('Error initializing audio player: $e');
+      print('⚠️ Error initializing audio player for key "$key": $e');
+      print('⚠️ Stack trace: ${StackTrace.current}');
     }
   }
 
-  /// Get the cached file path
-  Future<File?> _getCachedFile(String key) async {
+  /// Helper method to safely set an audio asset with fallback mechanisms
+  Future<bool> _safelySetAudioAsset(
+      AudioPlayer player, String assetPath) async {
+    print('🔊 Attempting to safely set audio asset: $assetPath');
+
     try {
-      final dir = await getTemporaryDirectory();
-      return File('${dir.path}/audio_cache_$key.mp3');
-    } catch (e) {
-      print('Error getting cached file: $e');
-      return null;
+      // Standard approach - should work in most cases
+      print('🔊 Try standard setAsset approach');
+      await player.setAsset(assetPath);
+      print('✅ Standard setAsset succeeded');
+      return true;
+    } catch (e1) {
+      print('⚠️ Standard setAsset approach failed: $e1');
+
+      try {
+        // Try with 'asset:' prefix
+        final assetUrl = 'asset:$assetPath';
+        print('🔊 Try with asset: scheme: $assetUrl');
+        await player.setUrl(assetUrl);
+        print('✅ asset: scheme succeeded');
+        return true;
+      } catch (e2) {
+        print('⚠️ asset: scheme approach failed: $e2');
+
+        try {
+          // Try direct URL with bundled asset approach
+          final bundledAssetUrl = 'asset:///$assetPath';
+          print('🔊 Try bundled asset URL: $bundledAssetUrl');
+          await player.setUrl(bundledAssetUrl);
+          print('✅ bundledAsset URL succeeded');
+          return true;
+        } catch (e3) {
+          print('⚠️ All asset loading approaches failed for $assetPath');
+          print('⚠️ Errors: $e1, $e2, $e3');
+          return false;
+        }
+      }
     }
   }
+
+  // The _getCachedFile method has been removed as it's no longer used with the new asset loading approach
 
   /// Generate a key from URL for caching purposes
   String _generateKeyFromUrl(String url) {
@@ -106,39 +141,123 @@ class AudioService extends GetxService {
     }
   }
 
-  /// Cache an asset file for future use
-  Future<void> _cacheAssetFile(String key, String assetPath) async {
+  /// Static utility method to play notification sound from anywhere
+  static Future<void> playNotification() async {
     try {
-      final ByteData data = await rootBundle.load(assetPath);
-      final bytes = data.buffer.asUint8List();
-
-      final cachedFile = await _getCachedFile(key);
-      if (cachedFile != null) {
-        await cachedFile.writeAsBytes(bytes);
+      print('🔊 Static playNotification() called');
+      if (Get.isRegistered<AudioService>()) {
+        print('🔊 AudioService is registered, using instance');
+        final audioService = Get.find<AudioService>();
+        await audioService.playNotificationSound();
+      } else {
+        // If service isn't registered yet, create a temporary instance
+        print('🔊 AudioService not registered, creating temporary instance');
+        final tempService = AudioService();
+        await tempService.init();
+        await tempService.playNotificationSound();
       }
     } catch (e) {
-      print('Error caching asset file: $e');
+      print('⚠️ Error playing notification sound: $e');
+
+      // Last resort: create a direct player
+      try {
+        print('🔊 Creating static direct player as last resort');
+        final player = AudioPlayer();
+
+        // Create an instance of the service to access non-static methods
+        final tempService = AudioService();
+        final success = await tempService._safelySetAudioAsset(
+            player, 'assets/sounds/notification.wav');
+
+        if (success) {
+          print('🔊 Static direct player asset set successfully');
+          await player.play();
+          print('🔊 Static direct player successfully played notification');
+        } else {
+          print(
+              '⚠️ Static direct player failed to set asset after all attempts');
+        }
+
+        // Dispose after playing to avoid memory leaks
+        Future.delayed(Duration(seconds: 2), () {
+          player.dispose();
+        });
+      } catch (e2) {
+        print('⚠️ Final attempt to play notification sound failed: $e2');
+      }
     }
   }
+
+  // The _cacheAssetFile method has been removed as it's no longer used with the new asset loading approach
 
   /// Play a sound by key
   Future<void> playSound(String key) async {
     if (!_isInitialized.value) {
-      print('Audio service not initialized');
-      return;
+      print('Audio service not initialized, initializing now...');
+      await init();
     }
 
     try {
-      final player = _players[key];
+      // Check if we have the key in our player map
+      print('🔊 Attempting to play sound: $key');
+      print('🔊 Available sound keys: ${_players.keys.join(', ')}');
+
+      AudioPlayer? player = _players[key];
+      if (player == null) {
+        // Try to reinitialize the player if it's missing
+        print('Sound "$key" not found, attempting to reinitialize...');
+        switch (key) {
+          case notification:
+            await _initializePlayer(
+                notification, 'assets/sounds/notification.wav');
+            break;
+          case wrongPin:
+            await _initializePlayer(wrongPin, 'assets/sounds/wrong.wav');
+            break;
+          case success:
+            await _initializePlayer(success, 'assets/sounds/correct.wav');
+            break;
+        }
+        player = _players[key];
+      }
+
       if (player != null) {
+        print('🔊 Found player for sound "$key", playing...');
         await player.stop();
         await player.seek(Duration.zero);
         await player.play();
+        print('🔊 Sound "$key" playback started');
       } else {
-        print('Sound "$key" not found');
+        print('⚠️ Sound "$key" still not found after reinitialization attempt');
+
+        // Last resort: create a one-time player
+        print('🔊 Creating one-time player for "$key"');
+        final tempPlayer = AudioPlayer();
+
+        // Get the asset path based on the sound key
+        final assetPath =
+            'assets/sounds/${key == notification ? 'notification.wav' : key == wrongPin ? 'wrong.wav' : 'correct.wav'}';
+
+        // Use our helper method that tries multiple approaches
+        final success = await _safelySetAudioAsset(tempPlayer, assetPath);
+
+        if (success) {
+          print('🔊 One-time player asset set for "$key"');
+          await tempPlayer.play();
+          print('🔊 One-time player started playing "$key"');
+        } else {
+          print('⚠️ All attempts to play one-time sound "$key" have failed');
+        }
+        // Clean up after playing
+        tempPlayer.processingStateStream.listen((state) {
+          if (state == ProcessingState.completed) {
+            tempPlayer.dispose();
+          }
+        });
       }
     } catch (e) {
-      print('Error playing sound: $e');
+      print('⚠️ Error playing sound: $e');
+      print('⚠️ Stack trace: ${StackTrace.current}');
     }
   }
 

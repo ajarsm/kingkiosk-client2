@@ -1,5 +1,5 @@
 PODS:
-  - audioplayers_darwin (0.0.1):
+  - audio_session (0.0.1):
     - Flutter
   - battery_plus (1.0.0):
     - Flutter
@@ -22,11 +22,12 @@ PODS:
     - WebRTC-SDK (= 125.6422.06)
   - image_gallery_saver_plus (0.0.1):
     - Flutter
+  - just_audio (0.0.1):
+    - Flutter
+    - FlutterMacOS
   - media_kit_libs_ios_video (1.0.4):
     - Flutter
   - media_kit_video (0.0.1):
-    - Flutter
-  - nsd_ios (0.0.1):
     - Flutter
   - OrderedSet (6.0.3)
   - package_info_plus (0.4.5):
@@ -35,8 +36,6 @@ PODS:
     - Flutter
     - FlutterMacOS
   - permission_handler_apple (9.3.0):
-    - Flutter
-  - record_ios (1.0.0):
     - Flutter
   - screen_brightness_ios (0.1.0):
     - Flutter
@@ -49,7 +48,7 @@ PODS:
   - WebRTC-SDK (125.6422.06)
 
 DEPENDENCIES:
-  - audioplayers_darwin (from `.symlinks/plugins/audioplayers_darwin/ios`)
+  - audio_session (from `.symlinks/plugins/audio_session/ios`)
   - battery_plus (from `.symlinks/plugins/battery_plus/ios`)
   - device_info_plus (from `.symlinks/plugins/device_info_plus/ios`)
   - Flutter (from `Flutter`)
@@ -58,13 +57,12 @@ DEPENDENCIES:
   - flutter_volume_controller (from `.symlinks/plugins/flutter_volume_controller/ios`)
   - flutter_webrtc (from `.symlinks/plugins/flutter_webrtc/ios`)
   - image_gallery_saver_plus (from `.symlinks/plugins/image_gallery_saver_plus/ios`)
+  - just_audio (from `.symlinks/plugins/just_audio/darwin`)
   - media_kit_libs_ios_video (from `.symlinks/plugins/media_kit_libs_ios_video/ios`)
   - media_kit_video (from `.symlinks/plugins/media_kit_video/ios`)
-  - nsd_ios (from `.symlinks/plugins/nsd_ios/ios`)
   - package_info_plus (from `.symlinks/plugins/package_info_plus/ios`)
   - path_provider_foundation (from `.symlinks/plugins/path_provider_foundation/darwin`)
   - permission_handler_apple (from `.symlinks/plugins/permission_handler_apple/ios`)
-  - record_ios (from `.symlinks/plugins/record_ios/ios`)
   - screen_brightness_ios (from `.symlinks/plugins/screen_brightness_ios/ios`)
   - url_launcher_ios (from `.symlinks/plugins/url_launcher_ios/ios`)
   - volume_controller (from `.symlinks/plugins/volume_controller/ios`)
@@ -76,8 +74,8 @@ SPEC REPOS:
     - WebRTC-SDK
 
 EXTERNAL SOURCES:
-  audioplayers_darwin:
-    :path: ".symlinks/plugins/audioplayers_darwin/ios"
+  audio_session:
+    :path: ".symlinks/plugins/audio_session/ios"
   battery_plus:
     :path: ".symlinks/plugins/battery_plus/ios"
   device_info_plus:
@@ -94,20 +92,18 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/flutter_webrtc/ios"
   image_gallery_saver_plus:
     :path: ".symlinks/plugins/image_gallery_saver_plus/ios"
+  just_audio:
+    :path: ".symlinks/plugins/just_audio/darwin"
   media_kit_libs_ios_video:
     :path: ".symlinks/plugins/media_kit_libs_ios_video/ios"
   media_kit_video:
     :path: ".symlinks/plugins/media_kit_video/ios"
-  nsd_ios:
-    :path: ".symlinks/plugins/nsd_ios/ios"
   package_info_plus:
     :path: ".symlinks/plugins/package_info_plus/ios"
   path_provider_foundation:
     :path: ".symlinks/plugins/path_provider_foundation/darwin"
   permission_handler_apple:
     :path: ".symlinks/plugins/permission_handler_apple/ios"
-  record_ios:
-    :path: ".symlinks/plugins/record_ios/ios"
   screen_brightness_ios:
     :path: ".symlinks/plugins/screen_brightness_ios/ios"
   url_launcher_ios:
@@ -118,7 +114,7 @@ EXTERNAL SOURCES:
     :path: ".symlinks/plugins/wakelock_plus/ios"
 
 SPEC CHECKSUMS:
-  audioplayers_darwin: ccf9c770ee768abb07e26d90af093f7bab1c12ab
+  audio_session: 9bb7f6c970f21241b19f5a3658097ae459681ba0
   battery_plus: ae71a65eceb5680dfc7a1d926f6cde59a1b219d0
   device_info_plus: 335f3ce08d2e174b9fdc3db3db0f4e3b1f66bd89
   Flutter: e0871f40cf51350855a761d2e70bf5af5b9b5de7
@@ -127,14 +123,13 @@ SPEC CHECKSUMS:
   flutter_volume_controller: c2be490cb0487e8b88d0d9fc2b7e1c139a4ebccb
   flutter_webrtc: 57f32415b8744e806f9c2a96ccdb60c6a627ba33
   image_gallery_saver_plus: e597bf65a7846979417a3eae0763b71b6dfec6c3
+  just_audio: 4e391f57b79cad2b0674030a00453ca5ce817eed
   media_kit_libs_ios_video: 5a18affdb97d1f5d466dc79988b13eff6c5e2854
   media_kit_video: 1746e198cb697d1ffb734b1d05ec429d1fcd1474
-  nsd_ios: 596ad79109ddd3e52d665f650f36428049e3653e
   OrderedSet: e539b66b644ff081c73a262d24ad552a69be3a94
   package_info_plus: af8e2ca6888548050f16fa2f1938db7b5a5df499
   path_provider_foundation: 080d55be775b7414fd5a5ef3ac137b97b097e564
   permission_handler_apple: 4ed2196e43d0651e8ff7ca3483a069d469701f2d
-  record_ios: fee1c924aa4879b882ebca2b4bce6011bcfc3d8b
   screen_brightness_ios: 28c5fbdb40634de44f86025d84470158ad4df48c
   url_launcher_ios: 694010445543906933d732453a59da0a173ae33d
   volume_controller: 3657a1f65bedb98fa41ff7dc5793537919f31b12

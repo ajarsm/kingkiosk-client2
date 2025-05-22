@@ -76,11 +76,24 @@ class _WebViewTileState extends State<WebViewTile>
       initialSettings: InAppWebViewSettings(
         javaScriptEnabled: true,
         mediaPlaybackRequiresUserGesture: false,
-        transparentBackground: false,
+        transparentBackground: true,
+        useOnLoadResource: false,
         supportZoom: true,
         verticalScrollBarEnabled: true,
         horizontalScrollBarEnabled: true,
         allowsInlineMediaPlayback: true,
+        disableHorizontalScroll: false,
+        disableVerticalScroll: false,
+        allowsLinkPreview: true,
+        allowsBackForwardNavigationGestures: true,
+        javaScriptCanOpenWindowsAutomatically: true,
+        userAgent:
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
+        // Ensure touch events work properly
+        useOnDownloadStart: true,
+        useShouldOverrideUrlLoading: true,
+        useShouldInterceptAjaxRequest: true,
+        useShouldInterceptFetchRequest: true,
       ),
       onWebViewCreated: (controller) {
         if (!_webViewData.isInitialized) {
@@ -106,10 +119,29 @@ class _WebViewTileState extends State<WebViewTile>
           _isLoading = true;
         });
       },
-      onLoadStop: (controller, url) {
+      onLoadStop: (controller, url) async {
         setState(() {
           _isLoading = false;
         });
+
+        // Enable touch events on WebView content
+        try {
+          await controller.evaluateJavascript(source: """
+            // Add enhanced touch handling for elements
+            document.addEventListener('touchstart', function(e) {
+              console.log('Touch event intercepted and passed through');
+            }, {passive: true});
+            
+            // Make all interactive elements clearly tappable
+            const interactiveElements = document.querySelectorAll('a, button, input, select, [role="button"]');
+            interactiveElements.forEach(el => {
+              if (!el.style.cursor) el.style.cursor = 'pointer';
+            });
+          """);
+          print("WebView: Enhanced touch handling script injected");
+        } catch (e) {
+          print("WebView: Error injecting touch handling script: $e");
+        }
       },
       onReceivedError: (controller, request, error) {
         setState(() {
@@ -120,6 +152,10 @@ class _WebViewTileState extends State<WebViewTile>
       },
       onConsoleMessage: (controller, consoleMessage) {
         print("WebView Console [${widget.url}]: ${consoleMessage.message}");
+      },
+      shouldOverrideUrlLoading: (controller, navigationAction) async {
+        print("WebView URL loading: ${navigationAction.request.url}");
+        return NavigationActionPolicy.ALLOW;
       },
     );
 
@@ -192,26 +228,19 @@ class _WebViewTileState extends State<WebViewTile>
         ),
       );
     }
-
     return AnimatedContainer(
       duration: Duration(milliseconds: 400),
       curve: Curves.easeInOut,
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            Colors.blue.shade50,
-            Colors.blue.shade100,
-            Colors.blue.shade200,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Colors.transparent,
         borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: Colors.transparent, width: 0),
         boxShadow: [
           BoxShadow(
-            color: Colors.blue.withOpacity(0.08),
-            blurRadius: 18,
-            offset: Offset(0, 6),
+            color: Colors.transparent,
+            blurRadius: 0,
+            spreadRadius: 0,
+            offset: Offset(0, 0),
           ),
         ],
       ),
@@ -219,7 +248,8 @@ class _WebViewTileState extends State<WebViewTile>
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: webViewWidget,
+            child:
+                webViewWidget, // Removed unnecessary stack to reduce complexity
           ),
           if (_isLoading && !_hasError)
             Center(

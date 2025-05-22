@@ -144,15 +144,16 @@ class _AutoHideTitleBarState extends State<AutoHideTitleBar> {
           ),
         ),
 
-        // Hover detection area - the entire window area
+        // Hover detection area - ONLY the top portion of the window
         Positioned(
           top: 0,
           left: 0,
           right: 0,
-          bottom: 0, // Cover the entire window to detect hover anywhere
+          height:
+              60, // Only detect hover at the top 60 pixels, not the entire window
           child: MouseRegion(
             onEnter: (_) {
-              print('DEBUG: Mouse entered window area for ${widget.tile.name}');
+              print('DEBUG: Mouse entered top area for ${widget.tile.name}');
               setState(() {
                 _isHovering = true;
                 _isVisible = true;
@@ -160,7 +161,7 @@ class _AutoHideTitleBarState extends State<AutoHideTitleBar> {
             },
             onExit: (_) {
               print(
-                  'DEBUG: Mouse exited title bar area for window ${widget.tile.name}');
+                  'DEBUG: Mouse exited top area for window ${widget.tile.name}');
               setState(() {
                 _isHovering = false;
               });
@@ -169,15 +170,14 @@ class _AutoHideTitleBarState extends State<AutoHideTitleBar> {
             onHover: (_) {
               // Ensure title bar is visible on hover
               if (!_isVisible) {
-                print(
-                    'DEBUG: Mouse hovering over title bar area for window ${widget.tile.name}');
                 setState(() {
                   _isVisible = true;
                 });
               }
             },
             child: GestureDetector(
-              behavior: HitTestBehavior.translucent,
+              behavior:
+                  HitTestBehavior.opaque, // Only detect gestures where visible
               onTap: () {
                 _showTitleBar();
               },
