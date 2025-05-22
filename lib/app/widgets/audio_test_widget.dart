@@ -18,7 +18,7 @@ class AudioTestWidget extends StatelessWidget {
               style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             SizedBox(height: 16),
-            Text('Test the new just_audio implementation'),
+            Text('Test the MediaKit audio implementation'),
             SizedBox(height: 16),
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,

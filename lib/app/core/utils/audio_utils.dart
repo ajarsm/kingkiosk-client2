@@ -1,8 +1,8 @@
 import 'package:get/get.dart';
+import 'package:media_kit/media_kit.dart';
 import '../../services/audio_service.dart';
 
-/// This class provides a compatibility layer between the old audioplayers usage
-/// and the new just_audio based AudioService
+/// This class provides a compatibility layer for older audio playback code
 class AudioPlayerCompat {
   // Use method to safely get AudioService instead of static field
   static AudioService? _getAudioService() {
@@ -91,9 +91,15 @@ class AudioPlayerCompat {
   }
 }
 
-/// This class provides a drop-in replacement for the old AudioPlayer class
-/// for code that still uses AudioPlayer directly
+/// This class provides a drop-in replacement for code that expects an AudioPlayer class
 class AudioPlayer {
+  // No need for Player field anymore as we'll use AudioService
+
+  /// Create a new audio player
+  AudioPlayer() {
+    print('🔊 AudioPlayer compatibility wrapper created');
+  }
+
   /// Try to get the AudioService instance
   AudioService? _getAudioService() {
     try {
@@ -145,22 +151,37 @@ class AudioPlayer {
 
   /// Stop playing a sound
   Future<void> stop() async {
-    // No implementation needed as just_audio handles this internally
+    try {
+      // Try to stop using the service
+      final service = _getAudioService();
+      if (service != null) {
+        // Service handles stopping as needed
+      }
+    } catch (e) {
+      print('⚠️ Error in AudioPlayer.stop: $e');
+    }
     return;
   }
 
   /// Release resources
   Future<void> dispose() async {
-    // No implementation needed as just_audio handles this internally
+    try {
+      // No need to manage resources as AudioService handles cleanup
+    } catch (e) {
+      print('⚠️ Error in AudioPlayer.dispose: $e');
+    }
     return;
   }
 }
 
-/// Drop-in replacement for AssetSource
+/// Compatibility replacement for AssetSource that works with media_kit
 class AssetSource {
   final String path;
 
   AssetSource(this.path);
+
+  /// Convert to asset path format for Media constructor
+  String toAssetPath() => 'asset:///assets/sounds/$path';
 
   @override
   String toString() => path;

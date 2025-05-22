@@ -643,7 +643,7 @@ class MqttService extends GetxService {
               print(
                   '🔊 [MQTT] Playing audio in background via AudioService with caching: $url, loop=$loop');
               final audioService = Get.find<AudioService>();
-              audioService.playRemoteAudio(url, loop: loop);
+              audioService.playRemoteAudio(url, looping: loop);
             } catch (e) {
               print(
                   '❌ Error playing audio with AudioService: $e, falling back to BackgroundMediaService');

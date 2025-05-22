@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:uuid/uuid.dart';
+import 'package:media_kit/media_kit.dart';
 import '../models/notification_models.dart';
 import '../models/notification_config.dart';
 import '../utils/html_sanitizer.dart';
@@ -159,11 +160,23 @@ class GetXNotificationService extends GetxController
 
         // One final attempt with direct player creation
         try {
-          final player = AudioPlayer();
-          await player.play(AssetSource('notification'));
-          print('✅ Final attempt notification sound succeeded');
+          // Create a Player instance directly from media_kit
+          final player = Player();
+          try {
+            await player.open(Media('asset:///assets/sounds/notification.wav'));
+            await player.play();
+            print('✅ Final attempt notification sound succeeded');
+
+            // Dispose after a delay
+            Future.delayed(Duration(seconds: 2), () {
+              player.dispose();
+            });
+          } catch (e3) {
+            print('❌ All notification sound methods failed: $e3');
+            player.dispose();
+          }
         } catch (e3) {
-          print('❌ All notification sound methods failed: $e3');
+          print('❌ Failed to create player: $e3');
         }
       }
     }

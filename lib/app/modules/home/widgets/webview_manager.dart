@@ -10,18 +10,30 @@ class WebViewManager {
   WebViewManager._internal();
 
   final Map<String, WebViewData> _webViews = {};
+  // Use a normalized URL as key to ensure consistent caching
+  String _normalizeUrl(String url) {
+    // Remove trailing slashes, query parameters, or other variations that might cause duplicate entries
+    try {
+      final uri = Uri.parse(url);
+      return '${uri.scheme}://${uri.host}${uri.path}';
+    } catch (_) {
+      return url;
+    }
+  }
 
   WebViewData getWebViewFor(String url) {
-    if (!_webViews.containsKey(url)) {
+    final normalizedUrl = _normalizeUrl(url);
+
+    if (!_webViews.containsKey(normalizedUrl)) {
       final controller = Completer<InAppWebViewController>();
-      _webViews[url] = WebViewData(controller);
+      _webViews[normalizedUrl] = WebViewData(controller);
       print(
-          '🔄 [REFRESH] WebViewManager - Created new WebViewData for URL: $url');
+          '🔄 [REFRESH] WebViewManager - Created new WebViewData for URL: $url (normalized: $normalizedUrl)');
     } else {
       print(
-          '🔄 [REFRESH] WebViewManager - Reusing existing WebViewData for URL: $url');
+          '🔄 [REFRESH] WebViewManager - Reusing existing WebViewData for URL: $url (normalized: $normalizedUrl)');
     }
-    return _webViews[url]!;
+    return _webViews[normalizedUrl]!;
   }
 
   void dispose() {

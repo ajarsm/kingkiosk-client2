@@ -44,10 +44,24 @@ class _WebViewTileState extends State<WebViewTile>
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);
 
-    // If URL changed OR refreshKey changed (for refresh command)
-    if (oldWidget.url != widget.url ||
-        oldWidget.refreshKey != widget.refreshKey ||
-        oldWidget.windowId != widget.windowId) {
+    // Only reset the WebView if URL changed OR refreshKey changed AND refreshKey is not null
+    // This ensures we only create a new WebView when explicitly requested
+    bool shouldReset = oldWidget.url != widget.url;
+
+    // Only consider refreshKey changes when a non-null refreshKey is provided
+    if (widget.refreshKey != null &&
+        oldWidget.refreshKey != widget.refreshKey) {
+      shouldReset = true;
+    }
+
+    // Handle windowId changes separately to avoid unnecessary resets
+    bool windowIdChanged = oldWidget.windowId != widget.windowId &&
+        widget.windowId != null &&
+        oldWidget.windowId != null;
+
+    if (shouldReset || windowIdChanged) {
+      print(
+          'WebViewTile - Resetting for URL: ${widget.url}, refreshKey: ${widget.refreshKey}, windowId: ${widget.windowId}');
       // Reset the WebViewData
       _webViewData = WebViewManager().getWebViewFor(widget.url);
 

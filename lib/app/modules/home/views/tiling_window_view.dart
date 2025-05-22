@@ -351,6 +351,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
         final wm = Get.find<WindowManagerService>();
         final controller = wm.getWindow(tile.id);
         if (controller is WebWindowController) {
+          // Use Obx only when a controller exists to avoid rebuilding unnecessarily
           return Obx(() {
             final refreshKey = controller.refreshCounter.value;
             print(
@@ -362,8 +363,11 @@ class TilingWindowViewState extends State<TilingWindowView> {
             );
           });
         } else {
-          // Create the WebViewTile without a controller - it will self-register
+          // Create the WebViewTile without a controller and with a stable key to prevent duplicate creation
+          print(
+              '🔄 [REFRESH] Creating initial WebViewTile for window: ${tile.id}');
           return WebViewTile(
+            key: ValueKey('initial_webview_${tile.id}'),
             url: tile.url,
             windowId: tile.id,
           );

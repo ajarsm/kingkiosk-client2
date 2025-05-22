@@ -1,16 +1,52 @@
-# king_kiosk
+# KingKiosk Client
 
-A new Flutter project.
+A cross-platform Flutter kiosk application for displaying interactive content, media, and web pages via MQTT commands.
+
+## Features
+
+- Interactive tiling window system
+- WebView integration for displaying web content
+- Media playback (audio, video, images)
+- MQTT control system for remote management
+- Notification system with audio feedback
+- Screenshot functionality
+- System control (volume, brightness)
+- Cross-platform support (Windows, macOS, Android, iOS)
+
+## Recent Fixes and Improvements
+
+The application has undergone several important fixes and improvements:
+
+1. **WebView Duplicate Loading Fix** - Fixed issue where WebView tiles loaded twice when opened via MQTT commands
+2. **Audio Looping Functionality** - Added support for looping audio playback via MQTT commands
+3. **Media Kit Migration** - Replaced just_audio with media_kit for better cross-platform audio support
+4. **Touch Event Handling** - Fixed issues with web pages not accepting touch/input events
+5. **Blue Outline Removal** - Removed unwanted blue outlines around WebView/tile windows
+
+For a detailed list of fixes and improvements, see [FIXES_SUMMARY.md](FIXES_SUMMARY.md).
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter 3.19.0 or higher
+- Dart 3.3.0 or higher
+- An MQTT broker for remote control (optional)
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+### Installation
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Clone the repository
+2. Install dependencies:
+   ```
+   flutter pub get
+   ```
+3. Run the application:
+   ```
+   flutter run
+   ```
+
+## Documentation
+
+- [Android Build Guide](docs/ANDROID_BUILD_GUIDE.md)
+- [WebView Duplicate Fix](webview_duplicate_fix.md)
+- [Audio Looping Update](audio_looping_update.md)

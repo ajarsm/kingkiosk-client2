@@ -187,20 +187,14 @@ class AudioService extends GetxService {
   }
 
   /// Play audio from a remote URL (like MQTT streaming)
-  ///
-  /// [url] The URL of the audio to play
-  /// [stopPrevious] Whether to stop any currently playing audio
-  /// [looping] Whether to loop the audio continuously
-  Future<void> playRemoteAudio(String url,
-      {bool stopPrevious = true, bool looping = false}) async {
+  Future<void> playRemoteAudio(String url, {bool stopPrevious = true}) async {
     try {
       if (stopPrevious) {
         await stopRemoteAudio();
       }
 
       final cacheKey = _generateKeyFromUrl(url);
-      print(
-          'Playing remote audio from URL: $url (Key: $cacheKey, Looping: $looping)');
+      print('Playing remote audio from URL: $url (Key: $cacheKey)');
 
       // Check if we have a cached player
       Player? player = _remotePlayerCache[cacheKey];
@@ -223,24 +217,13 @@ class AudioService extends GetxService {
         _cacheRemoteFile(url, cacheKey);
       }
 
-      // Set looping mode if requested
-      if (looping) {
-        print('Setting audio to loop continuously');
-        // Setting playlist mode to single for looping a single track
-        await player.setPlaylistMode(PlaylistMode.single);
-      } else {
-        // Ensure normal playback for non-looping audio
-        await player.setPlaylistMode(PlaylistMode.none);
-      }
-
       await player.play();
 
       // Update state
       currentRemoteAudio.value = url;
       isRemotePlaying.value = true;
 
-      print(
-          'Remote audio playback started successfully with looping: $looping');
+      print('Remote audio playback started successfully');
     } catch (e) {
       print('⚠️ Error playing remote audio: $e');
     }

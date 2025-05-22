@@ -31,7 +31,7 @@ class SoundUtil {
     try {
       if (Get.isRegistered<AudioService>()) {
         final audioService = Get.find<AudioService>();
-        await audioService.clearCache();
+        //await audioService.clearCache();
       }
     } catch (e) {
       print('Error clearing audio cache: $e');

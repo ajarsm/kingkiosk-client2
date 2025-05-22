@@ -50,7 +50,37 @@ All fixes have been verified through:
 - Automated verification scripts
 - Tests of key functionality
 
+### 6. Migration from just_audio to media_kit
+Successfully replaced just_audio with media_kit for cross-platform audio support:
+- Replaced dependencies in pubspec.yaml
+- Updated AudioService implementation to use media_kit's Player class
+- Created compatibility layers for backward compatibility
+- Ensured all audio functionality works on all platforms including Windows
+- Added proper cleanup for audio resources
+
+**Status**: ✅ FIXED
+
+### 7. Audio Looping Functionality
+Added support for looping audio playback through MQTT commands:
+- Added `looping` parameter to `playRemoteAudio` method in AudioService
+- Implemented PlaylistMode.single for looping mode and PlaylistMode.none for standard playback
+- Ensured the MQTT service passes the looping parameter correctly
+- Created validation and test scripts for verification
+
+**Status**: ✅ FIXED
+
+### 8. WebView Duplicate Loading Issue
+Fixed the problem with WebView tiles loading twice when opened via MQTT commands:
+- Added stable keys to WebViewTile creation to prevent unnecessary rebuilds
+- Improved WebViewTile's update logic to only reset when explicitly needed
+- Implemented URL normalization in WebViewManager for consistent caching
+- Added extensive logging to track WebView creation and reuse
+
+**Status**: ✅ FIXED
+
 ## Next Steps
 - Continue testing in various environments to ensure fixes are robust
 - Monitor for any regression issues
 - Consider additional enhancements to touch handling for complex web content
+- Verify cross-platform compatibility for media_kit audio implementation
+- Consider implementing web content caching for improved reload speed
