@@ -8,6 +8,7 @@ import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
 import '../widgets/image_tile.dart';
 import '../widgets/auto_hide_title_bar.dart';
+import '../widgets/webview_tile_manager.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -352,24 +353,25 @@ class TilingWindowViewState extends State<TilingWindowView> {
         final controller = wm.getWindow(tile.id);
         if (controller is WebWindowController) {
           // Use Obx only when a controller exists to avoid rebuilding unnecessarily
+          // But actually return the SAME WebViewTile instance every time
           return Obx(() {
             final refreshKey = controller.refreshCounter.value;
             print(
-                '🔄 [REFRESH] Building WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
-            return WebViewTile(
-              url: tile.url,
+                '🔄 [REFRESH] Getting stable WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
+            // Use the WebViewTileManager to get a stable instance
+            return WebViewTileManager().getWebViewTileFor(
+              tile.id,
+              tile.url,
               refreshKey: refreshKey,
-              windowId: tile.id,
             );
           });
         } else {
-          // Create the WebViewTile without a controller and with a stable key to prevent duplicate creation
+          // Create the WebViewTile without a controller but still using the stable manager
           print(
-              '🔄 [REFRESH] Creating initial WebViewTile for window: ${tile.id}');
-          return WebViewTile(
-            key: ValueKey('initial_webview_${tile.id}'),
-            url: tile.url,
-            windowId: tile.id,
+              '🔄 [REFRESH] Getting stable WebViewTile for window: ${tile.id}');
+          return WebViewTileManager().getWebViewTileFor(
+            tile.id,
+            tile.url,
           );
         }
 

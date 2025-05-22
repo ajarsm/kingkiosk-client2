@@ -74,7 +74,10 @@ Fixed the problem with WebView tiles loading twice when opened via MQTT commands
 - Added stable keys to WebViewTile creation to prevent unnecessary rebuilds
 - Improved WebViewTile's update logic to only reset when explicitly needed
 - Implemented URL normalization in WebViewManager for consistent caching
-- Added extensive logging to track WebView creation and reuse
+- Added stable WebView instance that persists across widget tree rebuilds
+- Preserved WebViewController to prevent deallocation and recreation
+- Added comprehensive logging for better debugging of WebView lifecycle
+- Created `webview_permanent_fix.md` with full technical documentation
 
 **Status**: ✅ FIXED
 

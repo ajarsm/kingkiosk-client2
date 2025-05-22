@@ -29,20 +29,24 @@ class _WebViewTileState extends State<WebViewTile>
   String _errorMessage = '';
   final GlobalKey webViewKey = GlobalKey();
 
+  // Stable key for InAppWebView that won't change on widget rebuild
+  late final ValueKey<String> _stableWebViewKey;
+
+  // Maintain a stable instance of InAppWebView that won't be recreated on widget rebuild
+  late final InAppWebView _stableWebViewWidget;
+
   @override
   bool get wantKeepAlive => true; // Keep state alive when widget is not visible
-  @override
-  void initState() {
-    super.initState();
-    // Disable WebView debug logging
-    PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
-    WidgetsBinding.instance.addObserver(this);
-    _webViewData = WebViewManager().getWebViewFor(widget.url);
-  }
+  // We've moved these handlers directly to the InAppWebView instance created in initState
 
   @override
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);
+
+    print(
+        '🔧 WebViewTile - didUpdateWidget called. Old URL: ${oldWidget.url}, New URL: ${widget.url}');
+    print(
+        '🔧 WebViewTile - didUpdateWidget old refreshKey: ${oldWidget.refreshKey}, new refreshKey: ${widget.refreshKey}');
 
     // Only reset the WebView if URL changed OR refreshKey changed AND refreshKey is not null
     // This ensures we only create a new WebView when explicitly requested
@@ -61,14 +65,29 @@ class _WebViewTileState extends State<WebViewTile>
 
     if (shouldReset || windowIdChanged) {
       print(
-          'WebViewTile - Resetting for URL: ${widget.url}, refreshKey: ${widget.refreshKey}, windowId: ${widget.windowId}');
+          '🔄 WebViewTile - URL or refresh key changed - Resetting WebView for URL: ${widget.url}, refreshKey: ${widget.refreshKey}, windowId: ${widget.windowId}');
       // Reset the WebViewData
       _webViewData = WebViewManager().getWebViewFor(widget.url);
+
+      // Instead of recreating the entire WebView widget,
+      // we'll use the existing controller to load the new URL
+      _webViewData.safelyExecute((controller) async {
+        try {
+          print(
+              '🔄 WebViewTile - Loading new URL: ${widget.url} using existing controller');
+          await controller.loadUrl(
+              urlRequest: URLRequest(url: WebUri(widget.url)));
+        } catch (e) {
+          print('⚠️ WebViewTile - Error loading new URL: $e');
+        }
+      });
 
       setState(() {
         _isLoading = true;
         _hasError = false;
       });
+    } else {
+      print('🔧 WebViewTile - No URL or refreshKey change, skipping reset');
     }
   }
 
@@ -78,12 +97,13 @@ class _WebViewTileState extends State<WebViewTile>
     super.dispose();
   }
 
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+  // Create and maintain a single stable instance of InAppWebView
+  InAppWebView _createWebView() {
+    print(
+        '🔧 WebViewTile - Creating WebView for URL: ${widget.url} with key: $_stableWebViewKey');
 
-    final webViewWidget = InAppWebView(
-      key: ValueKey('webview_${widget.url}_${widget.refreshKey ?? 0}'),
+    return InAppWebView(
+      key: _stableWebViewKey,
       initialUrlRequest: URLRequest(
         url: WebUri(widget.url),
       ),
@@ -103,17 +123,18 @@ class _WebViewTileState extends State<WebViewTile>
         javaScriptCanOpenWindowsAutomatically: true,
         userAgent:
             "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-        // Ensure touch events work properly
         useOnDownloadStart: true,
         useShouldOverrideUrlLoading: true,
         useShouldInterceptAjaxRequest: true,
         useShouldInterceptFetchRequest: true,
       ),
       onWebViewCreated: (controller) {
+        print('🔧 WebViewTile - WebView created with key: $_stableWebViewKey');
         if (!_webViewData.isInitialized) {
           _webViewData.controller.complete(controller);
           _webViewData.isInitialized = true;
         }
+
         // Register WebWindowController when the webview is created
         if (widget.windowId != null) {
           final wm = Get.find<WindowManagerService>();
@@ -129,11 +150,15 @@ class _WebViewTileState extends State<WebViewTile>
         }
       },
       onLoadStart: (controller, url) {
+        print(
+            '🔧 WebViewTile - Load started for URL: ${url?.toString() ?? widget.url}');
         setState(() {
           _isLoading = true;
         });
       },
       onLoadStop: (controller, url) async {
+        print(
+            '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
         setState(() {
           _isLoading = false;
         });
@@ -152,12 +177,14 @@ class _WebViewTileState extends State<WebViewTile>
               if (!el.style.cursor) el.style.cursor = 'pointer';
             });
           """);
-          print("WebView: Enhanced touch handling script injected");
+          print("🔧 WebViewTile - Enhanced touch handling script injected");
         } catch (e) {
-          print("WebView: Error injecting touch handling script: $e");
+          print("⚠️ WebViewTile - Error injecting touch handling script: $e");
         }
       },
       onReceivedError: (controller, request, error) {
+        print(
+            '⚠️ WebViewTile - Error loading URL: ${request.url}, Error: ${error.description}');
         setState(() {
           _hasError = true;
           _isLoading = false;
@@ -165,13 +192,44 @@ class _WebViewTileState extends State<WebViewTile>
         });
       },
       onConsoleMessage: (controller, consoleMessage) {
-        print("WebView Console [${widget.url}]: ${consoleMessage.message}");
+        print(
+            "🔧 WebViewTile Console [${widget.url}]: ${consoleMessage.message}");
       },
       shouldOverrideUrlLoading: (controller, navigationAction) async {
-        print("WebView URL loading: ${navigationAction.request.url}");
+        print(
+            "🔧 WebViewTile - URL navigating to: ${navigationAction.request.url}");
         return NavigationActionPolicy.ALLOW;
       },
     );
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    // Disable WebView debug logging
+    PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
+    WidgetsBinding.instance.addObserver(this);
+    _webViewData = WebViewManager().getWebViewFor(widget.url);
+
+    // Create a stable key that will remain constant throughout the lifecycle
+    _stableWebViewKey = ValueKey(
+        'webview_stable_${widget.windowId ?? DateTime.now().millisecondsSinceEpoch}');
+    print(
+        '🔧 WebViewTile - Creating stable WebView for key: $_stableWebViewKey with URL: ${widget.url}');
+
+    // Create the WebView instance once here
+    _stableWebViewWidget = _createWebView();
+    print(
+        '🔧 WebViewTile - Created and cached stable WebView instance in initState');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    // Always use the stable WebView instance created in initState
+    // This ensures we don't create a new WebView on each build
+    final webViewWidget = _stableWebViewWidget;
 
     if (_hasError) {
       return Center(

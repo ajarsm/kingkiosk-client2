@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
+import '../widgets/webview_tile_manager.dart'; // Add WebViewTileManager import
 import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
@@ -605,6 +606,16 @@ class TilingWindowController extends GetxController {
             // Force dispose window resources first
             controller.disposeWindow();
             wm.unregisterWindow(tile.id);
+            // For WebView tiles, also remove from the WebViewTileManager
+            if (tile.type == TileType.webView) {
+              try {
+                WebViewTileManager().removeWebViewTile(tile.id);
+                print(
+                    '🔒 Removed WebViewTile from manager for window: ${tile.id}');
+              } catch (e) {
+                print('Error removing WebViewTile from manager: $e');
+              }
+            }
           } catch (e) {
             print('Error disposing window controller: $e');
           }
