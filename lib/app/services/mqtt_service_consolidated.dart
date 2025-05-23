@@ -23,6 +23,7 @@ import 'audio_service.dart'; // Import the AudioService
 import '../controllers/halo_effect_controller.dart';
 import '../controllers/window_halo_controller.dart';
 import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
+import '../modules/home/widgets/youtube_player_tile.dart'; // Import for YouTubePlayerManager
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -721,6 +722,37 @@ class MqttService extends GetxService {
       }
       return;
     }
+
+    // --- youtube command via {"command": "youtube", ...} ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'youtube' &&
+        cmdObj['url'] is String) {
+      final url = cmdObj['url'] as String;
+      final title = cmdObj['title']?.toString() ?? 'YouTube';
+      final String? windowId = cmdObj['window_id']?.toString();
+      try {
+        final controller = Get.find<TilingWindowController>();
+        // Extract YouTube video ID from URL
+        final videoId = YouTubePlayerManager.extractVideoId(url);
+        if (videoId == null) {
+          print(
+              '⚠️ [MQTT] Invalid YouTube URL: $url - could not extract video ID');
+          return;
+        }
+
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addYouTubeTileWithId(windowId, title, url, videoId);
+        } else {
+          controller.addYouTubeTile(title, url, videoId);
+        }
+        print('🎬 [MQTT] Opened YouTube player for URL: $url, title=$title' +
+            (windowId != null ? ', id=$windowId' : ''));
+      } catch (e) {
+        print('❌ Error opening YouTube player: $e');
+      }
+      return;
+    }
+
     // --- close_window command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'close_window') {
       final windowId = cmdObj['window_id'] as String?;

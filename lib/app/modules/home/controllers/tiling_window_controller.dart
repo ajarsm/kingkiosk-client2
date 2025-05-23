@@ -17,6 +17,7 @@ import '../../settings/controllers/settings_controller.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
+import 'youtube_window_controller.dart'; // YouTube controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -69,11 +70,9 @@ class TilingWindowController extends GetxController {
       if (tiles.isEmpty) {
         storageService.remove(keyTilingWindowState);
         return;
-      }
-
-      // Create a serializable representation of tiles
+      } // Create a serializable representation of tiles
       final List<Map<String, dynamic>> serializedTiles = tiles.map((tile) {
-        return {
+        final Map<String, dynamic> tileMap = {
           'id': tile.id,
           'name': tile.name,
           'type': tile.type.toString().split('.').last,
@@ -86,7 +85,20 @@ class TilingWindowController extends GetxController {
             'width': tile.size.width,
             'height': tile.size.height,
           },
+          'loop': tile.loop,
         };
+
+        // Add imageUrls if not empty
+        if (tile.imageUrls.isNotEmpty) {
+          tileMap['imageUrls'] = tile.imageUrls;
+        }
+
+        // Add metadata if present
+        if (tile.metadata != null) {
+          tileMap['metadata'] = tile.metadata;
+        }
+
+        return tileMap;
       }).toList();
 
       // Also save selected tile ID and tiling mode
@@ -145,9 +157,7 @@ class TilingWindowController extends GetxController {
         final size = Size(
           tileData['size']['width'],
           tileData['size']['height'],
-        );
-
-        // Parse tile type
+        ); // Parse tile type
         final String typeString = tileData['type'];
         TileType type;
         switch (typeString) {
@@ -160,8 +170,24 @@ class TilingWindowController extends GetxController {
           case 'audio':
             type = TileType.audio;
             break;
+          case 'image':
+            type = TileType.image;
+            break;
+          case 'youtube':
+            type = TileType.youtube;
+            break;
           default:
             type = TileType.webView;
+        } // Handle image URLs if present (for image tiles)
+        List<String> imageUrls = [];
+        if (tileData['imageUrls'] != null && tileData['imageUrls'] is List) {
+          imageUrls = List<String>.from(tileData['imageUrls']);
+        }
+
+        // Handle metadata if present
+        Map<String, dynamic>? metadata;
+        if (tileData['metadata'] != null && tileData['metadata'] is Map) {
+          metadata = Map<String, dynamic>.from(tileData['metadata']);
         }
 
         // Create and add tile
@@ -170,8 +196,11 @@ class TilingWindowController extends GetxController {
           name: tileData['name'],
           type: type,
           url: tileData['url'],
+          imageUrls: imageUrls,
           position: position,
           size: size,
+          loop: tileData['loop'] ?? false,
+          metadata: metadata,
         );
         tiles.add(tile);
 
@@ -432,6 +461,61 @@ class TilingWindowController extends GetxController {
       },
     );
     Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Save window state after adding tile
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a YouTube player window tile  /// Creates a YouTube player window tile  /// Creates a YouTube player window tile
+  void addYouTubeTile(String name, String url, String videoId) {
+    final newTile = WindowTile(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      type: TileType.youtube,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(640, 390), // 16:9 aspect ratio for videos
+      metadata: {'videoId': videoId},
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // No need to register with window manager here - this will be done when the WebView is created
+    // in the YouTubePlayerTile widget with the fix in youtube_window_controller_fixed.dart
+
+    // Save window state after adding tile
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a YouTube player window tile with a custom ID
+  void addYouTubeTileWithId(
+      String id, String name, String url, String videoId) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.youtube,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(640, 390), // 16:9 aspect ratio for videos
+      metadata: {'videoId': videoId},
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // No need to register with window manager here - this will be done when the WebView is created
+    // in the YouTubePlayerTile widget with the fix in youtube_window_controller_fixed.dart
 
     // Save window state after adding tile
     _saveWindowState();

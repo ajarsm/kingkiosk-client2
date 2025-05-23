@@ -8,6 +8,7 @@ import '../widgets/audio_tile.dart';
 import '../widgets/image_tile.dart';
 import '../widgets/auto_hide_title_bar.dart';
 import '../widgets/webview_tile_manager.dart';
+import '../widgets/youtube_player_tile.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -19,6 +20,7 @@ import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
+import '../controllers/youtube_window_controller.dart';
 import '../../../services/ai_assistant_service.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
 import '../../../widgets/window_halo_wrapper.dart';
@@ -342,6 +344,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.audio_file, size: 16);
       case TileType.image:
         return Icon(Icons.image, size: 16);
+      case TileType.youtube:
+        return Icon(Icons.smart_display, size: 16);
     }
   }
 
@@ -376,6 +380,25 @@ class TilingWindowViewState extends State<TilingWindowView> {
             tile.url,
           );
         }
+        break;
+      case TileType.youtube:
+        // Find the YouTubeWindowController for this tile
+        final wm = Get.find<WindowManagerService>();
+        // Get the videoId from metadata or extract from URL
+        String videoId = '';
+        if (tile.metadata != null && tile.metadata!['videoId'] != null) {
+          videoId = tile.metadata!['videoId'] as String;
+        }
+
+        // Use YouTubePlayerManager to get a stable instance
+        content = YouTubePlayerManager().getYouTubePlayerTileFor(
+          tile.id,
+          tile.url,
+          videoId,
+          autoplay: true,
+          showControls: true,
+          showInfo: true,
+        );
         break;
 
       case TileType.media:
@@ -443,6 +466,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
               onPressed: locked
                   ? null
                   : () => _showAddMediaDialog(context, isAudio: true),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: Icons.smart_display,
+              label: 'YouTube',
+              onPressed: locked ? null : () => _showAddYouTubeDialog(context),
               locked: locked,
             ),
             _buildToolbarButton(
@@ -837,6 +866,64 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     controller.addMediaTile(
                         nameController.text, urlController.text);
                   }
+                  Get.back();
+                }
+              },
+              child: Text('Add'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  // Show a dialog to add a new YouTube window
+  void _showAddYouTubeDialog(BuildContext context) {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController urlController = TextEditingController();
+
+    // Use Future.microtask to avoid setState during build errors
+    Future.microtask(() {
+      Get.dialog(
+        AlertDialog(
+          title: Text('Add YouTube Video'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'Enter a name for this window',
+                ),
+              ),
+              SizedBox(height: 16),
+              TextField(
+                controller: urlController,
+                decoration: InputDecoration(
+                  labelText: 'YouTube URL or Video ID',
+                  hintText: 'Enter YouTube URL or Video ID',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.isNotEmpty &&
+                    urlController.text.isNotEmpty) {
+                  // Extract video ID if this is a full URL
+                  String url = urlController.text.trim();
+                  String? extractedId =
+                      YouTubePlayerManager.extractVideoId(url);
+                  String videoId = extractedId ?? url;
+
+                  // Add the YouTube tile
+                  controller.addYouTubeTile(nameController.text, url, videoId);
                   Get.back();
                 }
               },
