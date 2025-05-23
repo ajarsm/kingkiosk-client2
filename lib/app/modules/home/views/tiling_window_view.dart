@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../controllers/tiling_window_controller.dart';
-import '../widgets/web_view_tile.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
 import '../widgets/image_tile.dart';
@@ -22,6 +21,7 @@ import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
 import '../../../services/ai_assistant_service.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
+import '../../../widgets/window_halo_wrapper.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -346,6 +346,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }
 
   Widget _buildTileContent(WindowTile tile) {
+    // Create the appropriate content based on tile type
+    Widget content;
+
     switch (tile.type) {
       case TileType.webView:
         // Find the WebWindowController for this tile
@@ -353,8 +356,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
         final controller = wm.getWindow(tile.id);
         if (controller is WebWindowController) {
           // Use Obx only when a controller exists to avoid rebuilding unnecessarily
-          // But actually return the SAME WebViewTile instance every time
-          return Obx(() {
+          content = Obx(() {
             final refreshKey = controller.refreshCounter.value;
             print(
                 '🔄 [REFRESH] Getting stable WebViewTile with refreshKey: $refreshKey for window: ${tile.id}');
@@ -369,29 +371,38 @@ class TilingWindowViewState extends State<TilingWindowView> {
           // Create the WebViewTile without a controller but still using the stable manager
           print(
               '🔄 [REFRESH] Getting stable WebViewTile for window: ${tile.id}');
-          return WebViewTileManager().getWebViewTileFor(
+          content = WebViewTileManager().getWebViewTileFor(
             tile.id,
             tile.url,
           );
         }
+        break;
 
       case TileType.media:
-        return MediaTile(
+        content = MediaTile(
           url: tile.url,
           loop: tile.loop,
         );
+        break;
 
       case TileType.audio:
-        return AudioTile(
+        content = AudioTile(
           url: tile.url,
         );
+        break;
 
       case TileType.image:
-        return ImageTile(
+        content = ImageTile(
           url: tile.url,
           imageUrls: tile.imageUrls,
         );
+        break;
     }
+    // Wrap the content with WindowHaloWrapper to enable window-specific halo effects
+    return WindowHaloWrapper(
+      windowId: tile.id,
+      child: content,
+    );
   }
 
   Widget _buildBottomToolbar(bool locked) {

@@ -17,6 +17,7 @@ import '../../services/audio_service.dart';
 import '../../services/window_close_handler.dart';
 import '../../services/ai_assistant_service.dart';
 import '../../controllers/halo_effect_controller.dart';
+import '../../controllers/window_halo_controller.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -57,6 +58,15 @@ class InitialBinding extends Bindings {
           '📝 Registering new HaloEffectControllerGetx instance in InitialBinding');
       Get.put<HaloEffectControllerGetx>(HaloEffectControllerGetx(),
           permanent: true);
+    }
+
+    // Register window halo controller for window-specific halo effects
+    if (Get.isRegistered<WindowHaloController>()) {
+      print('✅ WindowHaloController already registered, skipping registration');
+    } else {
+      print(
+          '📝 Registering new WindowHaloController instance in InitialBinding');
+      Get.put<WindowHaloController>(WindowHaloController(), permanent: true);
     }
 
     // Eagerly register MQTT service after dependencies are ready

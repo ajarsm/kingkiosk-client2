@@ -21,6 +21,7 @@ import 'media_recovery_service.dart';
 import 'screenshot_service.dart';
 import 'audio_service.dart'; // Import the AudioService
 import '../controllers/halo_effect_controller.dart';
+import '../controllers/window_halo_controller.dart';
 import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
@@ -1475,6 +1476,30 @@ class MqttService extends GetxService {
   void _processHaloEffectCommand(Map<dynamic, dynamic> cmdObj) {
     print('🌟 [MQTT] Processing halo effect command: ${jsonEncode(cmdObj)}');
     try {
+      // Check if this is a window-specific halo effect
+      final windowId = cmdObj['window_id'] as String?;
+
+      // Get the appropriate controller based on whether window_id is provided
+      if (windowId != null && windowId.isNotEmpty) {
+        print(
+            '🌟 [MQTT] Processing window-specific halo effect for window: $windowId');
+        // Get the window halo controller
+        WindowHaloController windowHaloController;
+        if (Get.isRegistered<WindowHaloController>()) {
+          windowHaloController = Get.find<WindowHaloController>();
+          print('✅ Found existing WindowHaloController');
+        } else {
+          print('⚠️ WindowHaloController not found, creating a new instance');
+          windowHaloController = WindowHaloController();
+          Get.put(windowHaloController, permanent: true);
+        }
+
+        // Process the command for the specific window
+        _processWindowHaloEffect(cmdObj, windowId, windowHaloController);
+        return;
+      }
+
+      // If no window_id, process for the main app halo
       // Get the controller - using safe registration pattern
       HaloEffectControllerGetx haloController;
       if (Get.isRegistered<HaloEffectControllerGetx>()) {
@@ -1493,7 +1518,8 @@ class MqttService extends GetxService {
         try {
           // Get the color with improved validation
           Color color;
-          final dynamic colorValue = cmdObj['color'];          if (colorValue == null) {
+          final dynamic colorValue = cmdObj['color'];
+          if (colorValue == null) {
             // No color provided, use default red
             print(
                 '🌟 [MQTT] No color provided in halo effect command, using default red');
@@ -1511,10 +1537,12 @@ class MqttService extends GetxService {
                 color = Color(colorValue);
               } else if (colorValue <= 0xFFFFFFFF) {
                 color = Color(colorValue);
-              } else {                print(
+              } else {
+                print(
                     '⚠️ Color int value out of range: $colorValue, defaulting to red');
                 color = Color(0xFFFF0000); // Pure red color
-              }            } catch (e) {
+              }
+            } catch (e) {
               print(
                   '⚠️ Invalid color int value: $colorValue, defaulting to red');
               color = Color(0xFFFF0000); // Pure red color
@@ -1714,11 +1742,12 @@ class MqttService extends GetxService {
                   '⚠️ Error parsing fade_out_duration: $e, using default 1000ms');
               fadeOutDuration = const Duration(milliseconds: 1000);
             }
-          }          try {
+          }
+          try {
             // Enable the halo effect with the specified parameters
             // First convert the color to a simple Color to avoid MaterialColor issues
             final safeColor = Color(color.value);
-            
+
             haloController.enableHaloEffect(
               color: safeColor,
               width: width,
@@ -1747,10 +1776,12 @@ class MqttService extends GetxService {
 
           print(
               '🌟 [MQTT] Enabled halo effect with color: ${_colorToHex(color)}, pulse mode: $pulseModeStr');
-        } catch (e) {          print('❌ Error processing halo effect parameters: $e');
+        } catch (e) {
+          print('❌ Error processing halo effect parameters: $e');
           // Try with minimal parameters as fallback
           try {
-            haloController.enableHaloEffect(color: Color(0xFFFF0000)); // Using direct Color constructor
+            haloController.enableHaloEffect(
+                color: Color(0xFFFF0000)); // Using direct Color constructor
             print('🌟 [MQTT] Enabled fallback halo effect');
           } catch (fallbackError) {
             print('❌ Fallback halo effect failed: $fallbackError');
@@ -1783,7 +1814,274 @@ class MqttService extends GetxService {
     } catch (e) {
       print('❌ Error processing halo effect command: $e');
     }
-  }  /// Parse a hex string to color with robust error handling
+  }
+
+  /// Process halo effect for a specific window
+  void _processWindowHaloEffect(Map<dynamic, dynamic> cmdObj, String windowId,
+      WindowHaloController windowHaloController) {
+    print(
+        '🌟 [MQTT] Processing window-specific halo effect for window: $windowId');
+
+    try {
+      // Check if the effect should be enabled or disabled
+      final bool enabled =
+          cmdObj['enabled'] != null ? cmdObj['enabled'] == true : true;
+
+      if (enabled) {
+        try {
+          // Get the color with improved validation (reusing existing _hexToColor method)
+          Color color;
+          final dynamic colorValue = cmdObj['color'];
+
+          if (colorValue == null) {
+            print(
+                '🌟 [MQTT] No color provided in window halo effect command, using default red');
+            color = Color(0xFFFF0000); // Pure red color
+          } else if (colorValue is String) {
+            final String colorStr = colorValue.trim();
+            color = _hexToColor(colorStr);
+          } else if (colorValue is int) {
+            try {
+              if (colorValue < 0 || colorValue > 0xFFFFFFFF) {
+                print(
+                    '⚠️ Color int value out of range: $colorValue, defaulting to red');
+                color = Color(0xFFFF0000);
+              } else {
+                color = Color(colorValue);
+              }
+            } catch (e) {
+              print(
+                  '⚠️ Invalid color int value: $colorValue, defaulting to red');
+              color = Color(0xFFFF0000);
+            }
+          } else {
+            print(
+                '🌟 [MQTT] Unsupported color format: ${colorValue.runtimeType}, using default red');
+            color = Color(0xFFFF0000);
+          }
+
+          // Extract optional parameters with validation (similar to main halo effect logic)
+          double? width;
+          if (cmdObj['width'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['width'];
+
+              if (rawValue is int) {
+                width = rawValue.toDouble();
+              } else if (rawValue is double) {
+                width = rawValue;
+              } else if (rawValue is String) {
+                width = double.tryParse(rawValue);
+              }
+
+              // Validate ranges
+              if (width != null) {
+                if (width <= 0) {
+                  width = 1.0;
+                } else if (width > 200) {
+                  width = 200.0;
+                }
+              }
+            } catch (e) {
+              width = null; // Use default
+            }
+          }
+
+          double? intensity;
+          if (cmdObj['intensity'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['intensity'];
+
+              if (rawValue is int) {
+                intensity = rawValue.toDouble();
+              } else if (rawValue is double) {
+                intensity = rawValue;
+              } else if (rawValue is String) {
+                intensity = double.tryParse(rawValue);
+              }
+
+              // Validate ranges
+              if (intensity != null) {
+                if (intensity < 0) {
+                  intensity = 0.0;
+                } else if (intensity > 1.0) {
+                  intensity = 1.0;
+                }
+              }
+            } catch (e) {
+              intensity = null; // Use default
+            }
+          }
+
+          // Animation parameters
+          final String pulseModeStr =
+              cmdObj['pulse_mode']?.toString().toLowerCase() ?? 'none';
+          HaloPulseMode pulseMode = HaloPulseMode.none;
+
+          try {
+            switch (pulseModeStr) {
+              case 'gentle':
+                pulseMode = HaloPulseMode.gentle;
+                break;
+              case 'moderate':
+                pulseMode = HaloPulseMode.moderate;
+                break;
+              case 'alert':
+                pulseMode = HaloPulseMode.alert;
+                break;
+              default:
+                pulseMode = HaloPulseMode.none;
+            }
+          } catch (e) {
+            pulseMode = HaloPulseMode.none;
+          }
+
+          // Get animation durations
+          Duration? pulseDuration;
+          if (cmdObj['pulse_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['pulse_duration'];
+              int milliseconds = 2000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 2000;
+              }
+
+              // Validate ranges
+              if (milliseconds < 100) {
+                milliseconds = 100;
+              } else if (milliseconds > 10000) {
+                milliseconds = 10000;
+              }
+
+              pulseDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              pulseDuration = const Duration(milliseconds: 2000);
+            }
+          }
+
+          Duration? fadeInDuration;
+          if (cmdObj['fade_in_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_in_duration'];
+              int milliseconds = 800; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 800;
+              }
+
+              // Validate ranges
+              if (milliseconds < 50) {
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                milliseconds = 5000;
+              }
+
+              fadeInDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              fadeInDuration = const Duration(milliseconds: 800);
+            }
+          }
+
+          Duration? fadeOutDuration;
+          if (cmdObj['fade_out_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_out_duration'];
+              int milliseconds = 1000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 1000;
+              }
+
+              // Validate ranges
+              if (milliseconds < 50) {
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                milliseconds = 5000;
+              }
+
+              fadeOutDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              fadeOutDuration = const Duration(milliseconds: 1000);
+            }
+          }
+
+          // Make color safe
+          final safeColor = Color(color.value);
+
+          // Apply halo effect to the specific window
+          windowHaloController.enableHaloForWindow(
+            windowId: windowId,
+            color: safeColor,
+            width: width,
+            intensity: intensity,
+            pulseMode: pulseMode,
+            pulseDuration: pulseDuration,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+          );
+
+          print(
+              '🌟 [MQTT] Enabled halo effect for window $windowId with color: ${_colorToHex(safeColor)}, pulse mode: $pulseMode');
+        } catch (e) {
+          print('❌ Error processing window halo effect parameters: $e');
+
+          // Fall back to simple red halo effect
+          try {
+            windowHaloController.enableHaloForWindow(
+              windowId: windowId,
+              color: Color(0xFFFF0000), // Pure red color
+              pulseMode: HaloPulseMode.none,
+            );
+            print(
+                '🌟 [MQTT] Enabled fallback window halo effect for window: $windowId');
+          } catch (fallbackError) {
+            print('❌ Fallback window halo effect failed: $fallbackError');
+          }
+        }
+      } else {
+        // Disable the halo effect for this window
+        windowHaloController.disableHaloForWindow(windowId);
+        print('🌟 [MQTT] Disabled halo effect for window: $windowId');
+      }
+
+      // Send confirmation message if requested
+      if (cmdObj['confirm'] == true) {
+        try {
+          final confirmTopic =
+              'kingkiosk/${deviceName.value}/window/$windowId/halo_effect/status';
+          final builder = MqttClientPayloadBuilder();
+          builder.addString(jsonEncode({
+            'status': 'success',
+            'window_id': windowId,
+            'enabled': enabled,
+            'timestamp': DateTime.now().toIso8601String(),
+          }));
+          _client?.publishMessage(
+              confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+          print('🌟 [MQTT] Sent window halo effect confirmation message');
+        } catch (e) {
+          print('❌ Error sending window confirmation message: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error processing window halo effect command: $e');
+    }
+  }
+
+  /// Parse a hex string to color with robust error handling
   Color _hexToColor(String hexString) {
     // Handle null or empty strings
     if (hexString.isEmpty) {
