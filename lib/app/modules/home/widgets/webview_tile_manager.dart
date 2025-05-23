@@ -52,6 +52,16 @@ class WebViewTileManager {
       print(
           '🔒 WebViewTileManager - Removing WebViewTile for windowId: $windowId');
       _webViewTiles.remove(windowId);
+
+      // Clean up the static WebView instances using the static method
+      try {
+        // Call the static cleanup method on WebViewTile
+        final cleaned = WebViewTile.cleanUpWebViewInstance(windowId);
+        print(
+            '🔒 WebViewTileManager - Cleaned static WebView resources: $cleaned');
+      } catch (e) {
+        print('⚠️ WebViewTileManager - Error cleaning up static resources: $e');
+      }
     }
   }
 }

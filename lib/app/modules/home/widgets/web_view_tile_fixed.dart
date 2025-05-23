@@ -15,66 +15,21 @@ class WebViewInstanceManager {
   WebViewInstanceManager._internal();
 
   // Map of window IDs to their WebView instances
-  final Map<String, _WebViewWrapper> _instances = {};
+  final Map<String, InAppWebView> _instances = {};
 
   // Create or get an existing WebView instance
-  InAppWebView getOrCreateWebView({
-    required String id,
-    required String url,
-    required ValueKey<String> key,
-    required WebViewCallbackHandler callbackHandler,
-  }) {
+  InAppWebView getOrCreateWebView(String id, String url, ValueKey<String> key) {
     if (!_instances.containsKey(id)) {
       print(
           '📌 WebViewInstanceManager: Creating new WebView for ID: $id and URL: $url');
-      _instances[id] = _WebViewWrapper(
-        id: id,
-        url: url,
-        key: key,
-        callbackHandler: callbackHandler,
-      );
+      _instances[id] = _createWebView(url, key);
     } else {
       print('📌 WebViewInstanceManager: Reusing WebView for ID: $id');
-      // Update the callback handler to ensure it's using the current state
-      _instances[id]!.updateCallbackHandler(callbackHandler);
     }
-    return _instances[id]!.webView;
+    return _instances[id]!;
   }
 
-  // Remove a WebView instance
-  bool removeWebView(String id) {
-    if (_instances.containsKey(id)) {
-      print('📌 WebViewInstanceManager: Removing WebView for ID: $id');
-      _instances.remove(id);
-      return true;
-    }
-    return false;
-  }
-}
-
-/// A wrapper class that holds a WebView instance and its callback handler
-class _WebViewWrapper {
-  final String id;
-  final String url;
-  late WebViewCallbackHandler _callbackHandler;
-  late final InAppWebView webView;
-
-  _WebViewWrapper({
-    required this.id,
-    required this.url,
-    required ValueKey<String> key,
-    required WebViewCallbackHandler callbackHandler,
-  }) {
-    _callbackHandler = callbackHandler;
-    webView = _createWebView(url, key);
-  }
-
-  // Update the callback handler (used when same WebView is used with a new WebViewTile instance)
-  void updateCallbackHandler(WebViewCallbackHandler handler) {
-    _callbackHandler = handler;
-  }
-
-  // Create a new WebView instance with all event handlers
+  // Create a new WebView instance
   InAppWebView _createWebView(String url, ValueKey<String> key) {
     return InAppWebView(
       key: key,
@@ -102,45 +57,17 @@ class _WebViewWrapper {
         useShouldInterceptAjaxRequest: true,
         useShouldInterceptFetchRequest: true,
       ),
-      // Pass event handlers in the constructor
-      onWebViewCreated: (controller) {
-        _callbackHandler.onWebViewCreated(controller, id);
-      },
-      onLoadStart: (controller, url) {
-        _callbackHandler.onLoadStart(controller, url);
-      },
-      onLoadStop: (controller, url) {
-        _callbackHandler.onLoadStop(controller, url);
-      },
-      onReceivedError: (controller, request, error) {
-        // Convert WebResourceRequest to URLRequest for the callback
-        final urlRequest = URLRequest(url: request.url);
-        _callbackHandler.onReceivedError(controller, urlRequest, error);
-      },
-      onConsoleMessage: (controller, consoleMessage) {
-        _callbackHandler.onConsoleMessage(controller, consoleMessage);
-      },
-      shouldOverrideUrlLoading: (controller, navigationAction) async {
-        return _callbackHandler.shouldOverrideUrlLoading(
-            controller, navigationAction);
-      },
     );
   }
-}
 
-/// Interface for WebView event callbacks
-class WebViewCallbackHandler {
-  void onWebViewCreated(InAppWebViewController controller, String id) {}
-  void onLoadStart(InAppWebViewController controller, WebUri? url) {}
-  void onLoadStop(InAppWebViewController controller, WebUri? url) {}
-  void onReceivedError(InAppWebViewController controller, URLRequest request,
-      WebResourceError error) {}
-  void onConsoleMessage(
-      InAppWebViewController controller, ConsoleMessage consoleMessage) {}
-  Future<NavigationActionPolicy> shouldOverrideUrlLoading(
-      InAppWebViewController controller,
-      NavigationAction navigationAction) async {
-    return NavigationActionPolicy.ALLOW;
+  // Remove a WebView instance
+  bool removeWebView(String id) {
+    if (_instances.containsKey(id)) {
+      print('📌 WebViewInstanceManager: Removing WebView for ID: $id');
+      _instances.remove(id);
+      return true;
+    }
+    return false;
   }
 }
 
@@ -166,8 +93,7 @@ class WebViewTile extends StatefulWidget {
 }
 
 class _WebViewTileState extends State<WebViewTile>
-    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver
-    implements WebViewCallbackHandler {
+    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
   late WebViewData _webViewData;
   bool _isLoading = true;
   bool _hasError = false;
@@ -259,19 +185,17 @@ class _WebViewTileState extends State<WebViewTile>
         '🔧 WebViewTile - Using stable WebView for key: $_stableWebViewKey with URL: ${widget.url}');
 
     // Get a stable WebView instance from our global manager
-    // Pass this class instance as the callback handler
     final String instanceKey = widget.windowId ?? widget.url;
-    _stableWebViewWidget = WebViewInstanceManager().getOrCreateWebView(
-      id: instanceKey,
-      url: widget.url,
-      key: _stableWebViewKey,
-      callbackHandler: this,
-    );
+    _stableWebViewWidget = WebViewInstanceManager()
+        .getOrCreateWebView(instanceKey, widget.url, _stableWebViewKey);
   }
 
   @override
   Widget build(BuildContext context) {
     super.build(context); // Required for AutomaticKeepAliveClientMixin
+
+    // Configure our stable WebView instance with event handlers
+    final webViewWidget = _configureWebView(_stableWebViewWidget);
 
     if (_hasError) {
       return Center(
@@ -362,7 +286,7 @@ class _WebViewTileState extends State<WebViewTile>
         children: [
           ClipRRect(
             borderRadius: BorderRadius.circular(24),
-            child: _stableWebViewWidget,
+            child: webViewWidget,
           ),
           if (_isLoading && !_hasError)
             Center(
@@ -415,91 +339,87 @@ class _WebViewTileState extends State<WebViewTile>
     );
   }
 
-  // WebViewCallbackHandler implementation
-  @override
-  void onWebViewCreated(InAppWebViewController controller, String id) {
-    print('🔧 WebViewTile - WebView created with key: $_stableWebViewKey');
-    if (!_webViewData.isInitialized) {
-      _webViewData.controller.complete(controller);
-      _webViewData.isInitialized = true;
-    }
+  // Configure the WebView with all necessary event handlers
+  InAppWebView _configureWebView(InAppWebView webView) {
+    // Set up event handlers for this webView instance
+    webView.onWebViewCreated = (controller) {
+      print('🔧 WebViewTile - WebView created with key: $_stableWebViewKey');
+      if (!_webViewData.isInitialized) {
+        _webViewData.controller.complete(controller);
+        _webViewData.isInitialized = true;
+      }
 
-    // Register WebWindowController when the webview is created
-    if (widget.windowId != null) {
-      final wm = Get.find<WindowManagerService>();
-      wm.unregisterWindow(widget.windowId!);
-      final webController = WebWindowController(
-        windowName: widget.windowId!,
-        webViewController: controller,
-        onClose: () {
-          wm.unregisterWindow(widget.windowId!);
-        },
-      );
-      wm.registerWindow(webController);
-    }
-  }
+      // Register WebWindowController when the webview is created
+      if (widget.windowId != null) {
+        final wm = Get.find<WindowManagerService>();
+        wm.unregisterWindow(widget.windowId!);
+        final webController = WebWindowController(
+          windowName: widget.windowId!,
+          webViewController: controller,
+          onClose: () {
+            wm.unregisterWindow(widget.windowId!);
+          },
+        );
+        wm.registerWindow(webController);
+      }
+    };
 
-  @override
-  void onLoadStart(InAppWebViewController controller, WebUri? url) {
-    print(
-        '🔧 WebViewTile - Load started for URL: ${url?.toString() ?? widget.url}');
-    setState(() {
-      _isLoading = true;
-    });
-  }
+    webView.onLoadStart = (controller, url) {
+      print(
+          '🔧 WebViewTile - Load started for URL: ${url?.toString() ?? widget.url}');
+      setState(() {
+        _isLoading = true;
+      });
+    };
 
-  @override
-  void onLoadStop(InAppWebViewController controller, WebUri? url) async {
-    print(
-        '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
-    setState(() {
-      _isLoading = false;
-    });
+    webView.onLoadStop = (controller, url) async {
+      print(
+          '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
+      setState(() {
+        _isLoading = false;
+      });
 
-    // Enable touch events on WebView content
-    try {
-      await controller.evaluateJavascript(source: """
-        // Add enhanced touch handling for elements
-        document.addEventListener('touchstart', function(e) {
-          console.log('Touch event intercepted and passed through');
-        }, {passive: true});
-        
-        // Make all interactive elements clearly tappable
-        const interactiveElements = document.querySelectorAll('a, button, input, select, [role="button"]');
-        interactiveElements.forEach(el => {
-          if (!el.style.cursor) el.style.cursor = 'pointer';
-        });
-      """);
-      print("🔧 WebViewTile - Enhanced touch handling script injected");
-    } catch (e) {
-      print("⚠️ WebViewTile - Error injecting touch handling script: $e");
-    }
-  }
+      // Enable touch events on WebView content
+      try {
+        await controller.evaluateJavascript(source: """
+          // Add enhanced touch handling for elements
+          document.addEventListener('touchstart', function(e) {
+            console.log('Touch event intercepted and passed through');
+          }, {passive: true});
+          
+          // Make all interactive elements clearly tappable
+          const interactiveElements = document.querySelectorAll('a, button, input, select, [role="button"]');
+          interactiveElements.forEach(el => {
+            if (!el.style.cursor) el.style.cursor = 'pointer';
+          });
+        """);
+        print("🔧 WebViewTile - Enhanced touch handling script injected");
+      } catch (e) {
+        print("⚠️ WebViewTile - Error injecting touch handling script: $e");
+      }
+    };
 
-  @override
-  void onReceivedError(InAppWebViewController controller, URLRequest request,
-      WebResourceError error) {
-    print(
-        '⚠️ WebViewTile - Error loading URL: ${request.url}, Error: ${error.description}');
-    setState(() {
-      _hasError = true;
-      _isLoading = false;
-      _errorMessage = error.description;
-    });
-  }
+    webView.onReceivedError = (controller, request, error) {
+      print(
+          '⚠️ WebViewTile - Error loading URL: ${request.url}, Error: ${error.description}');
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+        _errorMessage = error.description;
+      });
+    };
 
-  @override
-  void onConsoleMessage(
-      InAppWebViewController controller, ConsoleMessage consoleMessage) {
-    print("🔧 WebViewTile Console [${widget.url}]: ${consoleMessage.message}");
-  }
+    webView.onConsoleMessage = (controller, consoleMessage) {
+      print(
+          "🔧 WebViewTile Console [${widget.url}]: ${consoleMessage.message}");
+    };
 
-  @override
-  Future<NavigationActionPolicy> shouldOverrideUrlLoading(
-      InAppWebViewController controller,
-      NavigationAction navigationAction) async {
-    print(
-        "🔧 WebViewTile - URL navigating to: ${navigationAction.request.url}");
-    return NavigationActionPolicy.ALLOW;
+    webView.shouldOverrideUrlLoading = (controller, navigationAction) async {
+      print(
+          "🔧 WebViewTile - URL navigating to: ${navigationAction.request.url}");
+      return NavigationActionPolicy.ALLOW;
+    };
+
+    return webView;
   }
 }
