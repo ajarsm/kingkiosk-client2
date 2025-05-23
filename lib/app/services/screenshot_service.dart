@@ -20,7 +20,7 @@ import 'screenshot_platform/screenshot_helper.dart'
 
 class ScreenshotService extends GetxService {
   ScreenshotController _screenshotController = ScreenshotController();
-  late final StorageService _storageService;
+  StorageService? _storageService;
 
   // Global key for widget tree screenshot
   final GlobalKey screenshotKey = GlobalKey();
@@ -29,11 +29,21 @@ class ScreenshotService extends GetxService {
   final RxString latestScreenshotPath = ''.obs;
   final RxBool isTakingScreenshot = false.obs;
 
-  @override
-  void onInit() {
-    super.onInit();
-    // Defer finding StorageService until dependencies are ready
-    _storageService = Get.find<StorageService>();
+  // Lazy getter for StorageService
+  StorageService get _storage {
+    _storageService ??= Get.find<StorageService>();
+    return _storageService!;
+  }
+
+  // Static method to ensure the service is registered
+  static ScreenshotService ensureInitialized() {
+    if (!Get.isRegistered<ScreenshotService>()) {
+      print('📸 ScreenshotService not found, registering new instance');
+      final service = ScreenshotService();
+      Get.put(service, permanent: true);
+      return service;
+    }
+    return Get.find<ScreenshotService>();
   }
 
   // Update the controller from an external source
@@ -198,7 +208,7 @@ class ScreenshotService extends GetxService {
 
       // Store the latest screenshot path in storage for persistence
       if (path.isNotEmpty) {
-        _storageService.write(AppConstants.keyLatestScreenshot, path);
+        _storage.write(AppConstants.keyLatestScreenshot, path);
         print('💾 Screenshot saved to: $path');
       }
       return path;
@@ -247,8 +257,7 @@ class ScreenshotService extends GetxService {
 
   // Get the latest screenshot path from storage
   Future<String> getLatestScreenshotPath() async {
-    final path =
-        _storageService.read<String>(AppConstants.keyLatestScreenshot) ?? '';
+    final path = _storage.read<String>(AppConstants.keyLatestScreenshot) ?? '';
     latestScreenshotPath.value = path;
 
     // Verify the file exists

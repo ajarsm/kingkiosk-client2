@@ -10,6 +10,9 @@ import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
 import 'app/services/screenshot_service.dart';
 import 'app/services/audio_service.dart';
+import 'app/controllers/halo_effect_controller.dart';
+import 'app/widgets/halo_effect/halo_effect_overlay.dart';
+import 'app/widgets/halo_effect/app_halo_wrapper.dart';
 
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
 import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
@@ -56,7 +59,6 @@ void main() async {
 
   // Register services
   Get.put<NotificationService>(GetXNotificationService(), permanent: true);
-  // Remove ScreenshotService from here - it will be initialized in InitialBinding
 
   runApp(const KioskApp());
 }
@@ -77,12 +79,30 @@ class _KioskAppState extends State<KioskApp> {
     // Initialize the controller immediately
     _screenshotController = ScreenshotController();
 
+    // Initialize the HaloEffectControllerGetx early
+    try {
+      // First try to find an existing instance
+      Get.find<HaloEffectControllerGetx>();
+      print('✅ Found existing HaloEffectControllerGetx instance');
+    } catch (_) {
+      // If not found, create a new instance
+      print('⚠️ Creating new HaloEffectControllerGetx instance');
+      Get.put(HaloEffectControllerGetx(), permanent: true);
+    }
+
     // Schedule a microtask to ensure this runs after InitialBinding has registered the services
     WidgetsBinding.instance.addPostFrameCallback((_) {
       try {
-        // Update the ScreenshotService with our controller
-        final screenshotService = Get.find<ScreenshotService>();
-        screenshotService.updateController(_screenshotController);
+        // Ensure ScreenshotService is registered and update the controller
+        if (Get.isRegistered<ScreenshotService>()) {
+          print('📸 Updating screenshot controller in existing service');
+          final screenshotService = Get.find<ScreenshotService>();
+          screenshotService.updateController(_screenshotController);
+        } else {
+          print('⚠️ ScreenshotService not registered, using ensureInitialized');
+          final screenshotService = ScreenshotService.ensureInitialized();
+          screenshotService.updateController(_screenshotController);
+        }
       } catch (e) {
         print('❌ Error updating screenshot controller: $e');
       }
@@ -91,8 +111,20 @@ class _KioskAppState extends State<KioskApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Safely get the controller instance
+    HaloEffectControllerGetx? haloController;
+    try {
+      haloController = Get.find<HaloEffectControllerGetx>();
+    } catch (e) {
+      print(
+          '⚠️ HaloEffectControllerGetx not available in build, creating temporary instance');
+      haloController = HaloEffectControllerGetx();
+      Get.put(haloController, permanent: true);
+    }
+
     return Screenshot(
       controller: _screenshotController,
+      // Use the new AppHaloWrapper instead of AnimatedHaloEffect to avoid duplicate GlobalKeys
       child: GetMaterialApp(
         title: 'Flutter GetX Kiosk',
         theme: AppTheme.light,
@@ -102,6 +134,15 @@ class _KioskAppState extends State<KioskApp> {
         initialRoute: AppPagesFixed.INITIAL,
         getPages: AppPagesFixed.routes,
         debugShowCheckedModeBanner: false,
+        builder: (context, child) {
+          // Apply halo effect after the MaterialApp is built, inside the builder
+          // This prevents duplicate keys and allows proper directionality
+          final Widget appWithHalo = AppHaloWrapper(
+            controller: haloController!,
+            child: child ?? const SizedBox(),
+          );
+          return appWithHalo;
+        },
       ),
     );
   }

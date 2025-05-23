@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'dart:math';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:mqtt_client/mqtt_client.dart';
 import 'package:mqtt_client/mqtt_server_client.dart';
@@ -15,11 +16,12 @@ import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
-import '../modules/home/controllers/media_window_controller.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
 import 'screenshot_service.dart';
 import 'audio_service.dart'; // Import the AudioService
+import '../controllers/halo_effect_controller.dart';
+import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -790,6 +792,12 @@ class MqttService extends GetxService {
     }
     // Notification handling is delegated to MqttNotificationHandler
 
+    // --- halo_effect command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'halo_effect') {
+      _processHaloEffectCommand(cmdObj);
+      return;
+    }
+
     // --- screenshot command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'screenshot') {
       _processScreenshotCommand(cmdObj);
@@ -1461,6 +1469,400 @@ class MqttService extends GetxService {
     } catch (e) {
       print('❌ Error setting up screenshot sensor discovery: $e');
     }
+  }
+
+  /// Process halo effect command with improved error handling
+  void _processHaloEffectCommand(Map<dynamic, dynamic> cmdObj) {
+    print('🌟 [MQTT] Processing halo effect command: ${jsonEncode(cmdObj)}');
+    try {
+      // Get the controller - using safe registration pattern
+      HaloEffectControllerGetx haloController;
+      if (Get.isRegistered<HaloEffectControllerGetx>()) {
+        haloController = Get.find<HaloEffectControllerGetx>();
+        print('✅ Found existing HaloEffectControllerGetx');
+      } else {
+        print('⚠️ HaloEffectControllerGetx not found, creating a new instance');
+        haloController = HaloEffectControllerGetx();
+        Get.put(haloController, permanent: true);
+      }
+
+      // Check if the effect should be enabled or disabled
+      final bool enabled =
+          cmdObj['enabled'] != null ? cmdObj['enabled'] == true : true;
+      if (enabled) {
+        try {
+          // Get the color with improved validation
+          Color color;
+          final dynamic colorValue = cmdObj['color'];          if (colorValue == null) {
+            // No color provided, use default red
+            print(
+                '🌟 [MQTT] No color provided in halo effect command, using default red');
+            color = Color(0xFFFF0000); // Pure red color
+          } else if (colorValue is String) {
+            // Process color string (both hex and named colors handled by _hexToColor)
+            final String colorStr = colorValue.trim();
+            color = _hexToColor(colorStr);
+          } else if (colorValue is int) {
+            // Handle direct color int value with error handling
+            try {
+              // Ensure valid int range for Color constructor
+              if (colorValue < 0) {
+                // Negative numbers are used for some system colors, allow them
+                color = Color(colorValue);
+              } else if (colorValue <= 0xFFFFFFFF) {
+                color = Color(colorValue);
+              } else {                print(
+                    '⚠️ Color int value out of range: $colorValue, defaulting to red');
+                color = Color(0xFFFF0000); // Pure red color
+              }            } catch (e) {
+              print(
+                  '⚠️ Invalid color int value: $colorValue, defaulting to red');
+              color = Color(0xFFFF0000); // Pure red color
+            }
+          } else {
+            // Unknown color format
+            print(
+                '🌟 [MQTT] Unsupported color format: ${colorValue.runtimeType}, using default red');
+            color = Color(0xFFFF0000); // Pure red color
+          } // Get optional parameters with improved validation
+          double? width;
+          if (cmdObj['width'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['width'];
+
+              if (rawValue is int) {
+                width = rawValue.toDouble();
+              } else if (rawValue is double) {
+                width = rawValue;
+              } else if (rawValue is String) {
+                width = double.tryParse(rawValue);
+              }
+
+              // Validate ranges and apply reasonable limits
+              if (width != null) {
+                if (width <= 0) {
+                  print(
+                      '⚠️ Width too small ($width), using minimum value of 1.0');
+                  width = 1.0;
+                } else if (width > 200) {
+                  print(
+                      '⚠️ Width too large ($width), using maximum value of 200.0');
+                  width = 200.0;
+                }
+                print('✅ Using width: $width pixels');
+              }
+            } catch (e) {
+              print('⚠️ Error parsing width: $e, using default');
+              width = null; // Use default from controller
+            }
+          }
+
+          double? intensity;
+          if (cmdObj['intensity'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['intensity'];
+
+              if (rawValue is int) {
+                intensity = rawValue.toDouble();
+              } else if (rawValue is double) {
+                intensity = rawValue;
+              } else if (rawValue is String) {
+                intensity = double.tryParse(rawValue);
+              }
+
+              // Validate ranges and apply reasonable limits
+              if (intensity != null) {
+                if (intensity < 0) {
+                  print(
+                      '⚠️ Intensity too small ($intensity), using minimum of 0.0');
+                  intensity = 0.0;
+                } else if (intensity > 1.0) {
+                  print(
+                      '⚠️ Intensity too large ($intensity), using maximum of 1.0');
+                  intensity = 1.0;
+                }
+                print('✅ Using intensity: $intensity');
+              }
+            } catch (e) {
+              print('⚠️ Error parsing intensity: $e, using default');
+              intensity = null; // Use default from controller
+            }
+          } // Animation parameters
+          final String pulseModeStr =
+              cmdObj['pulse_mode']?.toString().toLowerCase() ?? 'none';
+          HaloPulseMode pulseMode = HaloPulseMode.none;
+
+          // Parse pulse mode from string with enhanced error protection
+          try {
+            switch (pulseModeStr) {
+              case 'gentle':
+                pulseMode = HaloPulseMode.gentle;
+                print('✅ Setting pulse mode to gentle');
+                break;
+              case 'moderate':
+                pulseMode = HaloPulseMode.moderate;
+                print('✅ Setting pulse mode to moderate');
+                break;
+              case 'alert':
+                pulseMode = HaloPulseMode.alert;
+                print('✅ Setting pulse mode to alert');
+                break;
+              default:
+                pulseMode = HaloPulseMode.none;
+                print('ℹ️ Using default pulse mode: none');
+            }
+          } catch (e) {
+            print('⚠️ Error setting pulse mode, defaulting to none: $e');
+            pulseMode = HaloPulseMode.none;
+          } // Get animation durations with improved validation
+          Duration? pulseDuration;
+          if (cmdObj['pulse_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['pulse_duration'];
+              int milliseconds = 2000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 2000;
+              }
+
+              // Validate ranges and apply reasonable limits
+              if (milliseconds < 100) {
+                print(
+                    '⚠️ pulse_duration too small ($milliseconds ms), using minimum of 100ms');
+                milliseconds = 100;
+              } else if (milliseconds > 10000) {
+                print(
+                    '⚠️ pulse_duration too large ($milliseconds ms), using maximum of 10000ms');
+                milliseconds = 10000;
+              }
+
+              pulseDuration = Duration(milliseconds: milliseconds);
+              print('✅ Using pulse_duration: $milliseconds ms');
+            } catch (e) {
+              print(
+                  '⚠️ Error parsing pulse_duration: $e, using default 2000ms');
+              pulseDuration = const Duration(milliseconds: 2000);
+            }
+          }
+          Duration? fadeInDuration;
+          if (cmdObj['fade_in_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_in_duration'];
+              int milliseconds = 800; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 800;
+              }
+
+              // Validate ranges and apply reasonable limits
+              if (milliseconds < 50) {
+                print(
+                    '⚠️ fade_in_duration too small ($milliseconds ms), using minimum of 50ms');
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                print(
+                    '⚠️ fade_in_duration too large ($milliseconds ms), using maximum of 5000ms');
+                milliseconds = 5000;
+              }
+
+              fadeInDuration = Duration(milliseconds: milliseconds);
+              print('✅ Using fade_in_duration: $milliseconds ms');
+            } catch (e) {
+              print(
+                  '⚠️ Error parsing fade_in_duration: $e, using default 800ms');
+              fadeInDuration = const Duration(milliseconds: 800);
+            }
+          }
+
+          Duration? fadeOutDuration;
+          if (cmdObj['fade_out_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_out_duration'];
+              int milliseconds = 1000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 1000;
+              }
+
+              // Validate ranges and apply reasonable limits
+              if (milliseconds < 50) {
+                print(
+                    '⚠️ fade_out_duration too small ($milliseconds ms), using minimum of 50ms');
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                print(
+                    '⚠️ fade_out_duration too large ($milliseconds ms), using maximum of 5000ms');
+                milliseconds = 5000;
+              }
+
+              fadeOutDuration = Duration(milliseconds: milliseconds);
+              print('✅ Using fade_out_duration: $milliseconds ms');
+            } catch (e) {
+              print(
+                  '⚠️ Error parsing fade_out_duration: $e, using default 1000ms');
+              fadeOutDuration = const Duration(milliseconds: 1000);
+            }
+          }          try {
+            // Enable the halo effect with the specified parameters
+            // First convert the color to a simple Color to avoid MaterialColor issues
+            final safeColor = Color(color.value);
+            
+            haloController.enableHaloEffect(
+              color: safeColor,
+              width: width,
+              intensity: intensity,
+              pulseMode: pulseMode,
+              pulseDuration: pulseDuration,
+              fadeInDuration: fadeInDuration,
+              fadeOutDuration: fadeOutDuration,
+            );
+            print(
+                '🌟 [MQTT] Successfully enabled halo effect with color: ${_colorToHex(safeColor)}, pulse mode: $pulseMode');
+          } catch (e) {
+            print('❌ Error processing halo effect parameters: $e');
+            // Fall back to simple red halo effect with no pulse
+            // Using direct Color constructor instead of Colors.red
+            try {
+              haloController.enableHaloEffect(
+                color: Color(0xFFFF0000), // Pure red color
+                pulseMode: HaloPulseMode.none,
+              );
+              print('🌟 [MQTT] Enabled fallback halo effect');
+            } catch (fallbackError) {
+              print('❌ Fallback halo effect failed: $fallbackError');
+            }
+          }
+
+          print(
+              '🌟 [MQTT] Enabled halo effect with color: ${_colorToHex(color)}, pulse mode: $pulseModeStr');
+        } catch (e) {          print('❌ Error processing halo effect parameters: $e');
+          // Try with minimal parameters as fallback
+          try {
+            haloController.enableHaloEffect(color: Color(0xFFFF0000)); // Using direct Color constructor
+            print('🌟 [MQTT] Enabled fallback halo effect');
+          } catch (fallbackError) {
+            print('❌ Fallback halo effect failed: $fallbackError');
+          }
+        }
+      } else {
+        // Disable the halo effect
+        haloController.disableHaloEffect();
+        print('🌟 [MQTT] Disabled halo effect');
+      }
+
+      // Send confirmation message if requested
+      if (cmdObj['confirm'] == true) {
+        try {
+          final confirmTopic =
+              'kingkiosk/${deviceName.value}/halo_effect/status';
+          final builder = MqttClientPayloadBuilder();
+          builder.addString(jsonEncode({
+            'status': 'success',
+            'enabled': enabled,
+            'timestamp': DateTime.now().toIso8601String(),
+          }));
+          _client?.publishMessage(
+              confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+          print('🌟 [MQTT] Sent halo effect confirmation message');
+        } catch (e) {
+          print('❌ Error sending confirmation message: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error processing halo effect command: $e');
+    }
+  }  /// Parse a hex string to color with robust error handling
+  Color _hexToColor(String hexString) {
+    // Handle null or empty strings
+    if (hexString.isEmpty) {
+      print('⚠️ Empty color string, defaulting to red');
+      return Color(0xFFFF0000); // Pure red
+    }
+
+    // First check if it's a named color - using direct Color values instead of MaterialColor
+    switch (hexString.toLowerCase()) {
+      case 'red':
+        return Color(0xFFFF0000); // Red
+      case 'green':
+        return Color(0xFF4CAF50); // Green
+      case 'blue':
+        return Color(0xFF2196F3); // Blue
+      case 'yellow':
+        return Color(0xFFFFEB3B); // Yellow
+      case 'orange':
+        return Color(0xFFFF9800); // Orange
+      case 'purple':
+        return Color(0xFF9C27B0); // Purple
+      case 'pink':
+        return Color(0xFFE91E63); // Pink
+      case 'cyan':
+        return Color(0xFF00BCD4); // Cyan
+      case 'teal':
+        return Color(0xFF009688); // Teal
+      case 'amber':
+        return Color(0xFFFFC107); // Amber
+      case 'lime':
+        return Color(0xFFCDDC39); // Lime
+      case 'indigo':
+        return Color(0xFF3F51B5); // Indigo
+      case 'white':
+        return Color(0xFFFFFFFF); // White
+      case 'black':
+        return Color(0xFF000000); // Black
+      case 'grey':
+      case 'gray':
+        return Color(0xFF9E9E9E); // Grey
+    }
+
+    try {
+      // Clean the hex code
+      String hexCode = hexString.replaceAll('#', '').trim();
+
+      // Handle different hex formats
+      if (hexCode.length == 3) {
+        // Convert 3-digit hex to 6-digit (RGB to RRGGBB)
+        hexCode = hexCode.split('').map((c) => '$c$c').join('');
+      }
+
+      // Ensure valid length
+      if (hexCode.length != 6 && hexCode.length != 8) {
+        print(
+            '⚠️ Invalid hex color length: ${hexCode.length}, defaulting to red');
+        return Color(0xFFFF0000); // Pure red color
+      }
+
+      // Add alpha if needed (making it AARRGGBB)
+      final colorValue =
+          int.tryParse(hexCode.length == 6 ? '0xFF$hexCode' : '0x$hexCode');
+
+      // Check if parsing was successful
+      if (colorValue == null) {
+        print('⚠️ Failed to parse hex color: $hexString, defaulting to red');
+        return Color(0xFFFF0000); // Pure red color
+      }
+
+      return Color(colorValue);
+    } catch (e) {
+      print('⚠️ Error parsing hex color "$hexString": $e, defaulting to red');
+      return Color(0xFFFF0000); // Pure red color
+    }
+  }
+
+  /// Parse a color to hex string
+  String _colorToHex(Color color) {
+    return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
   }
 
   /// Check if MQTT service is connected

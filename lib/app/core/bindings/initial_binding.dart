@@ -16,6 +16,7 @@ import '../../services/media_recovery_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/window_close_handler.dart';
 import '../../services/ai_assistant_service.dart';
+import '../../controllers/halo_effect_controller.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -44,11 +45,19 @@ class InitialBinding extends Bindings {
     Get.putAsync<AudioService>(() => AudioService().init(),
         permanent: true); // Register media recovery service
     Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
-        permanent: true);
-
-    // Register window close handler for desktop platforms
+        permanent: true); // Register window close handler for desktop platforms
     Get.put<WindowCloseHandler>(await WindowCloseHandler().init(),
-        permanent: true);
+        permanent:
+            true); // Register halo effect controller for status visualization
+    if (Get.isRegistered<HaloEffectControllerGetx>()) {
+      print(
+          '✅ HaloEffectControllerGetx already registered, skipping registration');
+    } else {
+      print(
+          '📝 Registering new HaloEffectControllerGetx instance in InitialBinding');
+      Get.put<HaloEffectControllerGetx>(HaloEffectControllerGetx(),
+          permanent: true);
+    }
 
     // Eagerly register MQTT service after dependencies are ready
     final storageService = Get.find<StorageService>();
