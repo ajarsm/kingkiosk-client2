@@ -593,8 +593,7 @@ class MqttService extends GetxService {
       print(
           '🎯 Ignoring non-command MQTT message (cmdObj type: ${cmdObj.runtimeType})');
       return;
-    }
-    // --- play_media command via {"command": "play_media", ...} ---
+    } // --- play_media command via {"command": "play_media", ...} ---
     if (cmdObj['command']?.toString().toLowerCase() == 'play_media') {
       String? type = cmdObj['type']?.toString();
       String? url = cmdObj['url']?.toString();
@@ -603,8 +602,20 @@ class MqttService extends GetxService {
           cmdObj['loop'] == true || cmdObj['loop']?.toString() == 'true';
       // Get the custom window ID if provided
       final String? windowId = cmdObj['window_id']?.toString();
+
+      // Get hardware acceleration preference if provided
+      bool? hardwareAccel;
+      if (cmdObj.containsKey('hardware_accel')) {
+        final hardwareAccelValue = cmdObj['hardware_accel'];
+        if (hardwareAccelValue is bool) {
+          hardwareAccel = hardwareAccelValue;
+        } else if (hardwareAccelValue is String) {
+          hardwareAccel = hardwareAccelValue.toLowerCase() == 'true';
+        }
+      }
+
       print(
-          '🎬 play_media command received (command key): type=$type, url=$url, style=$style, loop=$loop' +
+          '🎬 play_media command received: type=$type, url=$url, style=$style, loop=$loop, hardwareAccel=$hardwareAccel' +
               (windowId != null ? ', id=$windowId' : ''));
       if (type == null) {
         // Try to infer type from url
@@ -629,6 +640,21 @@ class MqttService extends GetxService {
       }
       try {
         final mediaService = Get.find<BackgroundMediaService>();
+
+        // Set hardware acceleration preference if specified
+        if (hardwareAccel != null) {
+          try {
+            final hardwareDetectionService =
+                Get.find<MediaHardwareDetectionService>();
+            hardwareDetectionService
+                .setTemporaryHardwareAcceleration(hardwareAccel);
+            print(
+                '🎬 Setting hardware acceleration to: ${hardwareAccel ? 'enabled' : 'disabled'} for this media request');
+          } catch (e) {
+            print('⚠️ Error setting hardware acceleration preference: $e');
+          }
+        }
+
         if (type == 'audio') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
           if (style == 'window') {

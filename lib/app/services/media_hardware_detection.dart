@@ -20,6 +20,10 @@ class MediaHardwareDetectionService extends GetxService {
   final lastError = Rx<String?>(null);
   final deviceInfo = Rx<Map<String, dynamic>>({});
 
+  // Add a temporary override for a specific request
+  bool _tempHardwareAccelOverride = true;
+  bool _useOverride = false;
+
   // Known problematic processors and devices
   final problemDevices = <String>[
     'allwinner', // AllWinner SoCs (common in cheap tablets)
@@ -246,11 +250,35 @@ class MediaHardwareDetectionService extends GetxService {
     }
   }
 
+  /// Set a temporary hardware acceleration override for the next player request
+  void setTemporaryHardwareAcceleration(bool enabled) {
+    _tempHardwareAccelOverride = enabled;
+    _useOverride = true;
+    print(
+        '🎬 Set temporary hardware acceleration override: ${enabled ? 'enabled' : 'disabled'}');
+  }
+
+  /// Clear any temporary hardware acceleration override
+  void clearTemporaryHardwareAcceleration() {
+    _useOverride = false;
+    print('🎬 Cleared temporary hardware acceleration override');
+  }
+
   /// Get MediaKit player options based on current hardware acceleration setting
   PlayerConfiguration getPlayerConfiguration() {
+    // Check if we have a temporary override in effect
+    bool useHardwareAccel = _useOverride
+        ? _tempHardwareAccelOverride
+        : isHardwareAccelerationEnabled.value;
+
+    // Clear the override after using it
+    if (_useOverride) {
+      clearTemporaryHardwareAcceleration();
+    }
+
     final Map<String, String> options = {};
 
-    if (isHardwareAccelerationEnabled.value) {
+    if (useHardwareAccel) {
       // Hardware acceleration enabled options
       options['hwdec'] = 'auto'; // Use hardware decoding if available
       options['vd'] = 'mediacodec'; // Android MediaCodec
@@ -305,10 +333,21 @@ class MediaHardwareDetectionService extends GetxService {
     );
 
     print(
-        '🎬 Player configuration: hardware acceleration ${isHardwareAccelerationEnabled.value ? 'enabled' : 'disabled'}');
+        '🎬 Player configuration: hardware acceleration ${useHardwareAccel ? 'enabled' : 'disabled'}');
     if (_isProblematicDevice()) {
       print('🎬 Configured for known problematic device');
     }
     return configuration;
+  }
+
+  /// Set hardware acceleration for a specific player request
+  void setHardwareAccelerationForRequest(bool enabled) {
+    _tempHardwareAccelOverride = enabled;
+    _useOverride = true;
+  }
+
+  /// Clear the temporary override
+  void clearHardwareAccelerationOverride() {
+    _useOverride = false;
   }
 }

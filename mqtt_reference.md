@@ -250,7 +250,8 @@ This behavior can be used for monitoring the device and automating actions based
   "url": "https://example.com/audio.mp3",
   "loop": true,
   "style": "background",
-  "window_id": "audio-123"
+  "window_id": "audio-123",
+  "hardware_accel": true
 }
 ```
 - **type**: Media type: "audio", "video", or "image" (automatically inferred from URL extension if not provided)
@@ -259,12 +260,37 @@ This behavior can be used for monitoring the device and automating actions based
 - **style**: Optional. Playback style: "background", "window", "fullscreen" (defaults: audio="background", video="window", image="window")
 - **window_id**: Optional. Custom ID for the media window (auto-generated if not provided)
 - **title**: Optional. Title for the media window
+- **hardware_accel**: Optional. Boolean flag to enable or disable hardware acceleration for this specific media (overrides system detection)
 
 ### Media Type Detection
 If the `type` parameter is omitted, the system will try to determine the media type based on the URL extension:
 - **audio**: .mp3, .wav
 - **video**: .mp4, .webm
 - **image**: .jpg, .jpeg, .png, .gif, .webp, .bmp
+
+### Hardware Acceleration Control
+KingKiosk provides hardware acceleration control for media playback via MQTT. This is useful for devices where hardware acceleration might cause issues with certain media files.
+
+The system normally auto-detects hardware compatibility, but you can override this behavior:
+
+- Use the `hardware_accel` parameter in the `play_media` command to enable or disable hardware acceleration for a specific media item
+- When specified, this setting takes precedence over the system's auto-detection
+- The override only applies to the current media playback request
+- After playback ends, the system reverts to its default hardware acceleration detection
+
+Example usage:
+```json
+{
+  "command": "play_media",
+  "url": "https://example.com/video.mp4",
+  "hardware_accel": false
+}
+```
+
+This is particularly useful for:
+- Troubleshooting media playback issues
+- Playing media that has known compatibility issues with hardware acceleration
+- Testing performance differences between hardware and software decoding
 
 ### Play Media in Window
 **Topic**: `kingkiosk/{deviceName}/command`  
@@ -277,7 +303,8 @@ If the `type` parameter is omitted, the system will try to determine the media t
   "loop": false,
   "style": "window",
   "title": "Video Player",
-  "window_id": "video-123"
+  "window_id": "video-123",
+  "hardware_accel": false
 }
 ```
 
@@ -290,7 +317,8 @@ If the `type` parameter is omitted, the system will try to determine the media t
   "type": "video",
   "url": "https://example.com/video.mp4",
   "style": "fullscreen",
-  "loop": true
+  "loop": true,
+  "hardware_accel": true
 }
 ```
 
@@ -1098,7 +1126,8 @@ KingKiosk supports various types of window tiles that can be created and control
   "url": "https://example.com/video.mp4",
   "style": "window",
   "title": "Video Player",
-  "window_id": "video-123"
+  "window_id": "video-123",
+  "hardware_accel": true
 }
 ```
 
@@ -1139,7 +1168,7 @@ You can test MQTT commands using tools like:
 
 #### Play an Audio File
 ```bash
-mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/command" -m '{"command":"play_media","type":"audio","url":"https://example.com/audio.mp3","loop":true}'
+mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/command" -m '{"command":"play_media","type":"audio","url":"https://example.com/audio.mp3","loop":true,"hardware_accel":true}'
 ```
 
 #### Open a Web Browser
@@ -1181,6 +1210,15 @@ mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkios
 - If media doesn't play correctly, try the `reset_media` command with `force: true`
 - For audio/video issues, make sure the URL is directly accessible (test in a browser)
 - For looping audio/video, verify the `loop` parameter is set to `true`
+- If videos show artifacts or don't play correctly, try setting `hardware_accel: false` in your `play_media` command
+- For devices with weak GPUs, enabling `hardware_accel: true` might improve playback performance
+
+#### Hardware Acceleration Troubleshooting
+- **Black screens or frozen video**: Try disabling hardware acceleration with `hardware_accel: false`
+- **High CPU usage/stuttering**: Try enabling hardware acceleration with `hardware_accel: true`
+- **RTSP streams issues**: Some RTSP streams may work better with hardware acceleration disabled
+- **Device-specific problems**: If a video works on one device but not another, hardware acceleration differences are often the cause
+- **Browser playback works but not in app**: Try toggling the `hardware_accel` parameter
 
 #### Window Management
 - If you can't find a window ID, check the app's logs or send a notification command to display active windows
