@@ -15,9 +15,11 @@ import '../../services/screenshot_service.dart';
 import '../../services/media_recovery_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/window_close_handler.dart';
+import '../../services/media_control_service.dart';
 import '../../services/ai_assistant_service.dart';
 import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
+import '../../services/media_hardware_detection.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -40,14 +42,21 @@ class InitialBinding extends Bindings {
     Get.put<NavigationService>(NavigationService().init(), permanent: true);
     Get.put<BackgroundMediaService>(BackgroundMediaService(), permanent: true);
     Get.put<ScreenshotService>(ScreenshotService(), permanent: true);
-    Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
-
-    // Initialize audio service for sound effects
+    Get.put<WindowManagerService>(WindowManagerService(),
+        permanent: true); // Initialize audio service for sound effects
     Get.putAsync<AudioService>(() => AudioService().init(),
-        permanent: true); // Register media recovery service
-    Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
-        permanent: true); // Register window close handler for desktop platforms
+        permanent:
+            true); // Register media recovery service    Get.put<MediaRecoveryService>(await MediaRecoveryService().init(),
     Get.put<WindowCloseHandler>(await WindowCloseHandler().init(),
+        permanent: true);
+
+    // Register media control service for handling media playback commands
+    Get.put<MediaControlService>(await MediaControlService().init(),
+        permanent: true);
+
+    // Register hardware acceleration detection service for media playback
+    Get.put<MediaHardwareDetectionService>(
+        await MediaHardwareDetectionService().init(),
         permanent:
             true); // Register halo effect controller for status visualization
     if (Get.isRegistered<HaloEffectControllerGetx>()) {

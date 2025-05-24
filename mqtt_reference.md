@@ -1,3 +1,4 @@
+<!-- filepath: /Users/raj/dev/kingkiosk-client2/flutter_getx_kiosk/mqtt_reference.md -->
 # KingKiosk MQTT Reference Guide
 
 This document provides a comprehensive reference of MQTT topics and message formats used for controlling KingKiosk through MQTT. The information is based on the actual implementation in the codebase, ensuring accurate command formats and parameters.
@@ -293,7 +294,7 @@ If the `type` parameter is omitted, the system will try to determine the media t
 }
 ```
 
-### Direct Media Controls
+### Window-Specific Media Controls
 **Topic**: `kingkiosk/{deviceName}/command`  
 **Payload**:
 ```json
@@ -302,8 +303,64 @@ If the `type` parameter is omitted, the system will try to determine the media t
   "window_id": "media-123"
 }
 ```
-- **command**: Required. Action to perform: "play", "pause", or "close"
+- **command**: Required. Action to perform: "play", "pause", or "stop"
 - **window_id**: Required. ID of the media window to control
+
+**Examples**:
+```json
+{
+  "command": "pause",
+  "window_id": "media-123"
+}
+```
+
+```json
+{
+  "command": "stop",
+  "window_id": "media-123"
+}
+```
+
+```json
+{
+  "command": "seek",
+  "window_id": "media-123",
+  "position": 120
+}
+```
+- **position**: Required for seek command. Position in seconds to seek to
+
+### Background Audio Controls
+**Topic**: `kingkiosk/{deviceName}/command`  
+**Payload**:
+```json
+{
+  "command": "play_audio"
+}
+```
+- **command**: Required. Action to perform: "play_audio", "pause_audio", "stop_audio", or "seek_audio"
+- These commands specifically target the background audio player
+
+**Examples**:
+```json
+{
+  "command": "pause_audio"
+}
+```
+
+```json
+{
+  "command": "stop_audio"
+}
+```
+
+```json
+{
+  "command": "seek_audio",
+  "position": 30.5
+}
+```
+- **position**: Required for seek_audio command. Position in seconds to seek to
 
 ### Volume Control
 **Topic**: `kingkiosk/{deviceName}/command`  
@@ -548,6 +605,7 @@ Or:
 ```
 - **force**: Optional. Force reset even if a recent reset was performed (default: false)
 - **test**: Optional. Run a health check test without performing a reset (default: false)
+- **Note**: Background audio is automatically preserved during media reset operations. If background audio is playing when reset_media is called, it will be automatically restored after the reset is complete.
 
 ## Halo Effect
 
@@ -692,6 +750,7 @@ The app automatically performs periodic health checks on media players. By defau
   - Closing all media tiles
   - Reinitializing the MediaKit framework
   - Releasing hardware resources
+- **Note**: Background audio is preserved during media reset operations. If background audio is playing when reset_media is called, its state is captured before the reset and restored afterward.
 
 ### Media Reset Status
 When a media reset is performed, the app will publish status information to:
@@ -702,9 +761,17 @@ When a media reset is performed, the app will publish status information to:
   "success": true,
   "timestamp": "2023-07-15T12:34:56.789Z",
   "resetCount": 3,
-  "forced": true
+  "forced": true,
+  "audioUrl": "https://example.com/audio.mp3",
+  "audioRestored": true
 }
 ```
+- **success**: Whether the reset was successful
+- **timestamp**: When the reset was performed
+- **resetCount**: How many resets have been performed since app start
+- **forced**: Whether this was a forced reset
+- **audioUrl**: The URL of the background audio that was playing (if any)
+- **audioRestored**: Whether background audio was successfully restored
 
 ### Media Health Status
 When a health check is performed with `test: true`, the app will publish health information to:
@@ -719,9 +786,15 @@ When a health check is performed with `test: true`, the app will publish health 
   "recoveryAttemptCount": 2,
   "currentMedia": "https://example.com/video.mp4",
   "isPlaying": true,
-  "mediaType": "video"
+  "mediaType": "video",
+  "backgroundAudio": {
+    "url": "https://example.com/audio.mp3",
+    "isPlaying": true,
+    "isLooping": true
+  }
 }
 ```
+- The status now includes background audio information if it's playing
 
 ### Home Assistant Integration
 If Home Assistant discovery is enabled, screenshots will be automatically published as a camera entity to Home Assistant under:
@@ -736,9 +809,9 @@ This section outlines the relationships between different command types and how 
 
 | Command Type | Related Commands | Description |
 |--------------|-----------------|-------------|
-| Media Playback | `play_media`, `media_control` | Media playback commands create media windows, control commands manipulate them |
-| Audio Playback | `play_audio`, `media_control` | Audio playback creates background or windowed audio players, control commands manipulate them |
-| YouTube | `youtube`, `media_control` | YouTube commands create YouTube players, media controls can manipulate them |
+| Media Playback | `play_media`, `play`, `pause`, `stop`, `seek` | Media playback commands create media windows, control commands manipulate them |
+| Audio Playback | `play_media`, `play_audio`, `pause_audio`, `stop_audio`, `seek_audio` | Audio playback creates background or windowed audio players, control commands manipulate them |
+| YouTube | `youtube`, `play`, `pause`, `stop` | YouTube commands create YouTube players, media controls can manipulate them |
 | WebView | `open_browser`, `refresh`, `execute_javascript` | Browser windows can be controlled with various web-specific commands |
 
 ### Window Management Workflow
@@ -865,8 +938,42 @@ With payload values:
 - **title**: Title for the audio window
 - **window_id**: Optional custom ID for the window (auto-generated if not provided)
 
-### Audio Control Commands
-Audio playback can be controlled using the following commands:
+### Background Audio Control Commands
+Background audio can be controlled using the following commands:
+
+**Topic**: `kingkiosk/{deviceName}/command`  
+**Payload** (Play):
+```json
+{
+  "command": "play_audio"
+}
+```
+
+**Payload** (Pause):
+```json
+{
+  "command": "pause_audio"
+}
+```
+
+**Payload** (Stop):
+```json
+{
+  "command": "stop_audio"
+}
+```
+
+**Payload** (Seek):
+```json
+{
+  "command": "seek_audio",
+  "position": 30.5
+}
+```
+- **position**: Required. Position in seconds to seek to
+
+### Window Audio Control Commands
+For windowed audio players, use the standard media controls with the window_id:
 
 **Topic**: `kingkiosk/{deviceName}/command`  
 **Payload** (Play):
@@ -885,13 +992,23 @@ Audio playback can be controlled using the following commands:
 }
 ```
 
-**Payload** (Close):
+**Payload** (Stop):
 ```json
 {
-  "command": "close",
+  "command": "stop",
   "window_id": "audio-123"
 }
 ```
+
+**Payload** (Seek):
+```json
+{
+  "command": "seek",
+  "window_id": "audio-123",
+  "position": 45
+}
+```
+- **position**: Required. Position in seconds to seek to
 
 ## Image Display
 
@@ -1040,6 +1157,19 @@ mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkios
 mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/commands" -m '{"commands":[{"command":"mute"},{"command":"set_brightness","value":"0.5"}]}'
 ```
 
+#### Control Background Audio
+```bash
+mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/command" -m '{"command":"play_audio"}'
+```
+
+```bash
+mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/command" -m '{"command":"pause_audio"}'
+```
+
+```bash
+mosquitto_pub -h broker.example.com -p 1883 -u username -P password -t "kingkiosk/my-device/command" -m '{"command":"seek_audio","position":30}'
+```
+
 ### Common Issues and Solutions
 
 #### Command Not Working
@@ -1070,4 +1200,6 @@ This reference guide documents the MQTT interface for the KingKiosk application.
 - `mqtt_service_consolidated.dart` - Main MQTT message processing
 - `window_manager_service.dart` - Window management 
 - `background_media_service.dart` - Media playback 
+- `media_control_service.dart` - Media control functionality
+- `media_recovery_service.dart` - Media recovery and reset functionality
 - `mqtt_notification_handler.dart` - Notification handling

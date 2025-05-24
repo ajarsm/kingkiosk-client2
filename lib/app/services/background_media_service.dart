@@ -2,24 +2,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import '../modules/home/widgets/image_tile.dart';
 import './media_recovery_service.dart';
 
 /// Service to handle media playback in the background or fullscreen
-class BackgroundMediaService extends GetxService {  // Singleton player instance for background audio/video
+class BackgroundMediaService extends GetxService {
+  // Singleton player instance for background audio/video
   late Player _player;
-  late VideoController _videoController;
-  
+
   // Observable values
   final isPlaying = false.obs;
   final currentMedia = Rx<String?>(null);
   final mediaType = Rx<String>('none'); // 'none', 'audio', 'video', 'image'
-  
+
   // Fullscreen controller
   final isFullscreen = false.obs;
-  
+
   // Image specific properties
   final currentImage = Rx<String?>(null);
   final isImageDisplayed = false.obs;
@@ -30,67 +29,67 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
   final lastHealthCheckTime = Rx<DateTime?>(null);
   final consecutiveFailures = 0.obs; // Make observable for monitoring
   final recoveryAttemptCount = 0.obs; // Count recovery attempts
-  
+
   BackgroundMediaService() {
     // Initialize player
     _initializePlayer();
-    
+
     // Start health check system
     _startHealthChecks();
   }
-    void _initializePlayer() {
+  void _initializePlayer() {
     // Initialize player
     _player = Player();
-    _videoController = VideoController(_player);
     print('New media player instance initialized');
   }
-  
+
   /// Start periodic health checks for the media player
   void _startHealthChecks() {
     // Cancel any existing timer
     _healthCheckTimer?.cancel();
-    
+
     // Create a new timer that runs regularly
     _healthCheckTimer = Timer.periodic(
-      Duration(seconds: healthCheckIntervalSeconds.value),
-      (_) => _performHealthCheck()
-    );
-    
-    print('Media player health checks started (every ${healthCheckIntervalSeconds.value}s)');
+        Duration(seconds: healthCheckIntervalSeconds.value),
+        (_) => _performHealthCheck());
+
+    print(
+        'Media player health checks started (every ${healthCheckIntervalSeconds.value}s)');
   }
-  
+
   /// Update health check interval - use this to tune performance vs reliability
   void setHealthCheckInterval(int seconds) {
     if (seconds < 5) seconds = 5; // minimum 5 seconds
     if (seconds > 300) seconds = 300; // maximum 5 minutes
-    
+
     healthCheckIntervalSeconds.value = seconds;
     _startHealthChecks(); // Restart with new interval
-    
+
     print('Media health check interval updated to ${seconds}s');
   }
-  
+
   /// Perform a health check on the media player
   Future<void> _performHealthCheck() async {
     try {
       lastHealthCheckTime.value = DateTime.now();
-        // Only check when media is supposed to be playing
+      // Only check when media is supposed to be playing
       if (!isPlaying.value || currentMedia.value == null) {
         isHealthy.value = true;
         consecutiveFailures.value = 0;
         return;
       }
-      
+
       // Check if player is in a valid state
       final isPlayerValid = _player.state.playing == isPlaying.value;
-      final hasValidPosition = _player.state.position.inMilliseconds > 0 || 
-                             mediaType.value == 'image';
-          // Update health status
+      final hasValidPosition = _player.state.position.inMilliseconds > 0 ||
+          mediaType.value == 'image';
+      // Update health status
       isHealthy.value = isPlayerValid && hasValidPosition;
-      
+
       // Log status
-      print('Media health check: ${isHealthy.value ? "HEALTHY ✅" : "UNHEALTHY ❌"} - ${currentMedia.value}');
-      
+      print(
+          'Media health check: ${isHealthy.value ? "HEALTHY ✅" : "UNHEALTHY ❌"} - ${currentMedia.value}');
+
       // Handle recovery if needed
       if (!isHealthy.value) {
         consecutiveFailures.value++;
@@ -105,28 +104,32 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       _handleUnhealthyState();
     }
   }
-    /// Handle unhealthy player state with progressive recovery
+
+  /// Handle unhealthy player state with progressive recovery
   void _handleUnhealthyState() {
     if (consecutiveFailures.value >= 3) {
-      print('⚠️ Critical media failure detected! Attempting emergency recovery...');
+      print(
+          '⚠️ Critical media failure detected! Attempting emergency recovery...');
       recoveryAttemptCount.value++;
-      
+
       // Try to find MediaRecoveryService for full reset
       try {
         final recoveryService = Get.find<MediaRecoveryService>();
         recoveryService.resetAllMediaResources();
       } catch (e) {
-        print('❌ Could not access MediaRecoveryService, attempting self-recovery');
+        print(
+            '❌ Could not access MediaRecoveryService, attempting self-recovery');
         _attemptSelfRecovery();
       }
-      
+
       consecutiveFailures.value = 0;
     } else {
-      print('⚠️ Media unhealthy, attempting soft recovery (attempt ${consecutiveFailures.value})');
+      print(
+          '⚠️ Media unhealthy, attempting soft recovery (attempt ${consecutiveFailures.value})');
       _attemptSelfRecovery();
     }
   }
-  
+
   /// Attempt to recover without full system reset
   Future<void> _attemptSelfRecovery() async {
     try {
@@ -134,11 +137,11 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
         final url = currentMedia.value!;
         final wasPlaying = isPlaying.value;
         final currentType = mediaType.value;
-        
+
         // Stop and restart
         await stop();
         await Future.delayed(Duration(milliseconds: 500));
-        
+
         // Attempt to restart if it was playing
         if (wasPlaying && url.isNotEmpty) {
           if (currentType == 'audio') {
@@ -152,7 +155,8 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       print('❌ Self-recovery attempt failed: $e');
     }
   }
-    /// Get health data as a structured object for monitoring
+
+  /// Get health data as a structured object for monitoring
   Map<String, dynamic> getHealthData() {
     return {
       'isHealthy': isHealthy.value,
@@ -165,7 +169,7 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       'mediaType': mediaType.value,
     };
   }
-  
+
   /// Initialize the service
   Future<BackgroundMediaService> init() async {
     // Start health checks
@@ -178,7 +182,8 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
     try {
       await _player.stop();
       await _player.open(Media(url));
-      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
+      await _player
+          .setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
       isPlaying.value = true;
       currentMedia.value = url;
       mediaType.value = 'audio';
@@ -186,9 +191,10 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       print('Error playing audio: $e');
     }
   }
-  
-  /// Play audio in a windowed tile 
-  Future<void> playAudioWindowed(String url, {bool loop = false, String? title, String? windowId}) async {
+
+  /// Play audio in a windowed tile
+  Future<void> playAudioWindowed(String url,
+      {bool loop = false, String? title, String? windowId}) async {
     try {
       final controller = Get.find<TilingWindowController>();
       if (windowId != null && windowId.isNotEmpty) {
@@ -203,13 +209,14 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       print('Error opening audio in window manager: $e');
     }
   }
-  
+
   /// Play video in the background (no UI)
   Future<void> playVideo(String url, {bool loop = false}) async {
     try {
       await _player.stop();
       await _player.open(Media(url));
-      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
+      await _player
+          .setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
       isPlaying.value = true;
       currentMedia.value = url;
       mediaType.value = 'video';
@@ -217,13 +224,15 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       print('Error playing video: $e');
     }
   }
-  
+
   /// Play video in a windowed tile managed by the window manager
-  Future<void> playVideoWindowed(String url, {bool loop = false, String? title, String? windowId}) async {
+  Future<void> playVideoWindowed(String url,
+      {bool loop = false, String? title, String? windowId}) async {
     try {
       final controller = Get.find<TilingWindowController>();
       if (windowId != null && windowId.isNotEmpty) {
-        controller.addMediaTileWithId(windowId, title ?? 'Kiosk Video', url, loop: loop);
+        controller.addMediaTileWithId(windowId, title ?? 'Kiosk Video', url,
+            loop: loop);
       } else {
         controller.addMediaTile(title ?? 'Kiosk Video', url, loop: loop);
       }
@@ -231,16 +240,41 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
       print('Error opening video in window manager: $e');
     }
   }
-  
+
+  /// Play video in fullscreen mode
+  Future<void> playVideoFullscreen(String url, {bool loop = false}) async {
+    try {
+      // First stop any current playback
+      await stop();
+
+      // Play the video using a fullscreen dialog
+      await _player.stop();
+      await _player.open(Media(url));
+      await _player
+          .setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
+
+      isPlaying.value = true;
+      currentMedia.value = url;
+      mediaType.value = 'video';
+      isFullscreen.value = true;
+
+      // Consider implementing a proper fullscreen video player here
+      // For now, this just plays the audio/video without visual component
+      print('Playing video in fullscreen mode: $url');
+    } catch (e) {
+      print('Error playing video in fullscreen: $e');
+    }
+  }
+
   /// Display an image in fullscreen
   Future<void> displayImageFullscreen(dynamic urlData) async {
     try {
       // Stop any current media playback
       await stop();
-      
+
       // Extract URLs
       List<String> imageUrls = [];
-      
+
       if (urlData is String) {
         imageUrls = [urlData];
         currentImage.value = urlData;
@@ -250,16 +284,16 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
           currentImage.value = imageUrls[0];
         }
       }
-      
+
       if (imageUrls.isEmpty) {
         print('❌ No valid image URLs provided');
         return;
       }
-      
+
       mediaType.value = 'image';
       isImageDisplayed.value = true;
       isFullscreen.value = true;
-        // Show fullscreen image dialog
+      // Show fullscreen image dialog
       Get.dialog(
         Dialog.fullscreen(
           child: Stack(
@@ -280,9 +314,10 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
                             if (loadingProgress == null) return child;
                             return Center(
                               child: CircularProgressIndicator(
-                                value: loadingProgress.expectedTotalBytes != null
-                                    ? loadingProgress.cumulativeBytesLoaded / 
-                                      loadingProgress.expectedTotalBytes!
+                                value: loadingProgress.expectedTotalBytes !=
+                                        null
+                                    ? loadingProgress.cumulativeBytesLoaded /
+                                        loadingProgress.expectedTotalBytes!
                                     : null,
                               ),
                             );
@@ -292,7 +327,8 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
                               child: Column(
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
-                                  Icon(Icons.error_outline, color: Colors.red, size: 50),
+                                  Icon(Icons.error_outline,
+                                      color: Colors.red, size: 50),
                                   SizedBox(height: 16),
                                   Text(
                                     'Failed to load image',
@@ -301,22 +337,23 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
                                   SizedBox(height: 8),
                                   Text(
                                     imageUrls.first,
-                                    style: TextStyle(color: Colors.white70, fontSize: 12),
+                                    style: TextStyle(
+                                        color: Colors.white70, fontSize: 12),
                                   ),
                                 ],
                               ),
                             );
                           },
-                  ),
+                        ),
                 ),
               ),
-              
+
               // Close button
               Positioned(
                 top: 20,
                 right: 20,
                 child: IconButton(
-                  icon: Icon(Icons.close, color: Colors.white, size: 30),
+                  icon: Icon(Icons.close, color: Colors.white),
                   onPressed: () {
                     closeImage();
                     Get.back();
@@ -325,42 +362,39 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
               ),
             ],
           ),
-          backgroundColor: Colors.black,
         ),
-        barrierDismissible: false,
-      ).then((_) {
-        closeImage();
-      });
+      );
     } catch (e) {
       print('Error displaying image fullscreen: $e');
-      closeImage();
     }
   }
-  
+
   /// Display an image in a windowed tile
   Future<void> displayImageWindowed(dynamic urlData, {String? title}) async {
     try {
-      final controller = Get.find<TilingWindowController>();
-      controller.addImageTile(title ?? 'Kiosk Image', urlData);
-      
-      // Store the primary URL in our service state
-      String primaryUrl;
+      // Extract URLs
+      List<String> imageUrls = [];
+
       if (urlData is String) {
-        primaryUrl = urlData;
-      } else if (urlData is List && urlData.isNotEmpty) {
-        primaryUrl = urlData[0].toString();
-      } else {
-        primaryUrl = 'Invalid URL';
+        imageUrls = [urlData];
+      } else if (urlData is List) {
+        imageUrls = List<String>.from(urlData.map((url) => url.toString()));
       }
-      
-      currentImage.value = primaryUrl;
-      mediaType.value = 'image';
-      isImageDisplayed.value = true;
+
+      if (imageUrls.isEmpty) {
+        print('❌ No valid image URLs provided for windowed display');
+        return;
+      }
+
+      // Use the tiling window controller to display the image
+      final controller = Get.find<TilingWindowController>();
+      controller.addImageTile(title ?? 'MQTT Image', imageUrls);
+      print('Image displayed in window: ${imageUrls.first}');
     } catch (e) {
-      print('Error opening image in window manager: $e');
+      print('Error displaying image in window: $e');
     }
   }
-  
+
   /// Close the currently displayed image
   void closeImage() {
     isImageDisplayed.value = false;
@@ -371,82 +405,28 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
     }
   }
 
-  /// Play video in fullscreen
-  Future<void> playVideoFullscreen(String url, {bool loop = false}) async {
-    try {
-      await _player.stop();
-      await _player.open(Media(url));
-      await _player.setPlaylistMode(loop ? PlaylistMode.loop : PlaylistMode.none);
-      isPlaying.value = true;
-      currentMedia.value = url;
-      mediaType.value = 'video';
-      isFullscreen.value = true;
-      
-      // Show fullscreen video dialog
-      Get.dialog(
-        Dialog.fullscreen(
-          child: Stack(
-            children: [
-              // Video player
-              Positioned.fill(
-                child: Video(controller: _videoController),
-              ),
-              
-              // Close button
-              Positioned(
-                top: 20,
-                right: 20,
-                child: IconButton(
-                  icon: Icon(Icons.close, color: Colors.white, size: 30),
-                  onPressed: () {
-                    isFullscreen.value = false;
-                    Get.back();
-                  },
-                ),
-              ),
-            ],
-          ),
-        ),
-        barrierDismissible: false,
-      ).then((_) {
-        isFullscreen.value = false;
-      });
-    } catch (e) {
-      print('Error playing video fullscreen: $e');
-      isFullscreen.value = false;
-    }
+  /// Get the player instance directly
+  /// This method should be used carefully as it exposes internal state
+  /// @returns The current Player instance
+  Player? getPlayer() {
+    return _player;
   }
-  
-  /// Pause current playback
-  Future<void> pause() async {
-    if (isPlaying.value) {
-      await _player.pause();
-      isPlaying.value = false;
-    }
-  }
-  
-  /// Resume current playback
-  Future<void> resume() async {
-    if (!isPlaying.value && currentMedia.value != null) {
-      await _player.play();
-      isPlaying.value = true;
-    }
-  }
-    /// Stop current playback
+
+  /// Stop current playback
   Future<void> stop() async {
     try {
       // First stop the player to release hardware resources
       await _player.stop();
       isPlaying.value = false;
       currentMedia.value = null;
-      
+
       // Also clear image if displayed
       if (isImageDisplayed.value) {
         closeImage();
       } else {
         mediaType.value = 'none';
       }
-      
+
       // Close fullscreen if open
       if (isFullscreen.value) {
         isFullscreen.value = false;
@@ -457,80 +437,55 @@ class BackgroundMediaService extends GetxService {  // Singleton player instance
           print('Error closing fullscreen dialog: $e');
         }
       }
-      
+
       // Force resource cleanup after stopping
       await Future.delayed(Duration(milliseconds: 100));
-      await _player.dispose();
-      
-      // Reinitialize player to ensure clean state
+      await _player.dispose(); // Reinitialize player to ensure clean state
       _player = Player();
-      _videoController = VideoController(_player);
-      
+
       print('BackgroundMediaService player disposed and recreated');
     } catch (e) {
       print('Error stopping background media: $e');
     }
   }
-  
-  /// Set volume (0.0 to 1.0)
-  Future<void> setVolume(double volume) async {
-    await _player.setVolume(volume * 100);
-  }
-  
-  /// Get current position in seconds
-  Future<Duration> getCurrentPosition() async {
-    return _player.state.position;
-  }
-  
-  /// Get media duration in seconds
-  Future<Duration> getDuration() async {
-    return _player.state.duration;
-  }
-  
-  /// Seek to position in seconds
-  Future<void> seekTo(Duration position) async {
-    await _player.seek(position);
-  }
-  /// Clean up resources
-  @override
-  void onClose() {
+
+  /// Pause current playback
+  Future<void> pause() async {
     try {
-      // Cancel health check timer
-      _healthCheckTimer?.cancel();
-      _healthCheckTimer = null;
-      
-      // Stop playback first
-      _player.stop();
-      
-      // Ensure we're not in fullscreen
-      if (isFullscreen.value) {
-        isFullscreen.value = false;
-        try {
-          Get.back();
-        } catch (e) {
-          // Ignore errors when trying to close dialogs
-        }
+      // Only pause if actually playing
+      if (isPlaying.value) {
+        await _player.pause();
+        isPlaying.value = false;
+        print('Background media paused');
       }
-      
-      // Close any open images
-      if (isImageDisplayed.value) {
-        closeImage();
-      }
-      
-      // Dispose the player with delay to ensure complete cleanup
-      Timer(Duration(milliseconds: 100), () {
-        try {
-          _player.dispose();
-          print('MediaKit player disposed successfully');
-        } catch (e) {
-          print('Error disposing MediaKit player: $e');
-        }
-      });
-      
-      print('BackgroundMediaService resources cleaned up');
     } catch (e) {
-      print('Error disposing BackgroundMediaService resources: $e');
+      print('Error pausing background media: $e');
     }
-    super.onClose();
+  }
+
+  /// Play/resume current playback
+  Future<void> play() async {
+    try {
+      // Only resume if not already playing
+      if (!isPlaying.value && currentMedia.value != null) {
+        await _player.play();
+        isPlaying.value = true;
+        print('Background media resumed');
+      }
+    } catch (e) {
+      print('Error resuming background media: $e');
+    }
+  }
+
+  /// Seek to a specific position in the current media
+  Future<void> seek(Duration position) async {
+    try {
+      if (currentMedia.value != null) {
+        await _player.seek(position);
+        print('Background media seeked to $position');
+      }
+    } catch (e) {
+      print('Error seeking background media: $e');
+    }
   }
 }

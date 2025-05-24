@@ -255,4 +255,13 @@ class SettingsControllerFixed extends SettingsController {
       }
     }
   }
+
+  // Hardware acceleration compatibility methods
+  void loadHardwareAccelerationSettings() {
+    super.loadHardwareAccelerationSettings();
+  }
+
+  Future<void> toggleHardwareAcceleration(bool enabled) async {
+    await super.toggleHardwareAcceleration(enabled);
+  }
 }

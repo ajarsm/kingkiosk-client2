@@ -8,6 +8,7 @@ import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
 import '../../../services/sip_service.dart';
 import '../../../services/ai_assistant_service.dart';
+import '../../../services/media_hardware_detection.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
@@ -104,6 +105,50 @@ class SettingsController extends GetxController {
   final TextEditingController aiProviderHostController =
       TextEditingController();
 
+  // MEDIA HARDWARE SETTINGS
+
+  // Get MediaHardwareDetectionService or null if not available
+  late MediaHardwareDetectionService? _mediaHardwareService;
+
+  MediaHardwareDetectionService? get mediaHardwareService {
+    if (_mediaHardwareService == null) {
+      try {
+        _mediaHardwareService = Get.find<MediaHardwareDetectionService>();
+      } catch (_) {
+        // Not available
+      }
+    }
+    return _mediaHardwareService;
+  }
+
+  // Observable for hardware acceleration status
+  final isHardwareAccelerationEnabled = true.obs;
+  final isProblematicDevice = false.obs;
+  final lastMediaError = Rx<String?>(null);
+
+  // Toggle hardware acceleration
+  Future<void> toggleHardwareAcceleration(bool enabled) async {
+    final service = mediaHardwareService;
+    if (service != null) {
+      await service.toggleHardwareAcceleration(enabled);
+      isHardwareAccelerationEnabled.value =
+          service.isHardwareAccelerationEnabled.value;
+    }
+  }
+
+  // Load hardware acceleration settings
+  void loadHardwareAccelerationSettings() {
+    final service = mediaHardwareService;
+    if (service != null) {
+      isHardwareAccelerationEnabled.value =
+          service.isHardwareAccelerationEnabled.value;
+      isProblematicDevice.value = service.deviceInfo.value.isNotEmpty &&
+          service.problemDevices.any((device) => service.deviceInfo.value.values
+              .any((value) => value.toString().toLowerCase().contains(device)));
+      lastMediaError.value = service.lastError.value;
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -131,6 +176,9 @@ class SettingsController extends GetxController {
     Future.microtask(() async {
       await _loadSettingsWithHostname();
       _initControllerValues();
+
+      // Load hardware acceleration settings
+      loadHardwareAccelerationSettings();
 
       // Auto-connect to MQTT if it was enabled (after a short delay)
       Future.delayed(Duration(seconds: 1), () => autoConnectMqttIfEnabled());
@@ -239,6 +287,9 @@ class SettingsController extends GetxController {
 
     // Initialize SIP registration status
     _initSipStatus();
+
+    // Load hardware acceleration settings
+    loadHardwareAccelerationSettings();
   }
 
   Future<String> _getHostname() async {

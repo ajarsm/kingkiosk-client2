@@ -18,6 +18,7 @@ import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
+import 'media_control_service.dart'; // Import the MediaControlService
 import 'screenshot_service.dart';
 import 'audio_service.dart'; // Import the AudioService
 import '../controllers/halo_effect_controller.dart';
@@ -1023,11 +1024,6 @@ class MqttService extends GetxService {
         if (testOnly) {
           print('🧪 [MQTT] Running media health check test (no reset)');
 
-          // If you have a MediaHealthCheckTester class, call it directly here.
-          // Otherwise, comment out or implement the test logic as needed.
-          // Example (uncomment if available):
-          // MediaHealthCheckTester.runTest();
-
           // Publish health status report
           if (isConnected.value && _client != null) {
             publishJsonToTopic(
@@ -1038,6 +1034,11 @@ class MqttService extends GetxService {
           return;
         }
 
+        // Capture background audio state before reset
+        final backgroundAudioState =
+            await mediaRecoveryService.captureBackgroundAudioState();
+        print('📝 [MQTT] Captured background audio state before reset');
+
         // Not a test, perform actual reset
         final result = await mediaRecoveryService.resetAllMediaResources(
             force: forceReset);
@@ -1045,6 +1046,18 @@ class MqttService extends GetxService {
         // Report result
         if (result) {
           print('✅ [MQTT] Media reset completed successfully');
+
+          // Restore background audio if it was playing
+          if (backgroundAudioState['url'] != null) {
+            try {
+              await Future.delayed(Duration(milliseconds: 500));
+              await mediaRecoveryService
+                  .restoreBackgroundAudio(backgroundAudioState);
+              print('✅ [MQTT] Background audio restored after reset');
+            } catch (e) {
+              print('❌ [MQTT] Error restoring background audio: $e');
+            }
+          }
 
           // Send status report back to MQTT if enabled
           try {
@@ -1057,6 +1070,8 @@ class MqttService extends GetxService {
                 'timestamp': DateTime.now().toIso8601String(),
                 'resetCount': mediaRecoveryService.recoveryCount.value,
                 'forced': forceReset,
+                'audioRestored': backgroundAudioState['url'] != null,
+                'audioUrl': backgroundAudioState['url'],
               };
 
               // Publish using the existing method
@@ -1072,6 +1087,54 @@ class MqttService extends GetxService {
       } catch (e) {
         print('❌ [MQTT] Error during media reset: $e');
       }
+      return;
+    }
+
+    // --- Media control for background audio commands ---
+    final backgroundAudioCommands = [
+      'play_audio',
+      'pause_audio',
+      'stop_audio',
+      'seek_audio'
+    ];
+    if (backgroundAudioCommands
+        .contains(cmdObj['command']?.toString().toLowerCase())) {
+      final action = cmdObj['command']?.toString().toLowerCase();
+
+      try {
+        final mediaControlService = Get.find<MediaControlService>();
+        bool success = false;
+
+        if (action == 'play_audio') {
+          print('▶️ [MQTT] Playing background audio');
+          success = await mediaControlService.playBackgroundAudio();
+        } else if (action == 'pause_audio') {
+          print('⏸️ [MQTT] Pausing background audio');
+          success = await mediaControlService.pauseBackgroundAudio();
+        } else if (action == 'stop_audio') {
+          print('⏹️ [MQTT] Stopping background audio');
+          success = await mediaControlService.stopBackgroundAudio();
+        } else if (action == 'seek_audio') {
+          final position =
+              double.tryParse(cmdObj['position']?.toString() ?? '0');
+          if (position != null) {
+            print('⏩ [MQTT] Seeking background audio to position $position');
+            success = await mediaControlService.seekBackgroundAudio(position);
+          } else {
+            print('❌ [MQTT] Invalid seek position: ${cmdObj['position']}');
+          }
+        }
+
+        if (success) {
+          print('✅ [MQTT] Successfully performed $action on background audio');
+        } else {
+          print(
+              '⚠️ [MQTT] Failed to perform $action on background audio - no audio playing or service error');
+        }
+      } catch (e) {
+        print('❌ [MQTT] Error processing $action command: $e');
+      }
+
       return;
     }
 

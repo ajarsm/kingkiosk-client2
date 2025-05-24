@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
+import 'package:get/get.dart';
+import '../../../services/media_hardware_detection.dart';
 
 // Player manager to keep players persistent across rebuilds
 class MediaPlayerManager {
@@ -14,6 +16,17 @@ class MediaPlayerManager {
     _cleanupTimer = Timer.periodic(Duration(minutes: 5), (_) {
       _cleanupUnusedPlayers();
     });
+
+    // Initialize hardware detection service
+    try {
+      // Try to find existing instance
+      Get.find<MediaHardwareDetectionService>();
+    } catch (_) {
+      // Create a new instance if not found
+      final hardwareDetection = MediaHardwareDetectionService();
+      hardwareDetection.init();
+      Get.put(hardwareDetection, permanent: true);
+    }
   }
 
   final Map<String, PlayerWithController> _players = {};
@@ -25,7 +38,13 @@ class MediaPlayerManager {
     _lastAccessTime[url] = DateTime.now();
 
     if (!_players.containsKey(url)) {
-      final player = Player();
+      // Get hardware acceleration configuration
+      final hardwareDetectionService =
+          Get.find<MediaHardwareDetectionService>();
+      final playerConfig = hardwareDetectionService.getPlayerConfiguration();
+
+      // Create player with the configuration
+      final player = Player(configuration: playerConfig);
       final controller = VideoController(player);
       _players[url] = PlayerWithController(player, controller);
     }
@@ -40,21 +59,42 @@ class MediaPlayerManager {
         final playerData = _players[url]!;
         // Remove from map first to prevent race conditions
         _players.remove(url);
+        _lastAccessTime.remove(url);
 
-        // Force cleanup before disposal
-        playerData.player.stop();
-
-        // Use a delayed disposal to give time for resource cleanup
-        Future.delayed(Duration(milliseconds: 100), () {
-          try {
-            // Then dispose the player
-            playerData.player.dispose();
-            // VideoController doesn't have a dispose method
-            print('Player for $url successfully disposed');
-          } catch (e) {
-            print('Error in delayed disposal for $url: $e');
+        // Check if player is already disposed to prevent "Player has been disposed" errors
+        bool isDisposed = false;
+        try {
+          // Try to access a property to check if player is disposed
+          // If it throws an assertion error, it's already disposed
+          final _ = playerData.player.state.playing;
+        } catch (e) {
+          if (e.toString().contains('Player has been disposed')) {
+            isDisposed = true;
+            print('Player for $url was already disposed, skipping disposal');
           }
-        });
+        }
+
+        if (!isDisposed) {
+          // Only try to stop and dispose if not already disposed
+          try {
+            // Force cleanup before disposal
+            playerData.player.stop();
+
+            // Use a delayed disposal to give time for resource cleanup
+            Future.delayed(Duration(milliseconds: 100), () {
+              try {
+                // Then dispose the player
+                playerData.player.dispose();
+                // VideoController doesn't have a dispose method
+                print('Player for $url successfully disposed');
+              } catch (e) {
+                print('Error in delayed disposal for $url: $e');
+              }
+            });
+          } catch (e) {
+            print('Error stopping player for $url: $e');
+          }
+        }
         return true;
       } catch (e) {
         print('Error disposing player for $url: $e');
@@ -67,13 +107,27 @@ class MediaPlayerManager {
   void dispose() {
     for (final playerData in _players.values) {
       try {
-        playerData.player.stop();
-        playerData.player.dispose();
+        // Check if player is already disposed
+        bool isDisposed = false;
+        try {
+          final _ = playerData.player.state.playing;
+        } catch (e) {
+          if (e.toString().contains('Player has been disposed')) {
+            isDisposed = true;
+            print('Player was already disposed, skipping disposal');
+          }
+        }
+
+        if (!isDisposed) {
+          playerData.player.stop();
+          playerData.player.dispose();
+        }
       } catch (e) {
         print('Error disposing player during manager cleanup: $e');
       }
     }
     _players.clear();
+    _lastAccessTime.clear();
     _cleanupTimer?.cancel();
   }
 
@@ -87,7 +141,23 @@ class MediaPlayerManager {
     for (final url in urls) {
       try {
         if (_players.containsKey(url)) {
-          _players[url]!.player.stop();
+          // Check if player is already disposed
+          bool isDisposed = false;
+          try {
+            final _ = _players[url]!.player.state.playing;
+          } catch (e) {
+            if (e.toString().contains('Player has been disposed')) {
+              isDisposed = true;
+              print('Player for $url was already disposed, skipping stop');
+              // Remove from map since it's already disposed
+              _players.remove(url);
+              _lastAccessTime.remove(url);
+            }
+          }
+
+          if (!isDisposed) {
+            _players[url]!.player.stop();
+          }
         }
       } catch (e) {
         print('Error stopping player during reset: $e');
@@ -100,16 +170,37 @@ class MediaPlayerManager {
       for (final url in urls) {
         try {
           if (_players.containsKey(url)) {
-            _players[url]!.player.dispose();
-            print('Player for $url disposed during reset');
+            // Check again if player is already disposed
+            bool isDisposed = false;
+            try {
+              final _ = _players[url]!.player.state.playing;
+            } catch (e) {
+              if (e.toString().contains('Player has been disposed')) {
+                isDisposed = true;
+                print(
+                    'Player for $url was already disposed, skipping disposal');
+                // Remove from map since it's already disposed
+                _players.remove(url);
+                _lastAccessTime.remove(url);
+              }
+            }
+
+            if (!isDisposed) {
+              _players[url]!.player.dispose();
+              print('Player for $url disposed during reset');
+              // Remove from map after successful disposal
+              _players.remove(url);
+              _lastAccessTime.remove(url);
+            }
           }
         } catch (e) {
           print('Error disposing player during reset: $e');
         }
       }
 
-      // Clear the map
+      // Clear the map (in case any entries remain)
       _players.clear();
+      _lastAccessTime.clear();
       print('All media players reset and disposed');
 
       // Force re-initialization of MediaKit
@@ -127,6 +218,20 @@ class MediaPlayerManager {
       final lastAccess = _lastAccessTime[url] ?? now;
       if (now.difference(lastAccess).inMinutes > 10) {
         urlsToRemove.add(url);
+      }
+    }
+
+    // Check for already disposed players that might still be in the map
+    for (final url in _players.keys) {
+      if (!urlsToRemove.contains(url)) {
+        try {
+          final _ = _players[url]!.player.state.playing;
+        } catch (e) {
+          if (e.toString().contains('Player has been disposed')) {
+            urlsToRemove.add(url);
+            print('Detected already disposed player for $url, cleaning up');
+          }
+        }
       }
     }
 
@@ -246,6 +351,44 @@ class _MediaTileState extends State<MediaTile>
       }
     } catch (error) {
       print('Error initializing video player: $error');
+
+      // Report error to hardware detection service
+      try {
+        final hardwareDetectionService =
+            Get.find<MediaHardwareDetectionService>();
+        hardwareDetectionService.trackMediaError(error.toString());
+
+        // If hardware acceleration was disabled due to this error,
+        // try to recreate the player with new settings
+        if (hardwareDetectionService.hasDetectedIssue.value) {
+          print('Hardware issue detected, recreating player with new settings');
+          // Force manager to dispose and recreate this player
+          MediaPlayerManager().disposePlayerFor(widget.url);
+          // Get a new player with updated hardware settings
+          _playerData = MediaPlayerManager().getPlayerFor(widget.url);
+
+          // Try to initialize again with new settings
+          await _playerData.player.open(Media(widget.url));
+
+          if (widget.loop) {
+            await _playerData.player.setPlaylistMode(PlaylistMode.loop);
+          }
+
+          // If we got here, the player was successfully recreated with new settings
+          _playerData.isInitialized = true;
+          if (mounted) {
+            setState(() {
+              _isInitialized = true;
+              _hasError = false;
+            });
+          }
+          return;
+        }
+      } catch (e) {
+        print('Error reporting hardware issue: $e');
+        // Continue with normal error handling
+      }
+
       if (mounted) {
         setState(() {
           _hasError = true;
@@ -272,10 +415,21 @@ class _MediaTileState extends State<MediaTile>
     // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
     // But we do need to stop it to release hardware resources
     try {
-      _playerData.player.pause();
+      // Check if player is already disposed
+      bool isDisposed = false;
+      try {
+        final _ = _playerData.player.state.playing;
+      } catch (e) {
+        if (e.toString().contains('Player has been disposed')) {
+          isDisposed = true;
+          print('Player for ${widget.url} was already disposed in MediaTile');
+        }
+      }
 
-      // Notify the system that this tile is no longer active
-      print('MediaTile for ${widget.url} disposed');
+      if (!isDisposed) {
+        _playerData.player.pause();
+        print('MediaTile for ${widget.url} disposed');
+      }
     } catch (e) {
       print('Error cleaning up MediaTile resources: $e');
     }
@@ -283,6 +437,20 @@ class _MediaTileState extends State<MediaTile>
   }
 
   Widget _buildErrorWidget(String message) {
+    // Check if this is a hardware acceleration issue
+    bool isHardwareIssue = false;
+    bool hardwareAccelerationEnabled = true;
+
+    try {
+      final hardwareDetectionService =
+          Get.find<MediaHardwareDetectionService>();
+      isHardwareIssue = hardwareDetectionService.hasDetectedIssue.value;
+      hardwareAccelerationEnabled =
+          hardwareDetectionService.isHardwareAccelerationEnabled.value;
+    } catch (e) {
+      print('Error checking hardware acceleration status: $e');
+    }
+
     return Center(
       child: Card(
         elevation: 12,
@@ -318,25 +486,92 @@ class _MediaTileState extends State<MediaTile>
                   textAlign: TextAlign.center,
                 ),
               ),
-              SizedBox(height: 28),
-              ElevatedButton.icon(
-                icon: Icon(Icons.refresh_rounded),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.redAccent,
-                  foregroundColor: Colors.white,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(18),
+
+              // Show hardware acceleration status if it's a hardware issue
+              if (isHardwareIssue) ...[
+                SizedBox(height: 12),
+                Container(
+                  padding: EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade100,
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  padding: EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                  child: Text(
+                    'Hardware acceleration is ${hardwareAccelerationEnabled ? 'enabled' : 'disabled'}',
+                    style: TextStyle(
+                      color: Colors.amber.shade900,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
                 ),
-                onPressed: () {
-                  setState(() {
-                    _hasError = false;
-                    _isInitialized = false;
-                  });
-                  _initializePlayer();
-                },
-                label: Text('Retry', style: TextStyle(fontSize: 17)),
+              ],
+
+              SizedBox(height: 28),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  ElevatedButton.icon(
+                    icon: Icon(Icons.refresh_rounded),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(18),
+                      ),
+                      padding:
+                          EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                    ),
+                    onPressed: () {
+                      setState(() {
+                        _hasError = false;
+                        _isInitialized = false;
+                      });
+                      _initializePlayer();
+                    },
+                    label: Text('Retry', style: TextStyle(fontSize: 17)),
+                  ),
+
+                  // Add button to toggle hardware acceleration if it's a hardware issue
+                  if (isHardwareIssue) ...[
+                    SizedBox(width: 12),
+                    ElevatedButton.icon(
+                      icon: Icon(hardwareAccelerationEnabled
+                          ? Icons.hardware
+                          : Icons.settings_applications),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.amber,
+                        foregroundColor: Colors.black87,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        padding:
+                            EdgeInsets.symmetric(horizontal: 36, vertical: 16),
+                      ),
+                      onPressed: () {
+                        try {
+                          final hardwareDetectionService =
+                              Get.find<MediaHardwareDetectionService>();
+                          hardwareDetectionService.toggleHardwareAcceleration(
+                              !hardwareAccelerationEnabled);
+                          // Force reload
+                          setState(() {
+                            _hasError = false;
+                            _isInitialized = false;
+                          });
+                          _initializePlayer();
+                        } catch (e) {
+                          print('Error toggling hardware acceleration: $e');
+                        }
+                      },
+                      label: Text(
+                        hardwareAccelerationEnabled
+                            ? 'Disable Hardware Accel.'
+                            : 'Enable Hardware Accel.',
+                        style: TextStyle(fontSize: 17),
+                      ),
+                    ),
+                  ],
+                ],
               ),
             ],
           ),

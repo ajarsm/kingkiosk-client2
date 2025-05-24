@@ -5,6 +5,7 @@ import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
 import 'communications_settings_view.dart';
 import 'ai_settings_view.dart';
+import 'media_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
 
 class SettingsViewFixed extends GetView<SettingsControllerFixed> {
@@ -79,12 +80,41 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               children: [
                 CommunicationsSettingsView(),
               ],
-            ),
-            // AI Settings
+            ), // AI Settings
             _buildSection(
               title: 'AI Assistant',
               children: [
                 const AiSettingsView(),
+              ],
+            ),
+
+            // Media Settings
+            _buildSection(
+              title: 'Media & Playback',
+              children: [
+                Card(
+                  elevation: 8,
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(20)),
+                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+                  child: ListTile(
+                    leading: ShaderMask(
+                      shaderCallback: (rect) => LinearGradient(
+                        colors: [Colors.redAccent, Colors.orangeAccent],
+                        begin: Alignment.topLeft,
+                        end: Alignment.bottomRight,
+                      ).createShader(rect),
+                      child: Icon(Icons.videocam, color: Colors.white),
+                    ),
+                    title: Text('Media Settings',
+                        style: TextStyle(fontWeight: FontWeight.bold)),
+                    subtitle:
+                        Text('Hardware acceleration, video compatibility'),
+                    trailing: Icon(Icons.arrow_forward_ios_rounded,
+                        color: Colors.blueGrey.shade300),
+                    onTap: () => Get.to(() => MediaSettingsView()),
+                  ),
+                ),
               ],
             ),
 

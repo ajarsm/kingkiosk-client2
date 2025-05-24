@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'dart:async'; // For Timer
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import '../../../services/media_recovery_service.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:media_kit/media_kit.dart';
 import '../../../data/models/window_tile_v2.dart';
@@ -12,12 +13,11 @@ import '../widgets/webview_tile_manager.dart'; // Add WebViewTileManager import
 import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
-import '../../../services/background_media_service.dart';
+
 import '../../settings/controllers/settings_controller.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
-import 'youtube_window_controller.dart'; // YouTube controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -710,19 +710,34 @@ class TilingWindowController extends GetxController {
         if (tile.type == TileType.audio || tile.type == TileType.media) {
           try {
             // Use a brief delay to allow other disposal operations to complete
-            Future.delayed(Duration(milliseconds: 50), () {
-              final playerManager = MediaPlayerManager();
-              final disposed = playerManager.disposePlayerFor(tile.url);
-              print('MediaPlayer disposed for ${tile.url}: $disposed');
+            Future.delayed(Duration(milliseconds: 100), () {
+              // Use try-catch to handle any disposal errors
+              try {
+                final playerManager = MediaPlayerManager();
 
-              // Force a GC suggestion and asset disposal
-              Future.delayed(Duration(milliseconds: 100), () {
-                // This will help suggest to the system to clean up unused resources
-                MediaKit.ensureInitialized();
-              });
+                // Check if this URL is an RTSP stream (they're more prone to disposal issues)
+                final isRtspStream =
+                    tile.url.toLowerCase().startsWith('rtsp://');
+                if (isRtspStream) {
+                  print(
+                      'RTSP stream detected for ${tile.url}, using careful disposal');
+                }
+
+                final disposed = playerManager.disposePlayerFor(tile.url);
+                print('MediaPlayer disposed for ${tile.url}: $disposed');
+
+                // Force a GC suggestion and asset disposal
+                Future.delayed(Duration(milliseconds: isRtspStream ? 200 : 100),
+                    () {
+                  // This will help suggest to the system to clean up unused resources
+                  MediaKit.ensureInitialized();
+                });
+              } catch (e) {
+                print('Error in delayed player disposal: $e');
+              }
             });
           } catch (e) {
-            print('Error disposing player: $e');
+            print('Error setting up player disposal: $e');
           }
         }
       }
@@ -945,17 +960,19 @@ class TilingWindowController extends GetxController {
   }
 
   /// Emergency function to reset all media resources when black screens occur
-  void resetAllMediaResources() {
+  Future<void> resetAllMediaResources() async {
     try {
       print('=== EMERGENCY MEDIA RESET INITIATED ===');
 
-      // Step 1: Stop background media service
+      // Use MediaRecoveryService if available, as it handles this more cleanly
       try {
-        final backgroundService = Get.find<BackgroundMediaService>();
-        backgroundService.stop();
-        print('Background media service stopped');
+        final recoveryService = Get.find<MediaRecoveryService>();
+        await recoveryService.resetAllMediaResources(force: true);
+        print('Media resources reset via MediaRecoveryService');
+        return;
       } catch (e) {
-        print('Error stopping background service: $e');
+        print(
+            'MediaRecoveryService not available, falling back to manual reset: $e');
       }
 
       // Step 2: Close all media/audio tiles
