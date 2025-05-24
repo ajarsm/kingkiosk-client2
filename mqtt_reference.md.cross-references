@@ -1,0 +1,60 @@
+## Command Relationships and Cross-References
+
+This section outlines the relationships between different command types and how they can be used together effectively.
+
+### Media and Control Relationships
+
+| Command Type | Related Commands | Description |
+|--------------|-----------------|-------------|
+| Media Playback | `play_media`, `media_control` | Media playback commands create media windows, control commands manipulate them |
+| Audio Playback | `play_audio`, `media_control` | Audio playback creates background or windowed audio players, control commands manipulate them |
+| YouTube | `youtube`, `media_control` | YouTube commands create YouTube players, media controls can manipulate them |
+| WebView | `open_browser`, `refresh`, `execute_javascript` | Browser windows can be controlled with various web-specific commands |
+
+### Window Management Workflow
+
+Typical workflow for window management:
+
+1. Create window with commands like `open_browser`, `play_media`, `youtube`
+2. Control window with `maximize_window`, `minimize_window`, etc.
+3. Manipulate content with command-specific controls
+4. Close window with `close_window` command
+
+### Content Type Detection and Defaults
+
+When using the `play_media` command:
+
+| URL Pattern | Default Type | Default Style | Notes |
+|-------------|--------------|--------------|-------|
+| Ends with .mp4, .webm, .mov | video | window | Default video player |
+| Ends with .mp3, .wav, .ogg | audio | background | Default audio player |
+| Ends with .jpg, .png, .gif, .webp | image | window | Default image viewer |
+| YouTube URL | youtube | window | Auto-redirects to YouTube player |
+| Other URL | web | window | Opens as a web page |
+
+### Command Execution Order in Batch Commands
+
+When using batch commands, they execute in the order specified in the array:
+
+```json
+{
+  "commands": [
+    { "command": "first_command" },
+    { "command": "second_command" }
+  ]
+}
+```
+
+This is important when:
+- Creating a window then controlling it
+- Setting volume before starting media
+- Creating elements that will interact with each other
+
+### Status Reporting Integration
+
+Commands that generate status reports:
+- `reset_media` → Reports to `kingkiosk/{deviceName}/status/media_reset`
+- `screenshot` → Reports to `kingkiosk/{deviceName}/screenshot/status`
+- `halo_effect` → Reports to `kingkiosk/{deviceName}/halo_effect/status`
+
+You can use Home Assistant automations to listen for these status topics and trigger actions.
