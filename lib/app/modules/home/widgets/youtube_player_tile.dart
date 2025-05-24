@@ -6,8 +6,7 @@ import 'webview_manager.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/youtube_window_controller.dart';
 
-/// YouTube Player Tile Manager
-/// Used to manage YouTube player instances across rebuilds
+/// YouTube Player Tile Manager to manage YouTube player instances across rebuilds
 class YouTubePlayerManager {
   static final YouTubePlayerManager _instance =
       YouTubePlayerManager._internal();
@@ -318,6 +317,12 @@ class _YouTubePlayerTileState extends State<YouTubePlayerTile>
           onConsoleMessage: (controller, consoleMessage) {
             print('🎬 YouTube console: ${consoleMessage.message}');
           },
+          onReceivedServerTrustAuthRequest: (controller, challenge) async {
+            print(
+                '🔒 YouTube player - Received SSL certificate challenge, proceeding anyway');
+            return ServerTrustAuthResponse(
+                action: ServerTrustAuthResponseAction.PROCEED);
+          },
         ),
         if (_isLoading)
           Center(
@@ -362,6 +367,16 @@ class _YouTubePlayerTileState extends State<YouTubePlayerTile>
       WebResourceError error) {
     print(
         '⚠️ YouTube WebView error: ${error.description} for windowId: ${widget.windowId}');
+
+    // Show error UI for main frame errors only (not resource errors)
+    // Only use error types that are guaranteed to exist in this version
+    if (error.type == WebResourceErrorType.TIMEOUT ||
+        error.type == WebResourceErrorType.HOST_LOOKUP ||
+        error.type == WebResourceErrorType.FAILED_SSL_HANDSHAKE) {
+      setState(() {
+        _isLoading = false;
+      });
+    }
   }
 
   @override

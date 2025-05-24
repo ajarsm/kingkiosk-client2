@@ -101,12 +101,8 @@ class _WebViewWrapper {
         useShouldOverrideUrlLoading: true,
         useShouldInterceptAjaxRequest: true,
         useShouldInterceptFetchRequest: true,
-        // SSL settings - allow invalid certificates
         clearCache: false,
-        preferredContentMode: UserPreferredContentMode.RECOMMENDED,
-        incognito: false,
         cacheEnabled: true,
-        // SSL certificate errors are handled via onReceivedServerTrustAuthRequest
       ),
       // Pass event handlers in the constructor
       onWebViewCreated: (controller) {
@@ -233,6 +229,9 @@ class _WebViewTileState extends State<WebViewTile>
       // Update the WebViewData
       _webViewData = WebViewManager().getWebViewFor(widget.url);
 
+      // Reset retry attempts when URL changes
+      _retryAttempts = 0;
+
       // Use the existing controller to load the new URL
       _webViewData.safelyExecute((controller) async {
         try {
@@ -270,6 +269,17 @@ class _WebViewTileState extends State<WebViewTile>
     PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
     WidgetsBinding.instance.addObserver(this);
 
+    // Validate URL
+    _isUrlValid = _validateUrl(widget.url);
+    if (!_isUrlValid) {
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+        _errorMessage = 'Invalid URL format: ${widget.url}';
+      });
+      return;
+    }
+
     // Get the WebViewData from our manager
     _webViewData = WebViewManager().getWebViewFor(widget.url);
 
@@ -288,9 +298,6 @@ class _WebViewTileState extends State<WebViewTile>
       key: _stableWebViewKey,
       callbackHandler: this,
     );
-
-    // Validate URL
-    _isUrlValid = _validateUrl(widget.url);
   }
 
   @override
@@ -338,40 +345,84 @@ class _WebViewTileState extends State<WebViewTile>
                     textAlign: TextAlign.center,
                   ),
                 ),
-                SizedBox(height: 28),
-                ElevatedButton.icon(
-                  icon: Icon(Icons.refresh_rounded),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.redAccent,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
-                    ),
-                    padding: EdgeInsets.symmetric(horizontal: 36, vertical: 16),
-                  ),
-                  onPressed: () {
-                    setState(() {
-                      _hasError = false;
-                      _isLoading = true;
-                    });
-                    _webViewData.safelyExecute((controller) async {
-                      await controller.reload();
-                    });
-                  },
-                  label: Text('Retry', style: TextStyle(fontSize: 17)),
-                ),
                 if (_isRetrying)
                   Padding(
                     padding: const EdgeInsets.only(top: 16.0),
-                    child: Text(
-                      _errorMessage,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: Colors.red.shade400,
-                        fontStyle: FontStyle.italic,
-                      ),
-                      textAlign: TextAlign.center,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Colors.redAccent.withOpacity(0.7),
+                            ),
+                          ),
+                        ),
+                        SizedBox(width: 12),
+                        Text(
+                          _errorMessage,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: Colors.red.shade400,
+                            fontStyle: FontStyle.italic,
+                          ),
+                        ),
+                      ],
                     ),
+                  )
+                else
+                  SizedBox(height: 28),
+                if (!_isRetrying)
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      ElevatedButton.icon(
+                        icon: Icon(Icons.refresh_rounded),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.redAccent,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 14),
+                        ),
+                        onPressed: () {
+                          _retryAttempts = 0; // Reset counter on manual retry
+                          setState(() {
+                            _hasError = false;
+                            _isLoading = true;
+                          });
+                          _webViewData.safelyExecute((controller) async {
+                            await controller.reload();
+                          });
+                        },
+                        label:
+                            Text('Retry Now', style: TextStyle(fontSize: 16)),
+                      ),
+                      SizedBox(width: 12),
+                      OutlinedButton.icon(
+                        icon: Icon(Icons.autorenew),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          side: BorderSide(
+                              color: Colors.redAccent.withOpacity(0.5)),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(18),
+                          ),
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 14),
+                        ),
+                        onPressed: () {
+                          _retryWithBackoff();
+                        },
+                        label:
+                            Text('Auto-retry', style: TextStyle(fontSize: 16)),
+                      ),
+                    ],
                   ),
               ],
             ),
@@ -491,6 +542,8 @@ class _WebViewTileState extends State<WebViewTile>
         '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
     setState(() {
       _isLoading = false;
+      // Reset retry counter on successful load
+      _retryAttempts = 0;
     });
 
     // Enable touch events on WebView content
@@ -518,14 +571,21 @@ class _WebViewTileState extends State<WebViewTile>
       WebResourceError error) {
     print(
         '⚠️ WebViewTile - Error loading URL: ${request.url}, Error: ${error.description}');
-    setState(() {
-      _hasError = true;
-      _isLoading = false;
-      _errorMessage = error.description;
-    });
 
-    // Retry with backoff
-    _retryWithBackoff();
+    // Skip retry for resources, only retry main frame errors
+    if (error.type == WebResourceErrorType.TIMEOUT ||
+        error.type == WebResourceErrorType.HOST_LOOKUP ||
+        error.type == WebResourceErrorType.NOT_CONNECTED_TO_INTERNET ||
+        error.type == WebResourceErrorType.FAILED_SSL_HANDSHAKE) {
+      setState(() {
+        _hasError = true;
+        _isLoading = false;
+        _errorMessage = '${error.description}\nURL: ${request.url}';
+      });
+
+      // Auto-retry with backoff for connection errors
+      _retryWithBackoff();
+    }
   }
 
   @override
@@ -540,6 +600,12 @@ class _WebViewTileState extends State<WebViewTile>
       NavigationAction navigationAction) async {
     print(
         "🔧 WebViewTile - URL navigating to: ${navigationAction.request.url}");
+    // Validate URL before loading
+    final url = navigationAction.request.url.toString();
+    if (!_validateUrl(url)) {
+      print("⚠️ WebViewTile - Blocking navigation to invalid URL: $url");
+      return NavigationActionPolicy.CANCEL;
+    }
     return NavigationActionPolicy.ALLOW;
   }
 

@@ -1,36 +1,17 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../controllers/tiling_window_controller.dart';
-import '../widgets/media_tile.dart';
-import '../widgets/audio_tile.dart';
-import '../widgets/image_tile.dart';
-import '../widgets/auto_hide_title_bar.dart';
-import '../widgets/webview_tile_manager.dart';
 import '../widgets/youtube_player_tile.dart';
-import '../../../data/models/window_tile_v2.dart';
-import '../../../routes/app_pages.dart';
-import '../../../services/navigation_service.dart';
-import '../../../widgets/system_info_dashboard.dart';
-import '../../../services/platform_sensor_service.dart';
-import '../../../controllers/app_state_controller.dart';
-import '../../../modules/settings/controllers/settings_controller.dart';
-import '../../../core/utils/platform_utils.dart';
-import '../../../widgets/settings_lock_pin_pad.dart';
-import '../../../services/window_manager_service.dart';
-import '../controllers/web_window_controller.dart';
-import '../controllers/youtube_window_controller.dart';
-import '../../../services/ai_assistant_service.dart';
-import 'package:king_kiosk/notification_system/notification_system.dart';
-import '../../../widgets/window_halo_wrapper.dart';
 
-// ... existing code ...
+// Note: This function should be called from a button or menu item
+// to display the YouTube video addition dialog.
 
 // Show a dialog to add a new YouTube window
 void _showAddYouTubeDialog(BuildContext context) {
   final TextEditingController nameController = TextEditingController();
   final TextEditingController urlController = TextEditingController();
+  final tilingController = Get.find<TilingWindowController>();
 
   // Use Future.microtask to avoid setState during build errors
   Future.microtask(() {
@@ -72,7 +53,8 @@ void _showAddYouTubeDialog(BuildContext context) {
                 String videoId = extractedId ?? url;
 
                 // Add the YouTube tile
-                controller.addYouTubeTile(nameController.text, url, videoId);
+                tilingController.addYouTubeTile(
+                    nameController.text, url, videoId);
                 Get.back();
               }
             },
@@ -83,3 +65,11 @@ void _showAddYouTubeDialog(BuildContext context) {
     );
   });
 }
+
+// Example usage:
+// Inside a widget's build method:
+//
+// ElevatedButton(
+//   onPressed: () => _showAddYouTubeDialog(context),
+//   child: Text('Add YouTube Video'),
+// )
