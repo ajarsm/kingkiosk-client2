@@ -25,6 +25,7 @@ import '../controllers/halo_effect_controller.dart';
 import '../controllers/window_halo_controller.dart';
 import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
 import '../modules/home/widgets/youtube_player_tile.dart'; // Import for YouTubePlayerManager
+import 'media_hardware_detection.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -823,8 +824,7 @@ class MqttService extends GetxService {
         print('⚠️ maximize_window command missing window_id');
       }
       return;
-    }
-    // --- minimize_window command ---
+    } // --- minimize_window command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'minimize_window') {
       final windowId = cmdObj['window_id'] as String?;
       if (windowId != null && windowId.isNotEmpty) {
@@ -843,6 +843,28 @@ class MqttService extends GetxService {
         }
       } else {
         print('⚠️ minimize_window command missing window_id');
+      }
+      return;
+    }
+
+    // --- open_pdf command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'open_pdf' &&
+        cmdObj['url'] is String) {
+      final url = cmdObj['url'] as String;
+      final title = cmdObj['title']?.toString() ?? 'PDF Document';
+      final String? windowId = cmdObj['window_id']?.toString();
+      try {
+        final controller = Get.find<TilingWindowController>();
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addPdfTileWithId(windowId, title, url);
+        } else {
+          controller.addPdfTile(title, url);
+        }
+        print('📄 [MQTT] Opened PDF viewer for URL: $url, title=$title' +
+            (windowId != null ? ', id=$windowId' : ''));
+      } catch (e) {
+        print('❌ Error opening PDF viewer: $e');
       }
       return;
     } // --- notify command for sending notifications ---

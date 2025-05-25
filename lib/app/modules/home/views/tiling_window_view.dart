@@ -6,6 +6,7 @@ import '../controllers/tiling_window_controller.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
 import '../widgets/image_tile.dart';
+import '../widgets/pdf_tile.dart';
 import '../widgets/auto_hide_title_bar.dart';
 import '../widgets/webview_tile_manager.dart';
 import '../widgets/youtube_player_tile.dart';
@@ -20,7 +21,6 @@ import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/web_window_controller.dart';
-import '../controllers/youtube_window_controller.dart';
 import '../../../services/ai_assistant_service.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
 import '../../../widgets/window_halo_wrapper.dart';
@@ -346,6 +346,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.image, size: 16);
       case TileType.youtube:
         return Icon(Icons.smart_display, size: 16);
+      case TileType.pdf:
+        return Icon(Icons.picture_as_pdf, size: 16);
     }
   }
 
@@ -382,8 +384,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
         }
         break;
       case TileType.youtube:
-        // Find the YouTubeWindowController for this tile
-        final wm = Get.find<WindowManagerService>();
         // Get the videoId from metadata or extract from URL
         String videoId = '';
         if (tile.metadata != null && tile.metadata!['videoId'] != null) {
@@ -413,11 +413,17 @@ class TilingWindowViewState extends State<TilingWindowView> {
           url: tile.url,
         );
         break;
-
       case TileType.image:
         content = ImageTile(
           url: tile.url,
           imageUrls: tile.imageUrls,
+        );
+        break;
+
+      case TileType.pdf:
+        content = PdfTile(
+          url: tile.url,
+          windowId: tile.id,
         );
         break;
     }
@@ -472,6 +478,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
               icon: Icons.smart_display,
               label: 'YouTube',
               onPressed: locked ? null : () => _showAddYouTubeDialog(context),
+              locked: locked,
+            ),
+            _buildToolbarButton(
+              icon: Icons.picture_as_pdf,
+              label: 'PDF',
+              onPressed: locked ? null : () => _showAddPdfDialog(context),
               locked: locked,
             ),
             _buildToolbarButton(
@@ -924,6 +936,59 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
                   // Add the YouTube tile
                   controller.addYouTubeTile(nameController.text, url, videoId);
+                  Get.back();
+                }
+              },
+              child: Text('Add'),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+
+  // Show a dialog to add a new PDF window
+  void _showAddPdfDialog(BuildContext context) {
+    final TextEditingController nameController = TextEditingController();
+    final TextEditingController urlController = TextEditingController();
+
+    // Use Future.microtask to avoid setState during build errors
+    Future.microtask(() {
+      Get.dialog(
+        AlertDialog(
+          title: Text('Add PDF Document'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: nameController,
+                decoration: InputDecoration(
+                  labelText: 'Name',
+                  hintText: 'Enter a name for this PDF',
+                ),
+              ),
+              SizedBox(height: 16),
+              TextField(
+                controller: urlController,
+                decoration: InputDecoration(
+                  labelText: 'PDF URL',
+                  hintText: 'Enter URL to PDF document',
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (nameController.text.isNotEmpty &&
+                    urlController.text.isNotEmpty) {
+                  // Add the PDF tile
+                  controller.addPdfTile(
+                      nameController.text, urlController.text.trim());
                   Get.back();
                 }
               },

@@ -1,0 +1,250 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:pdfrx/pdfrx.dart';
+import 'dart:typed_data';
+import 'package:http/http.dart' as http;
+import '../controllers/pdf_window_controller.dart';
+import '../../../services/window_manager_service.dart';
+
+/// A widget that displays a PDF document
+class PdfTile extends StatefulWidget {
+  final String url;
+  final String windowId;
+  final VoidCallback? onClose;
+
+  const PdfTile({
+    Key? key,
+    required this.url,
+    required this.windowId,
+    this.onClose,
+  }) : super(key: key);
+
+  @override
+  _PdfTileState createState() => _PdfTileState();
+}
+
+class _PdfTileState extends State<PdfTile> {
+  late final PdfDocument pdfDocument;
+  late final PdfController pdfController;
+  late final PdfWindowController windowController;
+  bool isLoading = true;
+  String? errorMessage;
+
+  Future<void> _initPdf() async {
+    try {
+      // Check if URL is a local file or remote URL
+      if (widget.url.startsWith('http')) {
+        // For remote URLs, download the data first
+        final response = await http.get(Uri.parse(widget.url));
+        if (response.statusCode == 200) {
+          final Uint8List bytes = response.bodyBytes;
+          pdfDocument = PdfDocument.openData(bytes);
+        } else {
+          setState(() {
+            errorMessage = 'Failed to load PDF: HTTP ${response.statusCode}';
+            isLoading = false;
+          });
+          return;
+        }
+      } else {
+        // For local files or asset URLs
+        pdfDocument = PdfDocument.openFile(widget.url);
+      }
+      
+      // Create controller with the document
+      pdfController = PdfController(document: pdfDocument);
+      
+      setState(() {
+        isLoading = false;
+      });
+    } catch (e) {
+      print('❌ Error loading PDF: $e');
+      setState(() {
+        errorMessage = 'Error loading PDF: ${e.toString()}';
+        isLoading = false;
+      });
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+
+    // Create PDF controller
+    _initPdf();
+
+    // Get or create window controller
+    try {
+      final wm = Get.find<WindowManagerService>();
+      final existingController = wm.getWindow(widget.windowId);
+
+      if (existingController != null &&
+          existingController is PdfWindowController) {
+        windowController = existingController;
+      } else {
+        // Create a new controller and register it with the window manager
+        windowController = PdfWindowController(
+          windowName: widget.windowId,
+          pdfUrl: widget.url,
+          onClose: widget.onClose,
+        );
+        wm.registerWindow(windowController);
+      }
+
+      // Listen for document loaded event to update total pages
+      pdfController.addListener(() {
+        if (pdfController.isReady) {
+          windowController.setTotalPages(pdfController.pageCount);
+        }
+      });
+
+      // Link the current page between the window controller and PDF view
+      windowController.currentPage.listen((page) {
+        if (pdfController.isReady && pdfController.currentPage != page) {
+          pdfController.goToPage(page - 1); // pdfrx uses 0-based indexing
+        }
+      });
+    } catch (e) {
+      print('❌ Error setting up PDF window controller: $e');
+      windowController = PdfWindowController(
+        windowName: widget.windowId,
+        pdfUrl: widget.url,
+        onClose: widget.onClose,
+      );
+    }
+  }
+
+  @override
+  void dispose() {
+    pdfController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (isLoading) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    if (errorMessage != null) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.error, color: Colors.red, size: 40),
+            const SizedBox(height: 16),
+            Text(errorMessage!),
+          ],
+        ),
+      );
+    }
+
+    return Column(
+      children: [
+        Expanded(
+          child: PdfView(
+            controller: pdfController,
+            onPageChanged: (page) {
+              // Update window controller when page changes in the view (0-based to 1-based)
+              windowController.currentPage.value = page + 1;
+            },
+            builders: PdfViewBuilders(
+              options: PdfViewOptions(
+                scrollDirection: Axis.vertical,
+                padding: const EdgeInsets.all(8),
+                minScale: 1.0,
+                maxScale: 3.0,
+              ),
+              documentLoaderBuilder: (_) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+              errorBuilder: (_, error) => Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error, color: Colors.red, size: 40),
+                    const SizedBox(height: 16),
+                    Text('Error loading PDF: ${error.toString()}'),
+                  ],
+                ),
+              ),
+              pageLoaderBuilder: (_) => const Center(
+                child: CircularProgressIndicator(),
+              ),
+            ),
+          ),
+        ),
+        // PDF controls toolbar
+        Container(
+          color: Colors.grey[900],
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              IconButton(
+                icon: const Icon(Icons.first_page),
+                tooltip: 'First Page',
+                onPressed: () {
+                  if (pdfController.isReady) {
+                    pdfController.goToPage(0);
+                    windowController.currentPage.value = 1;
+                  }
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.navigate_before),
+                tooltip: 'Previous Page',
+                onPressed: () {
+                  windowController.previousPage();
+                },
+              ),
+              Obx(() => Text(
+                    '${windowController.currentPage.value} / ${windowController.totalPages.value}',
+                    style: const TextStyle(color: Colors.white),
+                  )),
+              IconButton(
+                icon: const Icon(Icons.navigate_next),
+                tooltip: 'Next Page',
+                onPressed: () {
+                  windowController.nextPage();
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.last_page),
+                tooltip: 'Last Page',
+                onPressed: () {
+                  if (pdfController.isReady) {
+                    pdfController.goToPage(pdfController.pageCount - 1);
+                    windowController.currentPage.value =
+                        pdfController.pageCount;
+                  }
+                },
+              ),
+              const SizedBox(width: 16),
+              IconButton(
+                icon: const Icon(Icons.zoom_in),
+                tooltip: 'Zoom In',
+                onPressed: () {
+                  if (pdfController.isReady) {
+                    pdfController.setScale(pdfController.scale * 1.25);
+                  }
+                },
+              ),
+              IconButton(
+                icon: const Icon(Icons.zoom_out),
+                tooltip: 'Zoom Out',
+                onPressed: () {
+                  if (pdfController.isReady) {
+                    pdfController.setScale(pdfController.scale * 0.8);
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}

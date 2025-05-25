@@ -188,6 +188,21 @@ This behavior can be used for monitoring the device and automating actions based
 ```
 - **window_id**: Required. The ID of the window to minimize.
 
+### Open PDF Document
+**Topic**: `kingkiosk/{deviceName}/command`  
+**Payload**:
+```json
+{
+  "command": "open_pdf",
+  "url": "https://example.com/document.pdf",
+  "title": "PDF Document",
+  "window_id": "pdf-123"
+}
+```
+- **url**: Required. URL to the PDF document.
+- **title**: Optional. The title for the window (defaults to "PDF Document").
+- **window_id**: Optional. Custom ID for the window (auto-generated if not provided).
+
 ## WebView Commands
 
 ### Refresh Web Page
@@ -1152,6 +1167,16 @@ KingKiosk supports various types of window tiles that can be created and control
   "style": "window",
   "title": "Image Viewer",
   "window_id": "image-123"
+}
+```
+
+### PDF Tile
+```json
+{
+  "command": "open_pdf",
+  "url": "https://example.com/document.pdf",
+  "title": "PDF Document",
+  "window_id": "pdf-123"
 }
 ```
 

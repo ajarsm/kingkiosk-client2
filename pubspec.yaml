@@ -40,6 +40,7 @@ dependencies:
   sip_ua: ^1.0.1
   flutter_webrtc: ^0.12.12+hotfix.1  # Version compatible with sip_ua
   pdfrx: ^1.1.29
+  http: ^1.4.0
 
 dev_dependencies:
   flutter_test:

@@ -7,6 +7,7 @@ enum TileType {
   audio,
   image, // Added image type
   youtube, // Added YouTube player type
+  pdf, // Added PDF viewer type
 }
 
 /// Represents a window tile in the tiling window manager
