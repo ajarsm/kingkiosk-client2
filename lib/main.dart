@@ -21,9 +21,12 @@ import 'package:king_kiosk/notification_system/models/notification_models.dart';
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-
   // Initialize GetStorage for persistent settings
-  await GetStorage.init(); // Initialize MediaKit for media playback
+  print('🔧 Initializing GetStorage...');
+  await GetStorage.init(); // Single default container for everything
+  print('✅ GetStorage initialization complete');
+
+  // Initialize MediaKit for media playback
   MediaKit.ensureInitialized();
 
   // Initialize AudioService first to ensure sounds work

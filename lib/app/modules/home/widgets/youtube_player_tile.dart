@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import 'web_view_tile.dart'; // For WebViewCallbackHandler
-import 'webview_manager.dart';
 import '../../../services/window_manager_service.dart';
 import '../controllers/youtube_window_controller.dart';
 

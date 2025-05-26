@@ -9,7 +9,7 @@ import '../../services/app_lifecycle_service.dart';
 import '../../services/navigation_service.dart';
 import '../../controllers/app_state_controller.dart';
 import '../../services/background_media_service.dart';
-import '../../modules/settings/controllers/settings_controller.dart';
+import '../../modules/settings/controllers/settings_controller_compat.dart';
 import '../../services/window_manager_service.dart';
 import '../../services/screenshot_service.dart';
 import '../../services/media_recovery_service.dart';
@@ -21,21 +21,15 @@ import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
 
-class InitialBinding extends Bindings {
-  @override
+class InitialBinding extends Bindings {  @override
   Future<void> dependencies() async {
-    // Register GetStorage first
-    Get.put<GetStorage>(GetStorage(), permanent: true);
-
     // Core services first - order matters!
     Get.put<StorageService>(await StorageService().init(), permanent: true);
     Get.put<ThemeService>(await ThemeService().init(), permanent: true);
     Get.put<PlatformSensorService>(await PlatformSensorService().init(),
-        permanent: true);
-
-    // Core controllers
+        permanent: true);    // Core controllers
     Get.put(AppStateController(), permanent: true);
-    Get.put(SettingsController(), permanent: true);
+    Get.put(SettingsControllerFixed(), permanent: true);
 
     // Services that don't need async init
     Get.put<AppLifecycleService>(AppLifecycleService().init(), permanent: true);

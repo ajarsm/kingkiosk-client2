@@ -16,7 +16,7 @@ import '../../../services/navigation_service.dart';
 import '../../../widgets/system_info_dashboard.dart';
 import '../../../services/platform_sensor_service.dart';
 import '../../../controllers/app_state_controller.dart';
-import '../../../modules/settings/controllers/settings_controller.dart';
+import '../../../modules/settings/controllers/settings_controller_compat.dart';
 import '../../../core/utils/platform_utils.dart';
 import '../../../widgets/settings_lock_pin_pad.dart';
 import '../../../services/window_manager_service.dart';
@@ -37,7 +37,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   late final TilingWindowController controller;
   late final AppStateController appStateController;
   late final PlatformSensorService sensorService;
-  late final SettingsController settingsController;
+  late final SettingsControllerFixed settingsController;
   // Optional reference to AI assistant service
   AiAssistantService? aiAssistantService;
   late final StreamSubscription kioskModeSub;
@@ -52,7 +52,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
     controller = Get.find<TilingWindowController>();
     appStateController = Get.find<AppStateController>();
     sensorService = Get.find<PlatformSensorService>();
-    settingsController = Get.find<SettingsController>();
+    settingsController = Get.find<SettingsControllerFixed>();
 
     // Try to find AI Assistant service if available
     try {

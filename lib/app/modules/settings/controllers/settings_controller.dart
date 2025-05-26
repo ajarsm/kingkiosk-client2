@@ -104,11 +104,10 @@ class SettingsController extends GetxController {
   final TextEditingController sipServerHostController = TextEditingController();
   final TextEditingController aiProviderHostController =
       TextEditingController();
-
   // MEDIA HARDWARE SETTINGS
 
   // Get MediaHardwareDetectionService or null if not available
-  late MediaHardwareDetectionService? _mediaHardwareService;
+  MediaHardwareDetectionService? _mediaHardwareService;
 
   MediaHardwareDetectionService? get mediaHardwareService {
     if (_mediaHardwareService == null) {

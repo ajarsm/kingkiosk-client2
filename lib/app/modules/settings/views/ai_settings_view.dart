@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../controllers/settings_controller.dart';
 import '../controllers/settings_controller_compat.dart';
 
-class AiSettingsView extends GetView<SettingsController> {
+class AiSettingsView extends GetView<SettingsControllerFixed> {
   const AiSettingsView({Key? key}) : super(key: key);
 
   @override

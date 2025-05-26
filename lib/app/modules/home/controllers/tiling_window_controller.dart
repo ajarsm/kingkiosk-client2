@@ -14,7 +14,7 @@ import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 
-import '../../settings/controllers/settings_controller.dart';
+import '../../settings/controllers/settings_controller_compat.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
@@ -303,7 +303,7 @@ class TilingWindowController extends GetxController {
   void publishOpenWindowsToMqtt() {
     try {
       final mqttService = Get.find<MqttService>();
-      final deviceName = Get.find<SettingsController>().deviceName.value;
+      final deviceName = Get.find<SettingsControllerFixed>().deviceName.value;
       final List<Map<String, dynamic>> windowList = tiles
           .map((tile) => {
                 'id': tile.id,

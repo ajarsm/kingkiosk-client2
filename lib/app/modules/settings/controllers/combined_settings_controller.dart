@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:get_storage/get_storage.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/theme_service.dart';
@@ -64,9 +65,12 @@ class CombinedSettingsController extends GetxController {
       WakelockPlus.disable();
     }
   }
-  
-  /// Load settings from storage
+    /// Load settings from storage
   void _loadSettings() {
+    print('🔄 Loading settings from storage...');
+    _printStorageLocation();
+    _storageService.debugStorageStatus();
+    
     // Load theme settings
     isDarkMode.value = _storageService.read<bool>(AppConstants.keyIsDarkMode) ?? false;
     
@@ -94,6 +98,23 @@ class CombinedSettingsController extends GetxController {
     
     // Apply theme
     _applyTheme();
+  }
+  void _printStorageLocation() {
+    try {
+      final box = GetStorage();
+      print('📁 GetStorage has data: ${box.hasData('isDarkMode')}');
+      print('📁 GetStorage keys: ${box.getKeys()}');
+      print('📁 GetStorage values count: ${box.getValues().length}');
+      
+      // Print all current values
+      final keys = box.getKeys();
+      for (final key in keys) {
+        final value = box.read(key);
+        print('📁 Storage: $key = $value');
+      }
+    } catch (e) {
+      print('❌ Error getting storage info: $e');
+    }
   }
   
   void _initMqttStatus() {
@@ -131,11 +152,12 @@ class CombinedSettingsController extends GetxController {
     final themeService = Get.find<ThemeService>();
     themeService.setDarkMode(isDarkMode.value);
   }
-  
-  // Web URL methods
+    // Web URL methods
   void saveKioskStartUrl(String url) {
+    print('💾 Saving kiosk start URL: $url');
     kioskStartUrl.value = url;
     _storageService.write(AppConstants.keyKioskStartUrl, url);
+    _storageService.debugStorageStatus();
   }
   
   // WebSocket methods
@@ -160,9 +182,9 @@ class CombinedSettingsController extends GetxController {
     showSystemInfo.value = !showSystemInfo.value;
     _storageService.write(AppConstants.keyShowSystemInfo, showSystemInfo.value);
   }
-  
-  // MQTT methods
+    // MQTT methods
   void toggleMqttEnabled(bool value) {
+    print('💾 Saving MQTT enabled: $value');
     mqttEnabled.value = value;
     _storageService.write(AppConstants.keyMqttEnabled, value);
     
@@ -171,8 +193,9 @@ class CombinedSettingsController extends GetxController {
       disconnectMqtt();
     }
   }
-  
+
   void saveMqttBrokerUrl(String url) {
+    print('💾 Saving MQTT broker URL: $url');
     mqttBrokerUrl.value = url;
     _storageService.write(AppConstants.keyMqttBrokerUrl, url);
   }

@@ -25,14 +25,12 @@ class GetXNotificationService extends GetxController
   final RxInt _unreadCount = 0.obs;
   final Rx<NotificationConfig> _config =
       NotificationConfig.forTier(NotificationTier.standard).obs;
+  // Storage keys - using prefixed keys to avoid conflicts in shared storage
+  static const String _notificationsKey = 'notification_system_notifications';
+  static const String _configKey = 'notification_system_config';
 
-  // Storage keys
-  static const String _storageBox = 'notificationSystem';
-  static const String _notificationsKey = 'notifications';
-  static const String _configKey = 'config';
-
-  // Storage instance
-  final _storage = GetStorage(_storageBox);
+  // Storage instance - use default container for simplicity
+  final _storage = GetStorage();
 
   // Constructor with optional initialization
   GetXNotificationService() {
@@ -42,10 +40,9 @@ class GetXNotificationService extends GetxController
     // Load saved data if available
     loadFromStorage();
   }
-
   // Static initialization method - call this before using the service
   static Future<void> init() async {
-    await GetStorage.init(_storageBox);
+    // No need to initialize separate storage - using default container
 
     // Make sure AudioService is initialized before notifications arrive
     try {
