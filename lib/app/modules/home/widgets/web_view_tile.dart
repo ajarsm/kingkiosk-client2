@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import '../../../services/window_manager_service.dart';
@@ -16,6 +17,85 @@ class WebViewInstanceManager {
 
   // Map of window IDs to their WebView instances
   final Map<String, _WebViewWrapper> _instances = {};
+
+  /// Get platform-appropriate user agent string
+  static String getPlatformUserAgent() {
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      // Windows Edge user agent for better compatibility with modern web apps
+      return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36 Edg/120.0.0.0";
+    } else if (defaultTargetPlatform == TargetPlatform.macOS) {
+      // macOS Safari user agent
+      return "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15";
+    } else if (defaultTargetPlatform == TargetPlatform.linux) {
+      // Linux Chrome user agent
+      return "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    } else {
+      // Default fallback
+      return "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
+    }
+  }
+
+  /// Get platform-specific WebView settings
+  static InAppWebViewSettings getPlatformWebViewSettings() {
+    // Platform-specific settings for optimal compatibility
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      // Windows WebView2-specific settings for better Home Assistant compatibility
+      return InAppWebViewSettings(
+        javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        transparentBackground: true,
+        useOnLoadResource: false,
+        supportZoom: true,
+        verticalScrollBarEnabled: true,
+        horizontalScrollBarEnabled: true,
+        allowsInlineMediaPlayback: true,
+        disableHorizontalScroll: false,
+        disableVerticalScroll: false,
+        allowsLinkPreview: true,
+        allowsBackForwardNavigationGestures: true,
+        javaScriptCanOpenWindowsAutomatically: true,
+        userAgent: getPlatformUserAgent(),
+        useOnDownloadStart: true,
+        useShouldOverrideUrlLoading: true,
+        useShouldInterceptAjaxRequest: true,
+        useShouldInterceptFetchRequest: true,
+        clearCache: false,
+        preferredContentMode: UserPreferredContentMode.RECOMMENDED,
+        incognito: false,
+        cacheEnabled: true,
+        // Windows-specific optimizations
+        hardwareAcceleration: true,
+        useWideViewPort: true,
+        loadWithOverviewMode: true,
+      );
+    } else {
+      // Default settings for other platforms
+      return InAppWebViewSettings(
+        javaScriptEnabled: true,
+        mediaPlaybackRequiresUserGesture: false,
+        transparentBackground: true,
+        useOnLoadResource: false,
+        supportZoom: true,
+        verticalScrollBarEnabled: true,
+        horizontalScrollBarEnabled: true,
+        allowsInlineMediaPlayback: true,
+        disableHorizontalScroll: false,
+        disableVerticalScroll: false,
+        allowsLinkPreview: true,
+        allowsBackForwardNavigationGestures: true,
+        javaScriptCanOpenWindowsAutomatically: true,
+        userAgent: getPlatformUserAgent(),
+        useOnDownloadStart: true,
+        useShouldOverrideUrlLoading: true,
+        useShouldInterceptAjaxRequest: true,
+        useShouldInterceptFetchRequest: true,
+        clearCache: false,
+        preferredContentMode: UserPreferredContentMode.RECOMMENDED,
+        incognito: false,
+        cacheEnabled: true,
+      );
+    }
+  }
 
   // Create or get an existing WebView instance
   InAppWebView getOrCreateWebView({
@@ -81,33 +161,7 @@ class _WebViewWrapper {
       initialUrlRequest: URLRequest(
         url: WebUri(url),
       ),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        mediaPlaybackRequiresUserGesture: false,
-        transparentBackground: true,
-        useOnLoadResource: false,
-        supportZoom: true,
-        verticalScrollBarEnabled: true,
-        horizontalScrollBarEnabled: true,
-        allowsInlineMediaPlayback: true,
-        disableHorizontalScroll: false,
-        disableVerticalScroll: false,
-        allowsLinkPreview: true,
-        allowsBackForwardNavigationGestures: true,
-        javaScriptCanOpenWindowsAutomatically: true,
-        userAgent:
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-        useOnDownloadStart: true,
-        useShouldOverrideUrlLoading: true,
-        useShouldInterceptAjaxRequest: true,
-        useShouldInterceptFetchRequest: true,
-        // SSL settings - allow invalid certificates
-        clearCache: false,
-        preferredContentMode: UserPreferredContentMode.RECOMMENDED,
-        incognito: false,
-        cacheEnabled: true,
-        // SSL certificate errors are handled via onReceivedServerTrustAuthRequest
-      ),
+      initialSettings: WebViewInstanceManager.getPlatformWebViewSettings(),
       // Pass event handlers in the constructor
       onWebViewCreated: (controller) {
         _callbackHandler.onWebViewCreated(controller, id);
@@ -190,9 +244,6 @@ class _WebViewTileState extends State<WebViewTile>
   int _retryAttempts = 0;
   static const int MAX_RETRY_ATTEMPTS = 5;
   bool _isRetrying = false;
-
-  // URL validation result
-  bool _isUrlValid = true;
 
   // Stable key that won't change during widget lifetime
   late final ValueKey<String> _stableWebViewKey;
@@ -289,8 +340,8 @@ class _WebViewTileState extends State<WebViewTile>
       callbackHandler: this,
     );
 
-    // Validate URL
-    _isUrlValid = _validateUrl(widget.url);
+    print(
+        '📌 WebViewTile - Created stable WebView widget with key: $_stableWebViewKey');
   }
 
   @override
@@ -541,21 +592,6 @@ class _WebViewTileState extends State<WebViewTile>
     print(
         "🔧 WebViewTile - URL navigating to: ${navigationAction.request.url}");
     return NavigationActionPolicy.ALLOW;
-  }
-
-  // Validate URL and set _isUrlValid state
-  bool _validateUrl(String url) {
-    try {
-      final uri = Uri.parse(url);
-      if (!uri.hasScheme || !uri.hasAuthority) {
-        print('⚠️ WebViewTile - Invalid URL format: $url');
-        return false;
-      }
-      return true;
-    } catch (e) {
-      print('⚠️ WebViewTile - Error parsing URL: $e');
-      return false;
-    }
   }
 
   // Retry loading with exponential backoff
