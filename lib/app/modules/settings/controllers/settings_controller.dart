@@ -402,12 +402,14 @@ class SettingsController extends GetxController {
   void toggleDarkMode() {
     isDarkMode.value = !isDarkMode.value;
     _storageService.write(AppConstants.keyIsDarkMode, isDarkMode.value);
+    _storageService.flush(); // Force flush for Windows persistence
     _applyTheme();
   }
 
   void toggleKioskMode() {
     kioskMode.value = !kioskMode.value;
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
+    _storageService.flush(); // Force flush for Windows persistence
     // Control wakelock based on kiosk mode
     if (kioskMode.value) {
       WakelockPlus.enable();
@@ -419,11 +421,13 @@ class SettingsController extends GetxController {
   void toggleShowSystemInfo() {
     showSystemInfo.value = !showSystemInfo.value;
     _storageService.write(AppConstants.keyShowSystemInfo, showSystemInfo.value);
+    _storageService.flush(); // Force flush for Windows persistence
   }
 
   void saveAppSettings() {
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
     _storageService.write(AppConstants.keyShowSystemInfo, showSystemInfo.value);
+    _storageService.flush(); // Force flush for Windows persistence
 
     Get.snackbar(
       'Settings Saved',
@@ -448,6 +452,9 @@ class SettingsController extends GetxController {
     _storageService.write(AppConstants.keyDeviceName, deviceName.value);
     _storageService.write(
         AppConstants.keyMqttHaDiscovery, mqttHaDiscovery.value);
+
+    // Force flush for Windows persistence
+    _storageService.flush();
 
     Get.snackbar(
       'Settings Saved',
@@ -497,6 +504,7 @@ class SettingsController extends GetxController {
     _storageService.write(AppConstants.keySipEnabled, sipEnabled.value);
     _storageService.write(AppConstants.keySipServerHost, sipServerHost.value);
     _storageService.write(AppConstants.keySipProtocol, sipProtocol.value);
+    _storageService.flush(); // Force flush for Windows persistence
 
     Get.snackbar(
       'Settings Saved',
@@ -518,6 +526,7 @@ class SettingsController extends GetxController {
 
     // Save Web URL settings
     _storageService.write(AppConstants.keyKioskStartUrl, kioskStartUrl.value);
+    _storageService.flush(); // Force flush for Windows persistence
 
     Get.snackbar(
       'Settings Saved',
@@ -525,6 +534,7 @@ class SettingsController extends GetxController {
       snackPosition: SnackPosition.BOTTOM,
     );
   }
+
   void saveDeviceName(String name) {
     // Sanitize: all whitespace to dashes, remove underscores, remove special chars except dash, collapse multiple dashes
     String sanitized = name
@@ -536,6 +546,7 @@ class SettingsController extends GetxController {
         .toLowerCase();
     deviceName.value = sanitized;
     _storageService.write(AppConstants.keyDeviceName, sanitized);
+    _storageService.flush(); // Force flush for Windows persistence
 
     // Update MQTT service if available
     if (mqttService != null) {
@@ -546,17 +557,12 @@ class SettingsController extends GetxController {
     if (sipService != null) {
       sipService!.deviceName.value = sanitized;
     }
-    
-    Get.snackbar(
-      'Setting Saved',
-      'Device name updated to: $sanitized',
-      snackPosition: SnackPosition.BOTTOM,
-    );
   }
 
   void setSettingsPin(String pin) {
     settingsPin.value = pin;
     _storageService.write('settingsPin', pin);
+    _storageService.flush(); // Force flush for Windows persistence
   }
 
   void connectMqtt() {
@@ -826,74 +832,51 @@ class SettingsController extends GetxController {
   void toggleSipEnabled(bool value) {
     sipEnabled.value = value;
     _storageService.write(AppConstants.keySipEnabled, value);
+    _storageService.flush(); // Force flush for Windows persistence
     if (!value && sipRegistered.value) {
       unregisterSip();
     }
   }
+
   void saveMqttBrokerUrl(String url) {
     mqttBrokerUrl.value = url;
     mqttBrokerUrlController.text = url;
     _storageService.write(AppConstants.keyMqttBrokerUrl, url);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'MQTT broker URL updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
+
   void saveMqttBrokerPort(int port) {
     mqttBrokerPort.value = port;
     _storageService.write(AppConstants.keyMqttBrokerPort, port);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'MQTT broker port updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
+
   void saveMqttUsername(String username) {
     mqttUsername.value = username;
     mqttUsernameController.text = username;
     _storageService.write(AppConstants.keyMqttUsername, username);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'MQTT username updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
+
   void saveMqttPassword(String password) {
     mqttPassword.value = password;
     mqttPasswordController.text = password;
     _storageService.write(AppConstants.keyMqttPassword, password);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'MQTT password updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
+
   void saveSipServerHost(String host) {
     sipServerHost.value = host;
     sipServerHostController.text = host;
     _storageService.write(AppConstants.keySipServerHost, host);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'SIP server host updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
+
   void saveKioskStartUrl(String url) {
     kioskStartUrl.value = url;
     kioskStartUrlController.text = url;
     _storageService.write(AppConstants.keyKioskStartUrl, url);
-    
-    Get.snackbar(
-      'Setting Saved',
-      'Kiosk start URL updated',
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    _storageService.flush(); // Force flush for Windows persistence
   }
 
   void saveAiSettings() {
@@ -903,6 +886,7 @@ class SettingsController extends GetxController {
     // Save AI settings
     _storageService.write(AppConstants.keyAiEnabled, aiEnabled.value);
     _storageService.write(AppConstants.keyAiProviderHost, aiProviderHost.value);
+    _storageService.flush(); // Force flush for Windows persistence
 
     // Also reload settings in the AI assistant service if available
     try {
@@ -922,11 +906,13 @@ class SettingsController extends GetxController {
   void toggleAiEnabled(bool value) {
     aiEnabled.value = value;
     _storageService.write(AppConstants.keyAiEnabled, value);
+    _storageService.flush(); // Force flush for Windows persistence
   }
 
   void saveAiProviderHost(String host) {
     aiProviderHost.value = host;
     aiProviderHostController.text = host;
     _storageService.write(AppConstants.keyAiProviderHost, host);
+    _storageService.flush(); // Force flush for Windows persistence
   }
 }
