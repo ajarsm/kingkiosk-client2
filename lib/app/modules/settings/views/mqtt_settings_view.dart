@@ -40,9 +40,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16.0),
-
-                  // Broker URL
+                  const SizedBox(height: 16.0),                  // Broker URL
                   TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'MQTT Broker URL',
@@ -50,7 +48,10 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
                       border: OutlineInputBorder(),
                     ),
                     initialValue: controller.mqttBrokerUrl.value,
-                    onChanged: controller.saveMqttBrokerUrl,
+                    onChanged: (url) {
+                      print('🖱️ TextField onChanged callback triggered with: $url');
+                      controller.saveMqttBrokerUrl(url);
+                    },
                   ),
                   const SizedBox(height: 8.0),
 

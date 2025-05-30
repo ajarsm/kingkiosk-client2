@@ -650,6 +650,125 @@ Or:
 - **test**: Optional. Run a health check test without performing a reset (default: false)
 - **Note**: Background audio is automatically preserved during media reset operations. If background audio is playing when reset_media is called, it will be automatically restored after the reset is complete.
 
+### Remote Device Provisioning
+**Topic**: `kingkiosk/{deviceName}/command`  
+**Payload**:
+```json
+{
+  "command": "provision",
+  "settings": {
+    "isDarkMode": true,
+    "kioskMode": false,
+    "showSystemInfo": true,
+    "mqttEnabled": true,
+    "mqttBrokerUrl": "mqtt.example.com",
+    "mqttBrokerPort": 1883,
+    "mqttUsername": "kiosk_user",
+    "mqttPassword": "secure_password",
+    "deviceName": "lobby-kiosk-01",
+    "settingsPin": "1234"
+  },
+  "response_topic": "kingkiosk/my-device/provision_response"
+}
+```
+
+The provision command allows remote configuration of all application settings via MQTT, enabling remote device setup and management.
+
+**Parameters:**
+- **settings**: Required. Object containing the settings to apply
+- **response_topic**: Optional. Topic where the provision response will be published
+
+**Supported Settings:**
+
+**Theme Settings:**
+- **isDarkMode**: Boolean. Enable or disable dark mode theme
+
+**App Settings:**
+- **kioskMode**: Boolean. Enable or disable kiosk mode (hides system UI)
+- **showSystemInfo**: Boolean. Show or hide system information overlay
+- **kioskStartUrl**: String. Default URL to load when kiosk mode starts
+
+**MQTT Settings:**
+- **mqttEnabled**: Boolean. Enable or disable MQTT functionality
+- **mqttBrokerUrl**: String. MQTT broker hostname or IP address
+- **mqttBrokerPort**: Integer. MQTT broker port (typically 1883 or 8883)
+- **mqttUsername**: String. MQTT authentication username
+- **mqttPassword**: String. MQTT authentication password
+- **deviceName**: String. Unique device identifier for MQTT topics
+- **mqttHaDiscovery**: Boolean. Enable Home Assistant auto-discovery
+
+**SIP Settings:**
+- **sipEnabled**: Boolean. Enable or disable SIP functionality
+- **sipServerHost**: String. SIP server hostname or IP address
+- **sipProtocol**: String. SIP protocol ("UDP", "TCP", or "TLS")
+
+**AI Settings:**
+- **aiEnabled**: Boolean. Enable or disable AI features
+- **aiProviderHost**: String. AI provider hostname or endpoint
+
+**Security Settings:**
+- **settingsPin**: String. PIN code for accessing device settings
+
+**Flexible Key Formats:**
+Settings keys support both camelCase and snake_case formats:
+```json
+{
+  "command": "provision",
+  "settings": {
+    "is_dark_mode": true,        // snake_case
+    "isDarkMode": true,          // camelCase
+    "mqtt_broker_url": "...",    // snake_case
+    "mqttBrokerUrl": "..."       // camelCase
+  }
+}
+```
+
+**Provision Response:**
+When a response topic is specified, a detailed response will be published:
+
+**Topic**: `{response_topic}` (as specified in the command)  
+**Payload**:
+```json
+{
+  "status": "success",
+  "timestamp": "2023-07-15T12:34:56.789Z",
+  "device_name": "lobby-kiosk-01",
+  "applied_settings": [
+    "isDarkMode",
+    "kioskMode",
+    "mqttBrokerUrl"
+  ],
+  "failed_settings": [
+    {
+      "key": "invalidSetting",
+      "error": "Unknown setting key"
+    }
+  ],
+  "total_requested": 4,
+  "total_applied": 3,
+  "total_failed": 1
+}
+```
+
+**Response Status Values:**
+- **success**: All settings were applied successfully
+- **partial**: Some settings were applied, others failed
+- **error**: No settings could be applied (usually due to malformed request)
+
+**Error Handling:**
+- Invalid setting keys are ignored and reported in the response
+- Type conversion is attempted for boolean and integer values
+- String values like "true"/"false" are converted to booleans
+- String numbers are converted to integers where appropriate
+- Device name is automatically sanitized (spaces/special chars become underscores)
+- A visual notification is shown on the device when provisioning completes
+
+**Security Considerations:**
+- The provision command can change sensitive settings like MQTT credentials
+- Consider using secure MQTT connections (TLS) when sending provision commands
+- The settings PIN can be changed via provisioning, use with caution
+- All settings are validated before being applied
+
 ## Halo Effect
 
 The Halo Effect creates a colored border around either the entire screen or a specific window. This feature is useful for drawing attention to important content or indicating system states.

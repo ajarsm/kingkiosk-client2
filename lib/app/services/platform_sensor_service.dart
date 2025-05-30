@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:geolocator/geolocator.dart';
 
 // These methods have been integrated directly into _getDeviceInfo
 // to simplify the code and avoid unused methods
@@ -16,11 +17,18 @@ class PlatformSensorService extends GetxService {
   // Battery info
   final RxInt batteryLevel = 0.obs;
   final RxString batteryState = "Not Available".obs;
-
   // Sensor data
   final RxDouble accelerometerX = 0.0.obs;
   final RxDouble accelerometerY = 0.0.obs;
   final RxDouble accelerometerZ = 0.0.obs;
+
+  // Location data
+  final RxDouble latitude = 0.0.obs;
+  final RxDouble longitude = 0.0.obs;
+  final RxDouble altitude = 0.0.obs;
+  final RxDouble accuracy = 0.0.obs;
+  final RxString locationStatus = "Not Available".obs;
+  final RxBool locationEnabled = false.obs;
 
   // Device info
   final RxMap<String, dynamic> deviceData = <String, dynamic>{}.obs;
@@ -30,13 +38,16 @@ class PlatformSensorService extends GetxService {
   final RxDouble memoryUsage = 0.0.obs;
 
   Timer? _resourceMonitorTimer;
-
+  StreamSubscription<Position>? _locationSubscription;
   PlatformSensorService init() {
     // Simulate getting device info
     _getDeviceInfo();
 
     // Start monitoring system resources
     _initResourceMonitoring();
+
+    // Initialize location services
+    _initLocationMonitoring();
 
     return this;
   }
@@ -58,9 +69,8 @@ class PlatformSensorService extends GetxService {
       Map<String, dynamic> detailedInfo = <String, dynamic>{};
 
       if (kIsWeb) {
-        WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;
-        detailedInfo = {
-          'browserName': webInfo.browserName.name,
+        WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;        detailedInfo = {
+          'browserName': webInfo.browserName.toString(),
           'appCodeName': webInfo.appCodeName,
           'appName': webInfo.appName,
           'appVersion': webInfo.appVersion,
@@ -215,7 +225,6 @@ class PlatformSensorService extends GetxService {
       developer.log('Error updating sensor data', error: e);
     }
   }
-
   Map<String, dynamic> getAllSensorData() {
     return {
       'battery': {
@@ -226,6 +235,14 @@ class PlatformSensorService extends GetxService {
         'x': accelerometerX.value,
         'y': accelerometerY.value,
         'z': accelerometerZ.value,
+      },
+      'location': {
+        'latitude': latitude.value,
+        'longitude': longitude.value,
+        'altitude': altitude.value,
+        'accuracy': accuracy.value,
+        'status': locationStatus.value,
+        'enabled': locationEnabled.value,
       },
       'deviceInfo': Map<String, dynamic>.from(deviceData),
       'systemResources': {
@@ -319,6 +336,106 @@ class PlatformSensorService extends GetxService {
     }
   }
 
+  void _initLocationMonitoring() {
+    // Skip location on web platform as it requires secure context
+    if (kIsWeb) {
+      locationStatus.value = "Not Available (Web)";
+      return;
+    }
+
+    try {
+      _checkAndRequestLocationPermission().then((_) {
+        if (locationEnabled.value) {
+          _startLocationTracking();
+        } else {
+          locationStatus.value = "Permission Denied";
+        }
+      });
+    } catch (e) {
+      developer.log('Error initializing location monitoring', error: e);
+      locationStatus.value = "Error: ${e.toString()}";
+    }
+  }
+
+  Future<void> _checkAndRequestLocationPermission() async {
+    try {
+      // Check if location services are enabled
+      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+      if (!serviceEnabled) {
+        locationStatus.value = "Location Services Disabled";
+        locationEnabled.value = false;
+        return;
+      }
+
+      // Check permission status
+      LocationPermission permission = await Geolocator.checkPermission();
+      
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          locationStatus.value = "Location Permission Denied";
+          locationEnabled.value = false;
+          return;
+        }
+      }
+
+      if (permission == LocationPermission.deniedForever) {
+        locationStatus.value = "Location Permission Permanently Denied";
+        locationEnabled.value = false;
+        return;
+      }
+
+      // Permission granted
+      locationEnabled.value = true;
+      locationStatus.value = "Permission Granted";
+    } catch (e) {
+      developer.log('Error checking location permission', error: e);
+      locationStatus.value = "Permission Error";
+      locationEnabled.value = false;
+    }
+  }
+
+  void _startLocationTracking() {
+    try {
+      // Configure location settings
+      const LocationSettings locationSettings = LocationSettings(
+        accuracy: LocationAccuracy.high,
+        distanceFilter: 10, // Update only when moved 10 meters
+      );
+
+      // Start listening to location updates
+      _locationSubscription = Geolocator.getPositionStream(
+        locationSettings: locationSettings,
+      ).listen(        (Position position) {
+          latitude.value = position.latitude;
+          longitude.value = position.longitude;
+          altitude.value = position.altitude;
+          accuracy.value = position.accuracy;
+          locationStatus.value = "Active";
+          
+          developer.log('Location updated: ${position.latitude}, ${position.longitude}');
+        },
+        onError: (error) {
+          developer.log('Location stream error', error: error);
+          locationStatus.value = "Error: ${error.toString()}";
+        },
+      );      // Get initial position
+      Geolocator.getCurrentPosition().then((Position position) {
+        latitude.value = position.latitude;
+        longitude.value = position.longitude;
+        altitude.value = position.altitude;
+        accuracy.value = position.accuracy;
+        locationStatus.value = "Active";
+      }).catchError((error) {
+        developer.log('Error getting initial position', error: error);
+        locationStatus.value = "Error getting initial position";
+      });
+    } catch (e) {
+      developer.log('Error starting location tracking', error: e);
+      locationStatus.value = "Tracking Error";
+    }
+  }
+
   /// Safely check for macOS battery issue
   bool _isMacOSWithBatteryBug() {
     // The bug appears to be in the battery_plus macOS implementation
@@ -357,10 +474,10 @@ class PlatformSensorService extends GetxService {
     // For other platforms, use the normal API
     return battery.onBatteryStateChanged;
   }
-
   @override
   void onClose() {
     _resourceMonitorTimer?.cancel();
+    _locationSubscription?.cancel();
     super.onClose();
   }
 }

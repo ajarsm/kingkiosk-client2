@@ -525,7 +525,6 @@ class SettingsController extends GetxController {
       snackPosition: SnackPosition.BOTTOM,
     );
   }
-
   void saveDeviceName(String name) {
     // Sanitize: all whitespace to dashes, remove underscores, remove special chars except dash, collapse multiple dashes
     String sanitized = name
@@ -547,6 +546,12 @@ class SettingsController extends GetxController {
     if (sipService != null) {
       sipService!.deviceName.value = sanitized;
     }
+    
+    Get.snackbar(
+      'Setting Saved',
+      'Device name updated to: $sanitized',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   void setSettingsPin(String pin) {
@@ -825,40 +830,70 @@ class SettingsController extends GetxController {
       unregisterSip();
     }
   }
-
   void saveMqttBrokerUrl(String url) {
     mqttBrokerUrl.value = url;
     mqttBrokerUrlController.text = url;
     _storageService.write(AppConstants.keyMqttBrokerUrl, url);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT broker URL updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-
   void saveMqttBrokerPort(int port) {
     mqttBrokerPort.value = port;
     _storageService.write(AppConstants.keyMqttBrokerPort, port);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT broker port updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-
   void saveMqttUsername(String username) {
     mqttUsername.value = username;
     mqttUsernameController.text = username;
     _storageService.write(AppConstants.keyMqttUsername, username);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT username updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-
   void saveMqttPassword(String password) {
     mqttPassword.value = password;
     mqttPasswordController.text = password;
     _storageService.write(AppConstants.keyMqttPassword, password);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT password updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-
   void saveSipServerHost(String host) {
     sipServerHost.value = host;
     sipServerHostController.text = host;
     _storageService.write(AppConstants.keySipServerHost, host);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'SIP server host updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-
   void saveKioskStartUrl(String url) {
     kioskStartUrl.value = url;
     kioskStartUrlController.text = url;
     _storageService.write(AppConstants.keyKioskStartUrl, url);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'Kiosk start URL updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
 
   void saveAiSettings() {

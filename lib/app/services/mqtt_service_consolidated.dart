@@ -26,6 +26,7 @@ import '../controllers/window_halo_controller.dart';
 import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
 import '../modules/home/widgets/youtube_player_tile.dart'; // Import for YouTubePlayerManager
 import 'media_hardware_detection.dart';
+import '../modules/settings/controllers/settings_controller_compat.dart';
 
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
@@ -503,10 +504,22 @@ class MqttService extends GetxService {
         platform = 'Windows';
       else if (Platform.isLinux)
         platform = 'Linux';
-      else if (kIsWeb) platform = 'Web';
-
-      // Publish platform info
+      else if (kIsWeb) platform = 'Web';      // Publish platform info
       _publishDirectValue('platform', platform);
+
+      // Get location values
+      final latitude = _sensorService.latitude.value;
+      final longitude = _sensorService.longitude.value;
+      final altitude = _sensorService.altitude.value;
+      final accuracy = _sensorService.accuracy.value;
+      final locationStatus = _sensorService.locationStatus.value;
+
+      // Publish location sensors
+      _publishDirectValue('latitude', latitude.toStringAsFixed(6));
+      _publishDirectValue('longitude', longitude.toStringAsFixed(6));
+      _publishDirectValue('altitude', altitude.toStringAsFixed(2));
+      _publishDirectValue('location_accuracy', accuracy.toStringAsFixed(2));
+      _publishDirectValue('location_status', locationStatus);
     } catch (e) {
       print('Error publishing sensor values: $e');
     }
@@ -1184,6 +1197,10 @@ class MqttService extends GetxService {
       }
 
       return;
+    }    // --- provision command for remote settings configuration ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
+      _processProvisionCommand(cmdObj);
+      return;
     }
 
     // ...existing fallback string command logic...
@@ -1270,13 +1287,17 @@ class MqttService extends GetxService {
     if (!isConnected.value) return;
 
     try {
-      print('MQTT DEBUG: Deleting all existing discovery configs');
-      final sensors = [
+      print('MQTT DEBUG: Deleting all existing discovery configs');      final sensors = [
         'battery',
         'battery_status',
         'cpu_usage',
         'memory_usage',
-        'platform'
+        'platform',
+        'latitude',
+        'longitude',
+        'altitude',
+        'location_accuracy',
+        'location_status'
       ];
 
       for (final sensor in sensors) {
@@ -1302,11 +1323,9 @@ class MqttService extends GetxService {
       // Set up the key sensors one by one with debug logging
       print('MQTT DEBUG: Setting up battery level sensor');
       _setupDiscoverySensorWithDebug(
-          'battery', 'Battery Level', 'battery', '%', 'mdi:battery');
-
-      print('MQTT DEBUG: Setting up battery status sensor');
+          'battery', 'Battery Level', 'battery', '%', 'mdi:battery');      print('MQTT DEBUG: Setting up battery status sensor');
       _setupDiscoverySensorWithDebug('battery_status', 'Battery Status',
-          'battery', '', 'mdi:battery-charging');
+          'enum', '', 'mdi:battery-charging');
 
       print('MQTT DEBUG: Setting up CPU usage sensor');
       _setupDiscoverySensorWithDebug(
@@ -1314,11 +1333,23 @@ class MqttService extends GetxService {
 
       print('MQTT DEBUG: Setting up memory usage sensor');
       _setupDiscoverySensorWithDebug(
-          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');
-
-      print('MQTT DEBUG: Setting up platform sensor');
+          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');      print('MQTT DEBUG: Setting up platform sensor');
       _setupDiscoverySensorWithDebug(
-          'platform', 'Platform', 'text', '', 'mdi:laptop');
+          'platform', 'Platform', 'text', '', 'mdi:laptop');      print('MQTT DEBUG: Setting up location sensors');
+      _setupDiscoverySensorWithDebug(
+          'latitude', 'Latitude', '', '°', 'mdi:crosshairs-gps');
+      
+      _setupDiscoverySensorWithDebug(
+          'longitude', 'Longitude', '', '°', 'mdi:crosshairs-gps');
+      
+      _setupDiscoverySensorWithDebug(
+          'altitude', 'Altitude', 'distance', 'm', 'mdi:elevation-rise');
+      
+      _setupDiscoverySensorWithDebug(
+          'location_accuracy', 'Location Accuracy', 'distance', 'm', 'mdi:target');
+      
+      _setupDiscoverySensorWithDebug(
+          'location_status', 'Location Status', 'text', '', 'mdi:map-marker');
 
       print('MQTT DEBUG: Home Assistant discovery setup complete');
     } catch (e) {
@@ -1331,9 +1362,7 @@ class MqttService extends GetxService {
       String name, String displayName, String deviceClass, String unit,
       [String? icon]) {
     final discoveryTopic =
-        'homeassistant/sensor/${deviceName.value}_$name/config';
-
-    // Use valid Home Assistant device_class values
+        'homeassistant/sensor/${deviceName.value}_$name/config';    // Use valid Home Assistant device_class values
     // See https://www.home-assistant.io/integrations/sensor/#device-class
     String validDeviceClass = deviceClass;
     if (deviceClass == 'cpu') {
@@ -1341,6 +1370,9 @@ class MqttService extends GetxService {
       validDeviceClass = ''; // empty will use default sensor
     } else if (deviceClass == 'memory') {
       // Memory is not a valid device class in Home Assistant
+      validDeviceClass = ''; // empty will use default sensor
+    } else if (deviceClass == 'location') {
+      // Location is not a valid device class in Home Assistant
       validDeviceClass = ''; // empty will use default sensor
     }
 
@@ -1439,10 +1471,29 @@ class MqttService extends GetxService {
         platform = 'Windows';
       else if (Platform.isLinux)
         platform = 'Linux';
-      else if (kIsWeb) platform = 'Web';
-
-      // Publish platform info
+      else if (kIsWeb) platform = 'Web';      // Publish platform info
       _publishDirectValueWithDebug('platform', platform);
+
+      // Get location values
+      final latitude = _sensorService.latitude.value;
+      final longitude = _sensorService.longitude.value;
+      final altitude = _sensorService.altitude.value;
+      final accuracy = _sensorService.accuracy.value;
+      final locationStatus = _sensorService.locationStatus.value;
+
+      print('MQTT DEBUG: Location values:');
+      print('MQTT DEBUG: Latitude: ${latitude.toStringAsFixed(6)}');
+      print('MQTT DEBUG: Longitude: ${longitude.toStringAsFixed(6)}');
+      print('MQTT DEBUG: Altitude: ${altitude.toStringAsFixed(2)}m');
+      print('MQTT DEBUG: Accuracy: ${accuracy.toStringAsFixed(2)}m');
+      print('MQTT DEBUG: Location status: $locationStatus');
+
+      // Publish location sensors
+      _publishDirectValueWithDebug('latitude', latitude.toStringAsFixed(6));
+      _publishDirectValueWithDebug('longitude', longitude.toStringAsFixed(6));
+      _publishDirectValueWithDebug('altitude', altitude.toStringAsFixed(2));
+      _publishDirectValueWithDebug('location_accuracy', accuracy.toStringAsFixed(2));
+      _publishDirectValueWithDebug('location_status', locationStatus);
 
       print('MQTT DEBUG: Finished publishing all sensor values');
     } catch (e) {
@@ -1612,7 +1663,401 @@ class MqttService extends GetxService {
       print('✅ Setup Home Assistant discovery for screenshot sensor');
     } catch (e) {
       print('❌ Error setting up screenshot sensor discovery: $e');
+    }  }
+  /// Process provision command for remote settings configuration
+  void _processProvisionCommand(Map<dynamic, dynamic> cmdObj) async {
+    print('🔧 [MQTT] Processing provision command: ${jsonEncode(cmdObj)}');
+    
+    try {
+      final Map<String, dynamic> response = {
+        'command': 'provision',
+        'status': 'processing',
+        'timestamp': DateTime.now().toIso8601String(),
+        'applied_settings': <String>[],
+        'failed_settings': <String, String>{},
+      };
+
+      // Get settings payload - can be under 'settings' or direct in command
+      Map<String, dynamic>? settings;
+      if (cmdObj.containsKey('settings') && cmdObj['settings'] is Map) {
+        settings = Map<String, dynamic>.from(cmdObj['settings']);
+      } else {
+        // Filter out command-specific keys and treat the rest as settings
+        settings = Map<String, dynamic>.from(cmdObj);
+        settings.remove('command');
+        settings.remove('response_topic');
+        settings.remove('confirm');
+      }
+
+      if (settings.isEmpty) {
+        print('⚠️ [MQTT] No settings provided in provision command');
+        response['status'] = 'error';
+        response['error'] = 'No settings provided';
+        _sendProvisionResponse(cmdObj, response);
+        return;
+      }
+
+      print('🔧 [MQTT] Provisioning ${settings.length} settings...');
+
+      // Try to get settings controller
+      SettingsController? settingsController;
+      try {
+        if (Get.isRegistered<SettingsController>()) {
+          settingsController = Get.find<SettingsController>();
+        } else if (Get.isRegistered<SettingsControllerFixed>()) {
+          settingsController = Get.find<SettingsControllerFixed>();
+        }
+      } catch (e) {
+        print('⚠️ [MQTT] Could not get settings controller: $e');
+      }
+
+      // Process each setting
+      for (final entry in settings.entries) {
+        final key = entry.key;
+        final value = entry.value;
+        
+        try {
+          bool applied = await _applySetting(key, value, settingsController);
+          
+          if (applied) {
+            (response['applied_settings'] as List<String>).add(key);
+            print('✅ [MQTT] Applied setting: $key = $value');
+          } else {
+            (response['failed_settings'] as Map<String, String>)[key] = 
+                'Setting not recognized or could not be applied';
+            print('⚠️ [MQTT] Failed to apply setting: $key = $value');
+          }
+        } catch (e) {
+          (response['failed_settings'] as Map<String, String>)[key] = e.toString();
+          print('❌ [MQTT] Error applying setting $key: $e');
+        }
+      }
+
+      // Determine overall status
+      final appliedCount = (response['applied_settings'] as List).length;
+      final failedCount = (response['failed_settings'] as Map).length;
+      
+      if (appliedCount > 0 && failedCount == 0) {
+        response['status'] = 'success';
+        response['message'] = 'All $appliedCount settings applied successfully';
+      } else if (appliedCount > 0 && failedCount > 0) {
+        response['status'] = 'partial';
+        response['message'] = '$appliedCount settings applied, $failedCount failed';
+      } else {
+        response['status'] = 'error';
+        response['message'] = 'No settings could be applied';
+      }
+
+      print('🔧 [MQTT] Provision completed: ${response['status']} - ${response['message']}');
+      
+      // Send response
+      _sendProvisionResponse(cmdObj, response);
+      
+    } catch (e) {
+      print('❌ [MQTT] Error processing provision command: $e');
+      
+      final errorResponse = {
+        'command': 'provision',
+        'status': 'error',
+        'timestamp': DateTime.now().toIso8601String(),
+        'error': e.toString(),
+        'applied_settings': <String>[],
+        'failed_settings': <String, String>{},
+      };
+      
+      _sendProvisionResponse(cmdObj, errorResponse);
     }
+  }
+
+  /// Apply a single setting during provisioning
+  Future<bool> _applySetting(String key, dynamic value, SettingsController? controller) async {
+    try {
+      final storageService = Get.find<StorageService>();
+      
+      switch (key.toLowerCase()) {
+        // Theme settings
+        case 'isdarkmode':
+        case 'darkmode':
+        case 'dark_mode':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyIsDarkMode, boolValue);
+            controller?.isDarkMode.value = boolValue;
+            controller?.toggleTheme();
+            return true;
+          }
+          break;
+
+        // App settings
+        case 'kioskmode':
+        case 'kiosk_mode':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyKioskMode, boolValue);
+            controller?.kioskMode.value = boolValue;
+            controller?.toggleKioskMode();
+            return true;
+          }
+          break;
+
+        case 'showsysteminfo':
+        case 'show_system_info':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyShowSystemInfo, boolValue);
+            controller?.showSystemInfo.value = boolValue;
+            return true;
+          }
+          break;
+
+        case 'kioskstarturl':
+        case 'kiosk_start_url':
+        case 'starturl':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keyKioskStartUrl, stringValue);
+            controller?.kioskStartUrl.value = stringValue;
+            controller?.kioskStartUrlController.text = stringValue;
+            return true;
+          }
+          break;
+
+        // MQTT settings
+        case 'mqttenabled':
+        case 'mqtt_enabled':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyMqttEnabled, boolValue);
+            controller?.mqttEnabled.value = boolValue;
+            return true;
+          }
+          break;
+
+        case 'mqttbrokerurl':
+        case 'mqtt_broker_url':
+        case 'brokerurl':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keyMqttBrokerUrl, stringValue);
+            controller?.mqttBrokerUrl.value = stringValue;
+            controller?.mqttBrokerUrlController.text = stringValue;
+            return true;
+          }
+          break;
+
+        case 'mqttbrokerport':
+        case 'mqtt_broker_port':
+        case 'brokerport':
+          final intValue = _parseInt(value);
+          if (intValue != null && intValue > 0 && intValue <= 65535) {
+            storageService.write(AppConstants.keyMqttBrokerPort, intValue);
+            controller?.mqttBrokerPort.value = intValue;
+            return true;
+          }
+          break;
+
+        case 'mqttusername':
+        case 'mqtt_username':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keyMqttUsername, stringValue);
+          controller?.mqttUsername.value = stringValue;
+          controller?.mqttUsernameController.text = stringValue;
+          return true;
+
+        case 'mqttpassword':
+        case 'mqtt_password':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keyMqttPassword, stringValue);
+          controller?.mqttPassword.value = stringValue;
+          controller?.mqttPasswordController.text = stringValue;
+          return true;
+
+        case 'devicename':
+        case 'device_name':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            // Sanitize device name
+            String sanitized = stringValue
+                .replaceAll(RegExp(r'\s+'), '-')
+                .replaceAll('_', '')
+                .replaceAll(RegExp(r'[^A-Za-z0-9-]'), '')
+                .replaceAll(RegExp(r'-+'), '-')
+                .replaceAll(RegExp(r'^-+|-+$'), '')
+                .toLowerCase();
+            
+            storageService.write(AppConstants.keyDeviceName, sanitized);
+            controller?.deviceName.value = sanitized;
+            controller?.deviceNameController.text = sanitized;
+            
+            // Update MQTT service device name
+            deviceName.value = sanitized;
+            
+            return true;
+          }
+          break;
+
+        case 'mqtthadiscovery':
+        case 'mqtt_ha_discovery':
+        case 'hadiscovery':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyMqttHaDiscovery, boolValue);
+            controller?.mqttHaDiscovery.value = boolValue;
+            haDiscovery.value = boolValue;
+            return true;
+          }
+          break;
+
+        // SIP settings
+        case 'sipenabled':
+        case 'sip_enabled':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keySipEnabled, boolValue);
+            controller?.sipEnabled.value = boolValue;
+            return true;
+          }
+          break;
+
+        case 'sipserverhost':
+        case 'sip_server_host':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keySipServerHost, stringValue);
+            controller?.sipServerHost.value = stringValue;
+            controller?.sipServerHostController.text = stringValue;
+            return true;
+          }
+          break;        case 'sipprotocol':
+        case 'sip_protocol':
+          final stringValue = value?.toString();
+          if (stringValue != null && (stringValue == 'ws' || stringValue == 'wss')) {
+            storageService.write(AppConstants.keySipProtocol, stringValue);
+            controller?.sipProtocol.value = stringValue;
+            return true;
+          }
+          break;
+
+        // AI settings
+        case 'aienabled':
+        case 'ai_enabled':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyAiEnabled, boolValue);
+            controller?.aiEnabled.value = boolValue;
+            return true;
+          }
+          break;
+
+        case 'aiproviderhost':
+        case 'ai_provider_host':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keyAiProviderHost, stringValue);
+          controller?.aiProviderHost.value = stringValue;
+          controller?.aiProviderHostController.text = stringValue;
+          return true;
+
+        // Security settings
+        case 'settingspin':
+        case 'settings_pin':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write('settingsPin', stringValue);
+            controller?.settingsPin.value = stringValue;
+            return true;
+          }
+          break;
+
+        default:
+          print('⚠️ [MQTT] Unknown setting key: $key');
+          return false;
+      }
+      
+      return false;
+    } catch (e) {
+      print('❌ [MQTT] Error applying setting $key: $e');
+      return false;
+    }
+  }
+
+  /// Send provision command response
+  void _sendProvisionResponse(Map<dynamic, dynamic> cmdObj, Map<String, dynamic> response) {
+    try {
+      // Check if response topic is specified
+      String? responseTopic = cmdObj['response_topic']?.toString();
+      
+      // Use default response topic if none specified
+      responseTopic ??= 'kingkiosk/${deviceName.value}/provision/response';
+      
+      // Add device name to response
+      response['device_name'] = deviceName.value;
+      
+      // Publish response
+      publishJsonToTopic(responseTopic, response, retain: false);
+      
+      print('📤 [MQTT] Sent provision response to: $responseTopic');
+      
+      // Also show snackbar if there's a UI
+      if (Get.context != null) {
+        final status = response['status'];
+        final message = response['message'] ?? 'Provision command processed';
+        
+        Color backgroundColor;
+        switch (status) {
+          case 'success':
+            backgroundColor = Colors.green.withOpacity(0.8);
+            break;
+          case 'partial':
+            backgroundColor = Colors.orange.withOpacity(0.8);
+            break;
+          case 'error':
+            backgroundColor = Colors.red.withOpacity(0.8);
+            break;
+          default:
+            backgroundColor = Colors.blue.withOpacity(0.8);
+        }
+        
+        Get.snackbar(
+          'MQTT Provision',
+          message,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: backgroundColor,
+          colorText: Colors.white,
+          duration: Duration(seconds: 4),
+        );
+      }
+      
+    } catch (e) {
+      print('❌ [MQTT] Error sending provision response: $e');
+    }
+  }
+
+  /// Parse boolean value from various formats
+  bool? _parseBool(dynamic value) {
+    if (value is bool) return value;
+    if (value is String) {
+      final lower = value.toLowerCase();
+      if (lower == 'true' || lower == '1' || lower == 'yes' || lower == 'on') {
+        return true;
+      }
+      if (lower == 'false' || lower == '0' || lower == 'no' || lower == 'off') {
+        return false;
+      }
+    }
+    if (value is int) {
+      return value != 0;
+    }
+    return null;
+  }
+
+  /// Parse integer value from various formats
+  int? _parseInt(dynamic value) {
+    if (value is int) return value;
+    if (value is double) return value.toInt();
+    if (value is String) {
+      return int.tryParse(value);
+    }
+    return null;
   }
 
   /// Process halo effect command with improved error handling

@@ -148,16 +148,22 @@ class CombinedSettingsController extends GetxController {
     _applyTheme();
   }
   
-  void _applyTheme() {
-    final themeService = Get.find<ThemeService>();
+  void _applyTheme() {    final themeService = Get.find<ThemeService>();
     themeService.setDarkMode(isDarkMode.value);
   }
-    // Web URL methods
+  
+  // Web URL methods
   void saveKioskStartUrl(String url) {
     print('💾 Saving kiosk start URL: $url');
     kioskStartUrl.value = url;
     _storageService.write(AppConstants.keyKioskStartUrl, url);
     _storageService.debugStorageStatus();
+    
+    Get.snackbar(
+      'Setting Saved',
+      'Kiosk start URL updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
   
   // WebSocket methods
@@ -193,29 +199,48 @@ class CombinedSettingsController extends GetxController {
       disconnectMqtt();
     }
   }
-
   void saveMqttBrokerUrl(String url) {
     print('💾 Saving MQTT broker URL: $url');
     mqttBrokerUrl.value = url;
     _storageService.write(AppConstants.keyMqttBrokerUrl, url);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT broker URL updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-  
-  void saveMqttBrokerPort(int port) {
+    void saveMqttBrokerPort(int port) {
     mqttBrokerPort.value = port;
     _storageService.write(AppConstants.keyMqttBrokerPort, port);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT broker port updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-  
-  void saveMqttUsername(String username) {
+    void saveMqttUsername(String username) {
     mqttUsername.value = username;
     _storageService.write(AppConstants.keyMqttUsername, username);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT username updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-  
-  void saveMqttPassword(String password) {
+    void saveMqttPassword(String password) {
     mqttPassword.value = password;
     _storageService.write(AppConstants.keyMqttPassword, password);
+    
+    Get.snackbar(
+      'Setting Saved',
+      'MQTT password updated',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
-  
-  void saveDeviceName(String name) {
+    void saveDeviceName(String name) {
     deviceName.value = name;
     _storageService.write(AppConstants.keyDeviceName, name);
     
@@ -223,6 +248,12 @@ class CombinedSettingsController extends GetxController {
     if (_mqttService != null) {
       _mqttService!.deviceName.value = name;
     }
+    
+    Get.snackbar(
+      'Setting Saved',
+      'Device name updated to: $name',
+      snackPosition: SnackPosition.BOTTOM,
+    );
   }
   
   void toggleMqttHaDiscovery(bool value) {

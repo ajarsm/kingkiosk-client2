@@ -4,44 +4,66 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../../../services/storage_service.dart';
+import '../../../core/utils/app_constants.dart';
 import 'settings_controller.dart';
 
 export 'settings_controller.dart' show SettingsController;
 
 class SettingsControllerFixed extends SettingsController {
   // Additional compatibility methods needed by views
-
   void toggleMqttEnabled(bool value) {
     mqttEnabled.value = value;
     if (!value && mqttConnected.value) {
       disconnectMqtt();
     }
-  }
-
-  void saveMqttBrokerUrl(String url) {
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttEnabled, value);
+  }void saveMqttBrokerUrl(String url) {
+    print('🔧 SettingsControllerFixed.saveMqttBrokerUrl called with: $url');
     mqttBrokerUrl.value = url;
     mqttBrokerUrlController.text = url;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttBrokerUrl, url);
   }
-
   void saveMqttBrokerPort(int port) {
+    print('🔧 SettingsControllerFixed.saveMqttBrokerPort called with: $port');
     mqttBrokerPort.value = port;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttBrokerPort, port);
   }
-
   void saveMqttUsername(String username) {
+    print('🔧 SettingsControllerFixed.saveMqttUsername called with: $username');
     mqttUsername.value = username;
     mqttUsernameController.text = username;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttUsername, username);
   }
-
   void saveMqttPassword(String password) {
+    print('🔧 SettingsControllerFixed.saveMqttPassword called with: ${password.isEmpty ? "empty" : "[REDACTED]"}');
     mqttPassword.value = password;
     mqttPasswordController.text = password;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttPassword, password);
   }
-
   void saveDeviceName(String name) {
+    print('🔧 SettingsControllerFixed.saveDeviceName called with: $name');
     deviceName.value = name;
     deviceNameController.text = name;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyDeviceName, name);
   }
-
   void toggleMqttHaDiscovery(bool value) {
     mqttHaDiscovery.value = value;
 
@@ -52,11 +74,19 @@ class SettingsControllerFixed extends SettingsController {
         connectMqtt();
       });
     }
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyMqttHaDiscovery, value);
   }
-
   void saveKioskStartUrl(String url) {
+    print('🔧 SettingsControllerFixed.saveKioskStartUrl called with: $url');
     kioskStartUrl.value = url;
     kioskStartUrlController.text = url;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyKioskStartUrl, url);
   }
 
   // Additional methods required to fix compilation errors
@@ -214,7 +244,16 @@ class SettingsControllerFixed extends SettingsController {
       'Force republishing all sensors to Home Assistant',
       snackPosition: SnackPosition.BOTTOM,
       duration: Duration(seconds: 3),
-    );
+    );  }
+
+  void saveSipServerHost(String host) {
+    print('🔧 SettingsControllerFixed.saveSipServerHost called with: $host');
+    sipServerHost.value = host;
+    sipServerHostController.text = host;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keySipServerHost, host);
   }
 
   // Add SIP protocol selection method
@@ -230,6 +269,10 @@ class SettingsControllerFixed extends SettingsController {
     if (sipService != null) {
       sipService!.setProtocol(protocol);
     }
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keySipProtocol, protocol);
   }
 
   @override
@@ -255,7 +298,6 @@ class SettingsControllerFixed extends SettingsController {
       }
     }
   }
-
   // Hardware acceleration compatibility methods
   void loadHardwareAccelerationSettings() {
     super.loadHardwareAccelerationSettings();

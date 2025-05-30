@@ -138,75 +138,40 @@ class TilingWindowViewState extends State<TilingWindowView> {
               padding: EdgeInsets.only(top: 20, right: 20),
             ),
             // Floating AI button for call hangup
-            _buildFloatingAiButton(),
-            // Edge handle for toolbar/appbar reveal (mobile and desktop)            if (PlatformUtils.isMobile)
+            _buildFloatingAiButton(),            // Unified grab button for toolbar/appbar reveal (both mobile and desktop)
             Positioned(
               top: 0,
               left: 0,
               right: 0,
               child: Center(
-                child: GestureDetector(
-                  behavior: HitTestBehavior
-                      .opaque, // Only detect gestures on the visible handle
-                  onDoubleTap: () {
-                    _autoHidingToolbarKey.currentState?.showToolbar();
-                  },
-                  onLongPress: () {
-                    _autoHidingToolbarKey.currentState?.showToolbar();
-                  },
-                  child: Container(
-                    width:
-                        60, // Only make the handle itself receive touch events
-                    height: 24,
-                    alignment: Alignment.topCenter,
-                    color: Colors.transparent,
+                child: MouseRegion(
+                  cursor: SystemMouseCursors.click,
+                  child: GestureDetector(
+                    behavior: HitTestBehavior
+                        .opaque, // Only detect gestures on the visible handle
+                    onTap: () {
+                      _autoHidingToolbarKey.currentState?.showToolbar();
+                    },
                     child: Container(
-                      width: 60,
-                      height: 6,
-                      decoration: BoxDecoration(
-                        color: Colors.white.withOpacity(0.7),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            if (PlatformUtils.isDesktop)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Center(
-                  child: MouseRegion(
-                    cursor: SystemMouseCursors.click,
-                    child: GestureDetector(
-                      behavior: HitTestBehavior
-                          .opaque, // Only detect gestures on the visible handle
-                      onTap: () {
-                        _autoHidingToolbarKey.currentState?.showToolbar();
-                      },
+                      width: 80, // Optimized size for both mobile and desktop
+                      height: 32, // Good touch target for mobile, visible for desktop
+                      alignment: Alignment.topCenter,
+                      color: Colors.transparent,
                       child: Container(
-                        width:
-                            60, // Only make the handle itself receive touch events
-                        height: 16,
-                        alignment: Alignment.topCenter,
-                        color: Colors.transparent,
-                        child: Container(
-                          width: 60,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Get.isDarkMode
-                                ? Colors.white.withOpacity(0.5)
-                                : Colors.black.withOpacity(0.3),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
+                        width: 80,
+                        height: 12, // Thick enough to be easily visible and tappable
+                        decoration: BoxDecoration(
+                          color: Get.isDarkMode
+                              ? Colors.white.withOpacity(0.8)
+                              : Colors.black.withOpacity(0.6),
+                          borderRadius: BorderRadius.circular(6),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ), // Auto-hiding toolbar at the bottom
+              ),
+            ),// Auto-hiding toolbar at the bottom
             _AutoHidingToolbar(
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),

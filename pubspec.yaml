@@ -41,6 +41,7 @@ dependencies:
   flutter_webrtc: ^0.12.12+hotfix.1  # Version compatible with sip_ua
   pdfrx: ^1.1.29
   http: ^1.4.0
+  geolocator: ^14.0.1
 
 dev_dependencies:
   flutter_test:
