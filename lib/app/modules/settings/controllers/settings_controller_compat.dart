@@ -254,6 +254,22 @@ class SettingsControllerFixed extends SettingsController {
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keySipServerHost, host);
+    storageService.flush(); // Force flush for Windows persistence
+  }
+
+  // Add missing toggleSipEnabled method
+  void toggleSipEnabled(bool value) {
+    print('🔧 SettingsControllerFixed.toggleSipEnabled called with: $value');
+    sipEnabled.value = value;
+    
+    // Add the missing storage write operation
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keySipEnabled, value);
+    storageService.flush(); // Force flush for Windows persistence
+    
+    if (!value && sipRegistered.value) {
+      unregisterSip();
+    }
   }
 
   // Add SIP protocol selection method
@@ -263,6 +279,7 @@ class SettingsControllerFixed extends SettingsController {
       return;
     }
 
+    print('🔧 SettingsControllerFixed.setSipProtocol called with: $protocol');
     sipProtocol.value = protocol;
 
     // Update SIP service if available and save the setting
@@ -273,6 +290,7 @@ class SettingsControllerFixed extends SettingsController {
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keySipProtocol, protocol);
+    storageService.flush(); // Force flush for Windows persistence
   }
 
   @override

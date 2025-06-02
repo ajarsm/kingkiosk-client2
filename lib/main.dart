@@ -5,17 +5,17 @@ import 'package:media_kit/media_kit.dart';
 import 'package:screenshot/screenshot.dart';
 
 import 'app/core/theme/app_theme.dart';
-import 'app/core/bindings/initial_binding.dart';
+import 'app/core/bindings/memory_optimized_binding.dart';
 import 'app/routes/app_pages_fixed.dart';
 import 'app/core/utils/platform_utils.dart';
 import 'app/services/screenshot_service.dart';
 import 'app/services/audio_service.dart';
 import 'app/controllers/halo_effect_controller.dart';
-import 'app/widgets/halo_effect/halo_effect_overlay.dart';
 import 'app/widgets/halo_effect/app_halo_wrapper.dart';
 
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
 import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
+import 'package:king_kiosk/notification_system/services/alert_service.dart';
 import 'package:king_kiosk/notification_system/models/notification_models.dart';
 
 void main() async {
@@ -59,9 +59,9 @@ void main() async {
 
   // Initialize window_manager for desktop
   await PlatformUtils.ensureWindowManagerInitialized();
-
   // Register services
   Get.put<NotificationService>(GetXNotificationService(), permanent: true);
+  Get.put<AlertService>(AlertService(), permanent: true);
 
   runApp(const KioskApp());
 }
@@ -133,7 +133,7 @@ class _KioskAppState extends State<KioskApp> {
         theme: AppTheme.light,
         darkTheme: AppTheme.dark,
         themeMode: ThemeMode.system,
-        initialBinding: InitialBinding(),
+        initialBinding: MemoryOptimizedBinding(),
         initialRoute: AppPagesFixed.INITIAL,
         getPages: AppPagesFixed.routes,
         debugShowCheckedModeBanner: false,

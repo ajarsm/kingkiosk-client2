@@ -880,7 +880,15 @@ class MqttService extends GetxService {
         print('❌ Error opening PDF viewer: $e');
       }
       return;
-    } // --- notify command for sending notifications ---
+    }
+
+    // --- alert command for center-screen alerts ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'alert') {
+      MqttNotificationHandler.processAlertCommand(cmdObj);
+      return;
+    }
+
+    // --- notify command for sending notifications ---
     if (cmdObj['command']?.toString().toLowerCase() == 'notify') {
       MqttNotificationHandler.processNotifyCommand(cmdObj);
       return;

@@ -20,6 +20,7 @@ import '../../services/ai_assistant_service.dart';
 import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
+import 'package:king_kiosk/notification_system/services/alert_service.dart';
 
 class InitialBinding extends Bindings {  @override
   Future<void> dependencies() async {
@@ -79,9 +80,12 @@ class InitialBinding extends Bindings {  @override
     final initializedMqttService = await mqttService
         .init(); // Initialize SIP UA service for communications
     final sipService = SipService(storageService);
-    Get.putAsync<SipService>(() => sipService.init(), permanent: true);
-    Get.put<MqttService>(initializedMqttService, permanent: true);
+    Get.putAsync<SipService>(() => sipService.init(), permanent: true);    Get.put<MqttService>(initializedMqttService, permanent: true);
     print('MQTT service initialized successfully');
+
+    // Register Alert service for center-screen alerts
+    Get.put<AlertService>(AlertService(), permanent: true);
+    print('Alert service initialized successfully');
 
     // Initialize AI Assistant service
     Future.delayed(Duration(seconds: 2), () {

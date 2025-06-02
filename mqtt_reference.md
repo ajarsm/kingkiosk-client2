@@ -577,6 +577,95 @@ Notifications can be used to display important information to the user without i
 - The image will be displayed alongside the notification text
 - Useful for showing user avatars, product thumbnails, or contextual images
 
+### Send Alert (Center-Screen Dialog)
+**Topic**: `kingkiosk/{deviceName}/command`  
+**Payload**:
+```json
+{
+  "command": "alert",
+  "title": "System Alert",
+  "message": "Critical system update required",
+  "type": "info",
+  "position": "center",
+  "duration": 0,
+  "sound": true,
+  "is_html": false,
+  "show_border": true,
+  "border_color": "#3498db",
+  "thumbnail": "https://example.com/warning-icon.png"
+}
+```
+- **title**: Required. The alert dialog title
+- **message**: Required. The alert message content
+- **type**: Optional. Alert type affects styling and default border color (default: "info")
+  - "info": Blue information alert
+  - "warning": Orange warning alert  
+  - "error": Red error alert
+  - "success": Green success alert
+- **position**: Optional. Alert position on screen (default: "center")
+  - "center": Center of screen (default)
+  - "top-left": Upper left corner
+  - "top-center": Top center
+  - "top-right": Upper right corner
+  - "center-left": Center left
+  - "center-right": Center right
+  - "bottom-left": Lower left corner
+  - "bottom-center": Bottom center
+  - "bottom-right": Lower right corner
+- **show_border**: Optional. Whether to show colored border (default: true)
+- **border_color**: Optional. Custom border color in hex format (#RRGGBB or #AARRGGBB)
+- **duration**: Optional. Auto-dismiss duration in milliseconds, 0 for manual dismiss only (default: 0)
+- **sound**: Optional. Whether to play an alert sound (default: true)
+- **is_html**: Optional. Whether the message contains HTML markup (default: false)
+- **thumbnail**: Optional. URL/path to an image to display in the alert dialog
+
+**Position Examples:**
+```json
+// Top-right corner alert with blue border
+{
+  "command": "alert",
+  "title": "Network Status",
+  "message": "WiFi connection restored",
+  "type": "success",
+  "position": "top-right",
+  "border_color": "#2ecc71"
+}
+
+// Bottom-left corner alert without border
+{
+  "command": "alert",
+  "title": "Low Battery",
+  "message": "Device battery is running low",
+  "type": "warning", 
+  "position": "bottom-left",
+  "show_border": false
+}
+
+// Custom colored border alert
+{
+  "command": "alert",
+  "title": "Custom Alert",
+  "message": "Alert with purple border",
+  "position": "center",
+  "border_color": "#9b59b6"
+}
+```
+
+**Differences from regular notifications:**
+- Alerts appear as modal dialogs in the center of the screen
+- Alerts require user interaction to dismiss (unless duration is set)
+- Alerts are more prominent and interrupt the user's current workflow
+- Alerts support the same HTML formatting and thumbnail features as notifications
+- Alerts reuse the sophisticated notification system infrastructure
+- **NEW**: Alerts can be positioned anywhere on the screen using the `position` parameter
+
+**Positioning Notes:**
+- If no `position` is specified, alerts default to center-screen (existing behavior)
+- Positioned alerts maintain the same modal behavior and styling
+- All alert features (HTML, thumbnails, sounds, etc.) work with any position
+- Position names are case-insensitive ("Center", "TOP-LEFT", "bottom_right" all work)
+- Invalid position values will fallback to center positioning
+
 ## System Controls
 
 ### Set Volume
