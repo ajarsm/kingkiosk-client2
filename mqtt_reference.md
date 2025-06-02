@@ -587,7 +587,7 @@ Notifications can be used to display important information to the user without i
   "message": "Critical system update required",
   "type": "info",
   "position": "center",
-  "duration": 0,
+  "auto_dismiss_seconds": 5,
   "sound": true,
   "is_html": false,
   "show_border": true,
@@ -614,7 +614,7 @@ Notifications can be used to display important information to the user without i
   - "bottom-right": Lower right corner
 - **show_border**: Optional. Whether to show colored border (default: true)
 - **border_color**: Optional. Custom border color in hex format (#RRGGBB or #AARRGGBB)
-- **duration**: Optional. Auto-dismiss duration in milliseconds, 0 for manual dismiss only (default: 0)
+- **auto_dismiss_seconds**: Optional. Auto-dismiss duration in seconds (1-300), omit for manual dismiss only (default: manual)
 - **sound**: Optional. Whether to play an alert sound (default: true)
 - **is_html**: Optional. Whether the message contains HTML markup (default: false)
 - **thumbnail**: Optional. URL/path to an image to display in the alert dialog
@@ -648,6 +648,27 @@ Notifications can be used to display important information to the user without i
   "message": "Alert with purple border",
   "position": "center",
   "border_color": "#9b59b6"
+}
+
+// Auto-dismiss alert with countdown
+{
+  "command": "alert",
+  "title": "Temporary Alert",
+  "message": "This alert will automatically dismiss in 5 seconds",
+  "type": "info",
+  "position": "top-center",
+  "auto_dismiss_seconds": 5
+}
+
+// Quick notification-style alert
+{
+  "command": "alert",
+  "title": "Quick Update", 
+  "message": "System updated successfully",
+  "type": "success",
+  "position": "bottom-right",
+  "auto_dismiss_seconds": 3,
+  "show_border": false
 }
 ```
 

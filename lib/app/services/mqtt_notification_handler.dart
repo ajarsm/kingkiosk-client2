@@ -79,7 +79,36 @@ class MqttNotificationHandler {
       final isHtml = cmdObj['is_html'] == true || cmdObj['html'] == true;
       final position = cmdObj['position']?.toString() ?? 'center'; // Default to center
       final showBorder = cmdObj['show_border'] != false; // Default to true, false only if explicitly set
-      final borderColorStr = cmdObj['border_color']?.toString();      // Parse priority - prioritize explicit priority, then derive from type
+      final borderColorStr = cmdObj['border_color']?.toString();
+      
+      // Parse auto-dismiss duration if provided
+      int? autoDismissSeconds;
+      if (cmdObj['auto_dismiss_seconds'] != null) {
+        try {
+          final rawValue = cmdObj['auto_dismiss_seconds'];
+          if (rawValue is int) {
+            autoDismissSeconds = rawValue;
+          } else if (rawValue is double) {
+            autoDismissSeconds = rawValue.toInt();
+          } else if (rawValue is String) {
+            autoDismissSeconds = int.tryParse(rawValue);
+          }
+          
+          // Validate range (minimum 1 second, maximum 300 seconds)
+          if (autoDismissSeconds != null) {
+            if (autoDismissSeconds < 1) {
+              autoDismissSeconds = 1;
+              print('⚠️ auto_dismiss_seconds too small, using minimum of 1 second');
+            } else if (autoDismissSeconds > 300) {
+              autoDismissSeconds = 300;
+              print('⚠️ auto_dismiss_seconds too large, using maximum of 300 seconds');
+            }
+          }
+        } catch (e) {
+          print('⚠️ Invalid auto_dismiss_seconds format: ${cmdObj['auto_dismiss_seconds']}, ignoring');
+          autoDismissSeconds = null;
+        }
+      }// Parse priority - prioritize explicit priority, then derive from type
       NotificationPriority priority;
       if (priorityStr != null) {
         // Explicit priority specified
@@ -145,8 +174,9 @@ class MqttNotificationHandler {
           position: position,
           showBorder: showBorder,
           borderColor: borderColor,
+          autoDismissSeconds: autoDismissSeconds,
         );
-        print('🚨 [MQTT] Alert displayed at position "$position": "$title"');
+        print('🚨 [MQTT] Alert displayed at position "$position": "$title"${autoDismissSeconds != null ? ' (auto-dismiss: ${autoDismissSeconds}s)' : ''}');
       } catch (e) {
         print('❌ Error accessing alert service: $e');
       }

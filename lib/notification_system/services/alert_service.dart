@@ -13,7 +13,6 @@ class AlertService extends GetxController {
   // Getters
   bool get isAlertVisible => _isAlertVisible.value;
   AppNotification? get currentAlert => _currentAlert.value;
-
   /// Show a positioned alert
   void showAlert({
     required String title,
@@ -24,6 +23,7 @@ class AlertService extends GetxController {
     String position = 'center',
     bool showBorder = true,
     Color? borderColor,
+    int? autoDismissSeconds,
   }) {
     // Create alert notification
     final alert = AppNotification(
@@ -38,13 +38,13 @@ class AlertService extends GetxController {
     _isAlertVisible.value = true;
 
     print('🎯 [AlertService] Showing alert at position: "$position"');
-    
-    // Create the alert widget
+      // Create the alert widget
     Widget alertWidget = AlertDialogWidget(
       notification: alert,
       onDismiss: hideAlert,
       showBorder: showBorder,
       borderColor: borderColor,
+      autoDismissSeconds: autoDismissSeconds,
     );
 
     // Show the positioned alert using Get.dialog with proper positioning

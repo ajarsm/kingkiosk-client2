@@ -1,5 +1,6 @@
 // lib/notification_system/widgets/alert_dialog.dart
 
+import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_html/flutter_html.dart';
@@ -7,11 +8,12 @@ import 'package:url_launcher/url_launcher_string.dart';
 import '../models/notification_models.dart';
 
 /// Center-screen alert dialog that reuses the notification system design
-class AlertDialogWidget extends StatelessWidget {
+class AlertDialogWidget extends StatefulWidget {
   final AppNotification notification;
   final VoidCallback onDismiss;
   final bool showBorder;
   final Color? borderColor;
+  final int? autoDismissSeconds;
 
   const AlertDialogWidget({
     Key? key,
@@ -19,7 +21,48 @@ class AlertDialogWidget extends StatelessWidget {
     required this.onDismiss,
     this.showBorder = true,
     this.borderColor,
+    this.autoDismissSeconds,
   }) : super(key: key);
+
+  @override
+  State<AlertDialogWidget> createState() => _AlertDialogWidgetState();
+}
+
+class _AlertDialogWidgetState extends State<AlertDialogWidget>
+    with TickerProviderStateMixin {
+  late AnimationController? _countdownController;
+  Timer? _autoDismissTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    
+    // Initialize auto-dismiss functionality if specified
+    if (widget.autoDismissSeconds != null && widget.autoDismissSeconds! > 0) {
+      _countdownController = AnimationController(
+        duration: Duration(seconds: widget.autoDismissSeconds!),
+        vsync: this,
+      );
+      
+      // Start the visual countdown
+      _countdownController!.forward();
+      
+      // Set up auto-dismiss timer
+      _autoDismissTimer = Timer(
+        Duration(seconds: widget.autoDismissSeconds!),
+        widget.onDismiss,
+      );
+    } else {
+      _countdownController = null;
+    }
+  }
+
+  @override
+  void dispose() {
+    _countdownController?.dispose();
+    _autoDismissTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -30,14 +73,13 @@ class AlertDialogWidget extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: Theme.of(context).cardColor,
-        borderRadius: BorderRadius.circular(16),
-        border: showBorder ? Border.all(
-          color: borderColor ?? _getPriorityColor(notification.priority),
+        borderRadius: BorderRadius.circular(16),        border: widget.showBorder ? Border.all(
+          color: widget.borderColor ?? _getPriorityColor(widget.notification.priority),
           width: 3,
         ) : null,
         boxShadow: [
-          if (showBorder) BoxShadow(
-            color: (borderColor ?? _getPriorityColor(notification.priority)).withOpacity(0.3),
+          if (widget.showBorder) BoxShadow(
+            color: (widget.borderColor ?? _getPriorityColor(widget.notification.priority)).withOpacity(0.3),
             blurRadius: 20,
             spreadRadius: 5,
           ),
@@ -50,11 +92,10 @@ class AlertDialogWidget extends StatelessWidget {
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
-        children: [
-          // Header with priority indicator and close button
+        children: [          // Header with priority indicator and close button
           Container(
             decoration: BoxDecoration(
-              color: showBorder ? (borderColor ?? _getPriorityColor(notification.priority)).withOpacity(0.1) : Colors.grey.withOpacity(0.1),
+              color: widget.showBorder ? (widget.borderColor ?? _getPriorityColor(widget.notification.priority)).withOpacity(0.1) : Colors.grey.withOpacity(0.1),
               borderRadius: BorderRadius.only(
                 topLeft: Radius.circular(13),
                 topRight: Radius.circular(13),
@@ -66,24 +107,47 @@ class AlertDialogWidget extends StatelessWidget {
                 Padding(
                   padding: const EdgeInsets.all(16),
                   child: Icon(
-                    _getPriorityIcon(notification.priority),
-                    color: _getPriorityColor(notification.priority),
+                    _getPriorityIcon(widget.notification.priority),
+                    color: _getPriorityColor(widget.notification.priority),
                     size: 28,
                   ),
                 ),
                 // Title
                 Expanded(
                   child: Text(
-                    notification.title,
+                    widget.notification.title,
                     style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: _getPriorityColor(notification.priority),
+                      color: _getPriorityColor(widget.notification.priority),
                     ),
                   ),
                 ),
+                // Auto-dismiss countdown indicator
+                if (_countdownController != null) ...[
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 8.0),
+                    child: SizedBox(
+                      width: 24,
+                      height: 24,
+                      child: AnimatedBuilder(
+                        animation: _countdownController!,
+                        builder: (context, child) {
+                          return CircularProgressIndicator(
+                            value: 1.0 - _countdownController!.value,
+                            strokeWidth: 3,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              _getPriorityColor(widget.notification.priority),
+                            ),
+                            backgroundColor: Colors.grey[300],
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
                 // Close button
                 IconButton(
-                  onPressed: onDismiss,
+                  onPressed: widget.onDismiss,
                   icon: Icon(
                     Icons.close,
                     color: Colors.grey[600],
@@ -97,10 +161,9 @@ class AlertDialogWidget extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.all(20),
             child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
+              crossAxisAlignment: CrossAxisAlignment.start,              children: [
                 // Thumbnail if present
-                if (notification.thumbnail != null) ...[
+                if (widget.notification.thumbnail != null) ...[
                   _buildThumbnail(),
                   const SizedBox(width: 16),
                 ],
@@ -117,10 +180,9 @@ class AlertDialogWidget extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.only(left: 20, right: 20, bottom: 20),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
+              mainAxisAlignment: MainAxisAlignment.end,              children: [
                 TextButton(
-                  onPressed: onDismiss,
+                  onPressed: widget.onDismiss,
                   child: const Text('Dismiss'),
                 ),
               ],
@@ -130,9 +192,8 @@ class AlertDialogWidget extends StatelessWidget {
       ),
     );
   }
-
   Widget _buildThumbnail() {
-    if (notification.thumbnail == null) return const SizedBox.shrink();
+    if (widget.notification.thumbnail == null) return const SizedBox.shrink();
 
     return Container(
       width: 80,
@@ -149,9 +210,9 @@ class AlertDialogWidget extends StatelessWidget {
   }
 
   Widget _buildThumbnailImage() {
-    if (notification.thumbnail == null) return const SizedBox.shrink();
+    if (widget.notification.thumbnail == null) return const SizedBox.shrink();
     
-    final thumbnail = notification.thumbnail!;
+    final thumbnail = widget.notification.thumbnail!;
     switch (thumbnail.type) {
       case NotificationThumbnailType.network:
         return Image.network(
@@ -190,9 +251,9 @@ class AlertDialogWidget extends StatelessWidget {
   }
 
   Widget _buildContent(BuildContext context) {
-    if (notification.isHtml) {
+    if (widget.notification.isHtml) {
       return Html(
-        data: notification.message,
+        data: widget.notification.message,
         style: {
           "body": Style(
             margin: Margins.zero,
@@ -208,7 +269,7 @@ class AlertDialogWidget extends StatelessWidget {
       );
     } else {
       return Text(
-        notification.message,
+        widget.notification.message,
         style: Theme.of(context).textTheme.bodyLarge?.copyWith(
           fontSize: 16,
         ),
