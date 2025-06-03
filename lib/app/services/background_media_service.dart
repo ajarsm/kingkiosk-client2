@@ -384,11 +384,10 @@ class BackgroundMediaService extends GetxService {
       if (imageUrls.isEmpty) {
         print('❌ No valid image URLs provided for windowed display');
         return;
-      }
-
-      // Use the tiling window controller to display the image
+      }      // Use the tiling window controller to display the image
       final controller = Get.find<TilingWindowController>();
-      controller.addImageTile(title ?? 'MQTT Image', imageUrls);
+      final id = 'mqtt_image_${DateTime.now().millisecondsSinceEpoch}';
+      controller.addImageTileWithId(id, title ?? 'MQTT Image', imageUrls);
       print('Image displayed in window: ${imageUrls.first}');
     } catch (e) {
       print('Error displaying image in window: $e');

@@ -5,6 +5,7 @@ enum TileType {
   webView,
   media,
   audio,
+  audioVisualizer, // Added audio visualizer type
   image, // Added image type
   youtube, // Added YouTube player type
   pdf, // Added PDF viewer type

@@ -667,9 +667,7 @@ class MqttService extends GetxService {
           } catch (e) {
             print('⚠️ Error setting hardware acceleration preference: $e');
           }
-        }
-
-        if (type == 'audio') {
+        }        if (type == 'audio') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
           if (style == 'window') {
             print(
@@ -681,6 +679,17 @@ class MqttService extends GetxService {
               controller.addAudioTileWithId(windowId, title, url);
             } else {
               controller.addAudioTile(title, url);
+            }
+          } else if (style == 'visualizer') {
+            print(
+                '🎵 [MQTT] Playing audio with visualizer overlay: $url, title=$title, loop=$loop' +
+                    (windowId != null ? ', id=$windowId' : ''));
+            final controller = Get.find<TilingWindowController>();
+            // Use custom ID if provided, otherwise auto-generate
+            if (windowId != null && windowId.isNotEmpty) {
+              controller.addAudioVisualizerTileWithId(windowId, title, url);
+            } else {
+              controller.addAudioVisualizerTile(title, url);
             }
           } else {
             // Try to use AudioService first for background audio (with caching support)

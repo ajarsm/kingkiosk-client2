@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 import '../controllers/tiling_window_controller.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/audio_tile.dart';
+import '../widgets/audio_visualizer_tile.dart';
 import '../widgets/image_tile.dart';
 import '../widgets/pdf_tile.dart';
 import '../widgets/auto_hide_title_bar.dart';
@@ -298,7 +299,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
       alwaysVisible: false, // Set to true for debugging if needed
     );
   }
-
   Widget _getIconForTileType(TileType type) {
     switch (type) {
       case TileType.webView:
@@ -307,6 +307,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.video_file, size: 16);
       case TileType.audio:
         return Icon(Icons.audio_file, size: 16);
+      case TileType.audioVisualizer:
+        return Icon(Icons.graphic_eq, size: 16);
       case TileType.image:
         return Icon(Icons.image, size: 16);
       case TileType.youtube:
@@ -371,10 +373,14 @@ class TilingWindowViewState extends State<TilingWindowView> {
           url: tile.url,
           loop: tile.loop,
         );
-        break;
-
-      case TileType.audio:
+        break;      case TileType.audio:
         content = AudioTile(
+          url: tile.url,
+        );
+        break;
+        
+      case TileType.audioVisualizer:
+        content = AudioVisualizerTile(
           url: tile.url,
         );
         break;

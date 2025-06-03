@@ -158,7 +158,9 @@ class TilingWindowController extends GetxController {
         final size = Size(
           tileData['size']['width'],
           tileData['size']['height'],
-        ); // Parse tile type
+        ); 
+        
+        // Parse tile type
         final String typeString = tileData['type'];
         TileType type;
         switch (typeString) {
@@ -171,6 +173,9 @@ class TilingWindowController extends GetxController {
           case 'audio':
             type = TileType.audio;
             break;
+          case 'audioVisualizer':
+            type = TileType.audioVisualizer;
+            break;
           case 'image':
             type = TileType.image;
             break;
@@ -182,7 +187,7 @@ class TilingWindowController extends GetxController {
             break;
           default:
             type = TileType.webView;
-        } // Handle image URLs if present (for image tiles)
+        }// Handle image URLs if present (for image tiles)
         List<String> imageUrls = [];
         if (tileData['imageUrls'] != null && tileData['imageUrls'] is List) {
           imageUrls = List<String>.from(tileData['imageUrls']);
@@ -421,32 +426,15 @@ class TilingWindowController extends GetxController {
     publishOpenWindowsToMqtt();
   }
 
-  /// Creates an image window tile
-  void addImageTile(String name, dynamic urlData) {
-    // Handle both string and list types for url data
-    String primaryUrl;
-    List<String> imageUrls = [];
-
-    if (urlData is String) {
-      // Single image URL
-      primaryUrl = urlData;
-    } else if (urlData is List) {
-      // Multiple image URLs
-      imageUrls = List<String>.from(urlData.map((url) => url.toString()));
-      primaryUrl = imageUrls.first; // Use the first URL as primary
-    } else {
-      print('❌ Invalid image URL format');
-      return;
-    }
-
+  /// Creates an audio visualizer window tile
+  void addAudioVisualizerTile(String name, String url) {
     final newTile = WindowTile(
       id: DateTime.now().millisecondsSinceEpoch.toString(),
       name: name,
-      type: TileType.image,
-      url: primaryUrl,
-      imageUrls: imageUrls,
+      type: TileType.audioVisualizer,
+      url: url,
       position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
-      size: Size(500, 400),
+      size: Size(400, 300), // Larger size for visualizer
     );
 
     tiles.add(newTile);
@@ -454,8 +442,139 @@ class TilingWindowController extends GetxController {
       _layout.addTile(newTile, targetTile: selectedTile.value);
       _layout.applyLayout(_containerBounds);
     }
-    selectedTile.value =
-        newTile; // Register ImageWindowController for window management
+    selectedTile.value = newTile;
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates an audio visualizer window tile with a custom ID
+  void addAudioVisualizerTileWithId(String id, String name, String url) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.audioVisualizer,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(400, 300), // Larger size for visualizer
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a WebView window tile with a custom ID
+  void addWebViewTileWithId(String id, String name, String url,
+      {InAppWebViewController? webViewController}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.webView,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(600, 400),
+    );
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+    if (webViewController != null) {
+      final controller = WebWindowController(
+        windowName: newTile.id,
+        webViewController: webViewController,
+        onClose: () {
+          Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+        },
+      );
+      Get.find<WindowManagerService>().registerWindow(controller);
+    }
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a media (video) window tile with a custom ID
+  void addMediaTileWithId(String id, String name, String url,
+      {bool loop = false}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.media,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(600, 400),
+      loop: loop,
+    );
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+    final playerData = MediaPlayerManager().getPlayerFor(url);
+    final controller = MediaWindowController(
+      windowName: newTile.id,
+      playerData: playerData,
+      onClose: () {
+        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+      },
+    );
+    Get.find<WindowManagerService>().registerWindow(controller);
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates an audio window tile with a custom ID
+  void addAudioTileWithId(String id, String name, String url) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.audio,
+      url: url,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(350, 180),
+    );
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates an image window tile with a custom ID
+  void addImageTileWithId(String id, String name, dynamic urlData) {
+    String primaryUrl;
+    List<String> imageUrls = [];
+    if (urlData is String) {
+      primaryUrl = urlData;
+    } else if (urlData is List) {
+      imageUrls = List<String>.from(urlData.map((url) => url.toString()));
+      primaryUrl = imageUrls.first;
+    } else {
+      print('❌ Invalid image URL format');
+      return;
+    }
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.image,
+      url: primaryUrl,
+      imageUrls: imageUrls,
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(500, 400),
+    );
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
     final controller = ImageWindowController(
       windowName: newTile.id,
       imageUrl: primaryUrl,
@@ -465,8 +584,6 @@ class TilingWindowController extends GetxController {
       },
     );
     Get.find<WindowManagerService>().registerWindow(controller);
-
-    // Save window state after adding tile
     _saveWindowState();
     publishOpenWindowsToMqtt();
   }
@@ -590,128 +707,6 @@ class TilingWindowController extends GetxController {
     // in the YouTubePlayerTile widget with the fix in youtube_window_controller_fixed.dart
 
     // Save window state after adding tile
-    _saveWindowState();
-    publishOpenWindowsToMqtt();
-  }
-
-  /// Creates a WebView window tile with a custom ID
-  void addWebViewTileWithId(String id, String name, String url,
-      {InAppWebViewController? webViewController}) {
-    final newTile = WindowTile(
-      id: id,
-      name: name,
-      type: TileType.webView,
-      url: url,
-      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
-      size: Size(600, 400),
-    );
-    tiles.add(newTile);
-    if (tilingMode.value) {
-      _layout.addTile(newTile, targetTile: selectedTile.value);
-      _layout.applyLayout(_containerBounds);
-    }
-    selectedTile.value = newTile;
-    if (webViewController != null) {
-      final controller = WebWindowController(
-        windowName: newTile.id,
-        webViewController: webViewController,
-        onClose: () {
-          Get.find<WindowManagerService>().unregisterWindow(newTile.id);
-        },
-      );
-      Get.find<WindowManagerService>().registerWindow(controller);
-    }
-    _saveWindowState();
-    publishOpenWindowsToMqtt();
-  }
-
-  /// Creates a media (video) window tile with a custom ID
-  void addMediaTileWithId(String id, String name, String url,
-      {bool loop = false}) {
-    final newTile = WindowTile(
-      id: id,
-      name: name,
-      type: TileType.media,
-      url: url,
-      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
-      size: Size(600, 400),
-      loop: loop,
-    );
-    tiles.add(newTile);
-    if (tilingMode.value) {
-      _layout.addTile(newTile, targetTile: selectedTile.value);
-      _layout.applyLayout(_containerBounds);
-    }
-    selectedTile.value = newTile;
-    final playerData = MediaPlayerManager().getPlayerFor(url);
-    final controller = MediaWindowController(
-      windowName: newTile.id,
-      playerData: playerData,
-      onClose: () {
-        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
-      },
-    );
-    Get.find<WindowManagerService>().registerWindow(controller);
-    _saveWindowState();
-    publishOpenWindowsToMqtt();
-  }
-
-  /// Creates an audio window tile with a custom ID
-  void addAudioTileWithId(String id, String name, String url) {
-    final newTile = WindowTile(
-      id: id,
-      name: name,
-      type: TileType.audio,
-      url: url,
-      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
-      size: Size(350, 180),
-    );
-    tiles.add(newTile);
-    if (tilingMode.value) {
-      _layout.addTile(newTile, targetTile: selectedTile.value);
-      _layout.applyLayout(_containerBounds);
-    }
-    selectedTile.value = newTile;
-    publishOpenWindowsToMqtt();
-  }
-
-  /// Creates an image window tile with a custom ID
-  void addImageTileWithId(String id, String name, dynamic urlData) {
-    String primaryUrl;
-    List<String> imageUrls = [];
-    if (urlData is String) {
-      primaryUrl = urlData;
-    } else if (urlData is List) {
-      imageUrls = List<String>.from(urlData.map((url) => url.toString()));
-      primaryUrl = imageUrls.first;
-    } else {
-      print('❌ Invalid image URL format');
-      return;
-    }
-    final newTile = WindowTile(
-      id: id,
-      name: name,
-      type: TileType.image,
-      url: primaryUrl,
-      imageUrls: imageUrls,
-      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
-      size: Size(500, 400),
-    );
-    tiles.add(newTile);
-    if (tilingMode.value) {
-      _layout.addTile(newTile, targetTile: selectedTile.value);
-      _layout.applyLayout(_containerBounds);
-    }
-    selectedTile.value = newTile;
-    final controller = ImageWindowController(
-      windowName: newTile.id,
-      imageUrl: primaryUrl,
-      imageUrls: imageUrls,
-      closeCallback: () {
-        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
-      },
-    );
-    Get.find<WindowManagerService>().registerWindow(controller);
     _saveWindowState();
     publishOpenWindowsToMqtt();
   }
