@@ -4,6 +4,32 @@
 
 This document provides comprehensive information about the MQTT interface for King Kiosk. MQTT enables remote control of your King Kiosk applications and allows integration with home automation systems like Home Assistant.
 
+## What's New
+
+### Recent Feature Additions
+
+**Audio Visualizer Support**
+- Use `style: "visualizer"` with audio to create animated frequency visualizers
+- Real-time visual feedback with customizable frequency bars
+
+**Enhanced Alert System**
+- Auto-dismiss alerts with countdown timers (`auto_dismiss_seconds`)
+- 9 positioning options (center, corners, edges)
+- Custom border colors and HTML support
+
+**Background Audio Controls**
+- Dedicated commands: `play_audio`, `pause_audio`, `stop_audio`, `seek_audio`
+- Background audio preservation during media system resets
+
+**Hardware Acceleration Control**
+- Override automatic hardware detection with `hardware_accel` parameter
+- Useful for troubleshooting problematic media files
+
+**Media Recovery & Health Checks**
+- Intelligent media system health monitoring
+- Background audio preservation during recovery operations
+- Health-only testing with `test: true`
+
 ## Connection Settings
 
 | Setting | Description | Default |
@@ -49,9 +75,10 @@ Commands are sent as JSON payloads to the command topic. All commands follow thi
   "type": "audio|video|image",
   "url": "https://example.com/media.mp4",
   "title": "Optional Title",
-  "style": "window|fullscreen|background",
+  "style": "window|fullscreen|background|visualizer",
   "loop": true|false,
-  "window_id": "optional-custom-id"
+  "window_id": "optional-custom-id",
+  "hardware_accel": true|false
 }
 ```
 
@@ -60,9 +87,27 @@ Commands are sent as JSON payloads to the command topic. All commands follow thi
 | type | string | Yes | Media type: "audio", "video", or "image" |
 | url | string | Yes | URL of the media to play |
 | title | string | No | Title to display for the media window |
-| style | string | No | Display style: "window", "fullscreen", or "background" |
+| style | string | No | Display style: "window", "fullscreen", "background", or "visualizer" (audio only) |
 | loop | boolean | No | Whether to loop the media (default: false) |
 | window_id | string | No | Optional custom ID for the window |
+| hardware_accel | boolean | No | Override hardware acceleration detection for this media |
+
+#### Audio Visualizer
+
+For audio files, you can use the `"visualizer"` style to create an animated frequency visualizer:
+
+```json
+{
+  "command": "play_media",
+  "type": "audio",
+  "style": "visualizer",
+  "url": "https://example.com/audio.mp3",
+  "title": "Music Visualizer",
+  "window_id": "audio-viz-1"
+}
+```
+
+The visualizer displays animated frequency bars that respond to audio playback in real-time.
 
 #### Open Browser
 
@@ -167,6 +212,51 @@ Commands are sent as JSON payloads to the command topic. All commands follow thi
 |-----------|------|----------|-------------|
 | window_id | string | Yes | ID of the media window |
 
+### Background Audio Controls
+
+#### Play Background Audio
+
+```json
+{
+  "command": "play_audio"
+}
+```
+
+Resumes playback of the current background audio if paused.
+
+#### Pause Background Audio
+
+```json
+{
+  "command": "pause_audio"
+}
+```
+
+Pauses the current background audio playback.
+
+#### Stop Background Audio
+
+```json
+{
+  "command": "stop_audio"
+}
+```
+
+Stops the current background audio and clears the audio context.
+
+#### Seek Background Audio
+
+```json
+{
+  "command": "seek_audio",
+  "position": 30.5
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| position | number | Yes | Position to seek to in seconds |
+
 ### Web Window Controls
 
 #### Refresh Web Window
@@ -249,6 +339,65 @@ Commands are sent as JSON payloads to the command topic. All commands follow thi
 | thumbnail | string | No | URL of an image to show in the notification |
 | sound | string | No | Sound to play with notification (e.g., "chime") |
 | duration | number | No | Duration in milliseconds to show notification (default: 5000) |
+
+### Alerts
+
+Alerts are modal dialogs that appear on screen with enhanced positioning and auto-dismiss capabilities.
+
+```json
+{
+  "command": "alert",
+  "title": "System Alert",
+  "message": "Critical system update required",
+  "type": "info|warning|error|success",
+  "position": "center|top-left|top-center|top-right|center-left|center-right|bottom-left|bottom-center|bottom-right",
+  "auto_dismiss_seconds": 5,
+  "sound": true|false,
+  "is_html": true|false,
+  "show_border": true|false,
+  "border_color": "#3498db",
+  "thumbnail": "https://example.com/image.jpg"
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| title | string | Yes | The alert dialog title |
+| message | string | Yes | The alert message content |
+| type | string | No | Alert type: "info", "warning", "error", or "success" (default: "info") |
+| position | string | No | Position on screen with 9 options (default: "center") |
+| auto_dismiss_seconds | number | No | Auto-dismiss after specified seconds (1-300), omit for manual dismiss |
+| sound | boolean | No | Whether to play alert sound (default: true) |
+| is_html | boolean | No | Whether message contains HTML markup (default: false) |
+| show_border | boolean | No | Whether to show colored border (default: true) |
+| border_color | string | No | Custom border color in hex format (#RRGGBB) |
+| thumbnail | string | No | URL/path to image to display in alert |
+
+#### Auto-Dismiss Example
+
+```json
+{
+  "command": "alert",
+  "title": "Auto-Dismiss Alert",
+  "message": "This alert will close automatically in 5 seconds",
+  "type": "info",
+  "position": "top-center",
+  "auto_dismiss_seconds": 5
+}
+```
+
+#### Positioning Examples
+
+```json
+{
+  "command": "alert",
+  "title": "Corner Alert",
+  "message": "Alert positioned in bottom-right corner",
+  "type": "success",
+  "position": "bottom-right",
+  "show_border": false
+}
+```
 
 ### System Controls
 
@@ -396,18 +545,45 @@ Commands are sent as JSON payloads to the command topic. All commands follow thi
 
 #### Reset Media System
 
+The reset media command includes intelligent health checks and background audio preservation:
+
 ```json
 {
   "command": "reset_media",
   "force": true|false,
-  "test": true|false
+  "test": true|false,
+  "preserve_background_audio": true|false
 }
 ```
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| force | boolean | No | Force reset even if not necessary (default: false) |
-| test | boolean | No | Only test media system, don't reset (default: false) |
+| force | boolean | No | Force reset even if media system is healthy (default: false) |
+| test | boolean | No | Only test media system health, don't reset (default: false) |
+| preserve_background_audio | boolean | No | Preserve background audio during reset (default: true) |
+
+**Health Check Features:**
+- Automatically detects media system issues before resetting
+- Preserves background audio playback during reset operations
+- Only performs reset if issues are detected (unless forced)
+- Provides feedback on system health status
+
+**Example - Health Check Only:**
+```json
+{
+  "command": "reset_media",
+  "test": true
+}
+```
+
+**Example - Force Reset:**
+```json
+{
+  "command": "reset_media",
+  "force": true,
+  "preserve_background_audio": false
+}
+```
 
 ## Batch Commands
 
@@ -483,6 +659,66 @@ mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
   "title": "Sample Video",
   "style": "window",
   "loop": true
+}'
+```
+
+### Audio Visualizer
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "play_media",
+  "type": "audio",
+  "style": "visualizer",
+  "url": "https://www.soundjay.com/misc/sounds/bell-ringing-05.wav",
+  "title": "Music Visualizer"
+}'
+```
+
+### Background Audio Controls
+
+```bash
+# Play background audio
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "play_media",
+  "type": "audio",
+  "style": "background",
+  "url": "https://example.com/background-music.mp3"
+}'
+
+# Control background audio
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "pause_audio"
+}'
+
+# Seek background audio
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "seek_audio",
+  "position": 45.5
+}'
+```
+
+### Auto-Dismiss Alert
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "alert",
+  "title": "System Update",
+  "message": "Update will start in 10 seconds",
+  "type": "warning",
+  "position": "top-center",
+  "auto_dismiss_seconds": 10
+}'
+```
+
+### Hardware Acceleration Control
+
+```bash
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "play_media",
+  "type": "video",
+  "url": "https://example.com/problematic-video.mp4",
+  "hardware_accel": false,
+  "title": "Software Decoded Video"
 }'
 ```
 
