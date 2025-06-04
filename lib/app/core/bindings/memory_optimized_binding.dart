@@ -21,6 +21,8 @@ import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
 import '../../services/service_initializer.dart';
+import '../../services/person_detection_service.dart';
+import '../../services/media_device_service.dart';
 import '../../core/utils/app_constants.dart';
 
 /// Memory-optimized binding that loads only essential services at startup
@@ -144,30 +146,37 @@ class MemoryOptimizedBinding extends Bindings {
     // Halo Effect Controllers - Lazy load
     Get.lazyPut<HaloEffectControllerGetx>(() => HaloEffectControllerGetx(), fenix: true);
     Get.lazyPut<WindowHaloController>(() => WindowHaloController(), fenix: true);
-    
-    // SIP Service - Conditional lazy loading based on settings
+      // SIP Service - Conditional lazy loading based on settings
     _conditionallyLoadSipService(storageService);
     
-    // AI Assistant - Lazy load with delayed initialization
+    // Media Device Service - Always load for device enumeration (required for camera/audio)
+    _loadMediaDeviceService();
+      // AI Assistant - Lazy load with delayed initialization
     _conditionallyLoadAiAssistant(storageService);
+    
+    // Person Detection Service - Conditional lazy loading based on settings
+    _conditionallyLoadPersonDetection(storageService);
     
     print('✅ Memory-optimized binding initialization complete');
     print('🔹 Core services loaded: ${_getCoreServiceCount()}');
     print('🔹 Lazy services configured: ${_getLazyServiceCount()}');
   }
-    /// Conditionally load SIP service only if enabled in settings
+  /// Conditionally load SIP service only if enabled in settings
   void _conditionallyLoadSipService(StorageService storageService) {
-    final sipEnabled = storageService.read<bool>(AppConstants.keySipEnabled) ?? false;
+    // Always load SIP service for device enumeration, even if SIP calling is disabled
+    // This ensures camera/audio device selection works in settings
+    print('📞 Loading SIP service for device enumeration (required for media devices)');
+    Get.lazyPut<SipService>(() {
+      final sipService = SipService(storageService);
+      // Note: init() is async, handle when service is accessed
+      return sipService;
+    }, fenix: true);
     
+    final sipEnabled = storageService.read<bool>(AppConstants.keySipEnabled) ?? false;
     if (sipEnabled) {
-      print('📞 SIP enabled - setting up lazy loading for SIP service');
-      Get.lazyPut<SipService>(() {
-        final sipService = SipService(storageService);
-        // Note: init() is async, handle when service is accessed
-        return sipService;
-      }, fenix: true);
+      print('📞 SIP calling is also enabled in settings');
     } else {
-      print('⏭️ SIP disabled in settings, skipping SIP service');
+      print('📞 SIP calling is disabled, but service loaded for device enumeration');
     }
   }
   
@@ -189,10 +198,45 @@ class MemoryOptimizedBinding extends Bindings {
         final aiAssistantService = AiAssistantService(sipService, storageService);
         // Note: init() is async, handle when service is accessed
         return aiAssistantService;
-      }, fenix: true);
-    } else {
+      }, fenix: true);    } else {
       print('⏭️ AI disabled in settings, skipping AI Assistant service');
     }
+  }
+    /// Conditionally load Person Detection service with proper dependencies
+  void _conditionallyLoadPersonDetection(StorageService storageService) {
+    final personDetectionEnabled = storageService.read<bool>(AppConstants.keyPersonDetectionEnabled) ?? false;
+    
+    if (personDetectionEnabled) {
+      print('👤 Person detection enabled - setting up lazy loading for PersonDetectionService');
+      Get.lazyPut<PersonDetectionService>(() {
+        final personDetectionService = PersonDetectionService();
+        // Note: init() is async, handle when service is accessed
+        return personDetectionService;
+      }, fenix: true);
+        // Trigger immediate access to start the service since it's enabled
+      Future.delayed(Duration(seconds: 2), () {
+        try {
+          Get.find<PersonDetectionService>();
+          print('👤 Person detection service initialized and ready');
+        } catch (e) {
+          print('⚠️ Failed to initialize person detection service: $e');
+        }
+      });
+    } else {
+      print('⏭️ Person detection disabled in settings, skipping PersonDetectionService');
+    }
+  }
+  
+  /// Load MediaDeviceService - Always available for device enumeration
+  void _loadMediaDeviceService() {
+    print('🎥 Loading MediaDeviceService for device enumeration (always available)');
+    Get.putAsync<MediaDeviceService>(() async {
+      final mediaDeviceService = MediaDeviceService();
+      await mediaDeviceService.init();
+      return mediaDeviceService;
+    }, permanent: true);
+    
+    print('✅ MediaDeviceService setup complete - devices will be enumerated');
   }
   
   int _getCoreServiceCount() {

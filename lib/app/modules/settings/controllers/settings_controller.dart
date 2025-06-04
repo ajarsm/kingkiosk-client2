@@ -2,6 +2,7 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
+import 'dart:async';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
@@ -30,17 +31,43 @@ class SettingsController extends GetxController {
     }
     return _mqttService;
   }
-
   // Getter for SipService
   SipService? get sipService {
     if (_sipService == null) {
       try {
         _sipService = Get.find<SipService>();
+        // If we just found the service, trigger an update to refresh UI
+        if (_sipService != null) {
+          update();
+        }
       } catch (_) {
-        // Still not available
+        // Still not available - schedule a retry
+        _scheduleServiceCheck();
       }
     }
     return _sipService;
+  }
+
+  Timer? _serviceCheckTimer;
+  
+  void _scheduleServiceCheck() {
+    // Avoid multiple timers
+    if (_serviceCheckTimer?.isActive == true) return;
+      _serviceCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      try {
+        final service = Get.find<SipService>();
+        _sipService = service;
+        update(); // Trigger UI update
+        timer.cancel();
+      } catch (_) {
+        // Service still not available
+      }
+      
+      // Stop checking after 30 seconds to avoid infinite polling
+      if (timer.tick > 30) {
+        timer.cancel();
+      }
+    });
   }
 
   // Theme settings
@@ -199,7 +226,6 @@ class SettingsController extends GetxController {
       });
     }
   }
-
   @override
   void onClose() {
     // Dispose text controllers
@@ -210,6 +236,7 @@ class SettingsController extends GetxController {
     kioskStartUrlController.dispose();
     sipServerHostController.dispose();
     aiProviderHostController.dispose();
+    _serviceCheckTimer?.cancel();
     super.onClose();
   }
 
@@ -353,15 +380,49 @@ class SettingsController extends GetxController {
       print('MQTT is already connected, skipping auto-connect');
     }
   }
-
   void _initMqttStatus() {
-    // Initialize MQTT connection status
+    // Initialize MQTT connection status with retry logic for timing issues
     if (mqttService != null) {
+      // Set initial status
       mqttConnected.value = mqttService!.isConnected.value;
 
       // Listen to connection status changes
       ever(mqttService!.isConnected, (bool connected) {
         mqttConnected.value = connected;
+        print('🔄 MQTT connection status updated in settings controller: $connected');
+      });
+
+      // Add retry logic for timing synchronization issues
+      // Check status again after a brief delay to catch auto-connections
+      Timer.periodic(Duration(seconds: 1), (timer) {
+        if (timer.tick > 10) {
+          timer.cancel(); // Stop checking after 10 seconds
+          return;
+        }
+        
+        final currentServiceStatus = mqttService!.isConnected.value;
+        if (currentServiceStatus != mqttConnected.value) {
+          print('🔄 MQTT status sync correction: service=$currentServiceStatus, controller=${mqttConnected.value}');
+          mqttConnected.value = currentServiceStatus;
+        }
+      });
+    } else {
+      // If service not available, retry finding it
+      Timer.periodic(Duration(seconds: 2), (timer) {
+        if (timer.tick > 5) {
+          timer.cancel(); // Stop trying after 10 seconds
+          return;
+        }
+          try {
+          if (Get.isRegistered<MqttService>()) {
+            _mqttService = Get.find<MqttService>();
+            print('🔄 Found MQTT service on retry, initializing status');
+            _initMqttStatus(); // Recursively call to set up properly
+            timer.cancel();
+          }
+        } catch (e) {
+          print('🔄 MQTT service still not available on retry: $e');
+        }
       });
     }
   }
@@ -912,7 +973,6 @@ class SettingsController extends GetxController {
   void saveAiProviderHost(String host) {
     aiProviderHost.value = host;
     aiProviderHostController.text = host;
-    _storageService.write(AppConstants.keyAiProviderHost, host);
-    _storageService.flush(); // Force flush for Windows persistence
+    _storageService.write(AppConstants.keyAiProviderHost, host);    _storageService.flush(); // Force flush for Windows persistence
   }
 }

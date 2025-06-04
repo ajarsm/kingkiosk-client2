@@ -1,8 +1,12 @@
 import 'package:get/get.dart';
+import 'dart:async';
 import 'platform_sensor_service.dart';
 import 'storage_service.dart';
 import 'mqtt_service_consolidated.dart';
 import '../core/utils/app_constants.dart';
+import '../modules/settings/controllers/settings_controller.dart';
+import '../modules/settings/controllers/settings_controller_compat.dart';
+import '../modules/settings/controllers/combined_settings_controller.dart';
 
 /// Helper class to provide properly configured service instances
 class ServiceBindings {
@@ -38,8 +42,7 @@ class ServiceBindings {
       print('Error initializing MQTT service: $e');
     }
   }
-  
-  /// Check if MQTT should auto-connect and set it up
+    /// Check if MQTT should auto-connect and set it up
   static void setupMqttAutoConnect() {
     try {
       // Get dependencies
@@ -58,15 +61,62 @@ class ServiceBindings {
           final mqttService = Get.find<MqttService>();
           print('Auto-connecting to MQTT broker: $brokerUrl:$brokerPort');
           
-          // Connect - this will handle online status automatically
-          mqttService.connect(
-            brokerUrl: brokerUrl,
-            port: brokerPort,
-          );
+          // Add a delay to ensure settings controllers have time to initialize
+          Timer(Duration(milliseconds: 1500), () {
+            // Connect - this will handle online status automatically
+            mqttService.connect(
+              brokerUrl: brokerUrl,
+              port: brokerPort,
+            ).then((success) {
+              if (success) {
+                print('✅ MQTT auto-connection successful');
+                // Notify all settings controllers to update their status
+                _notifySettingsControllersOfMqttConnection();
+              } else {
+                print('❌ MQTT auto-connection failed');
+              }
+            });
+          });
         }
       }
     } catch (e) {
       print('Error setting up MQTT auto-connect: $e');
+    }
+  }
+
+  /// Notify all settings controllers to update their MQTT connection status
+  static void _notifySettingsControllersOfMqttConnection() {
+    try {
+      // Try to find and update SettingsController
+      if (Get.isRegistered<SettingsController>()) {
+        final controller = Get.find<SettingsController>();
+        if (controller.mqttService != null) {
+          controller.mqttConnected.value = controller.mqttService!.isConnected.value;
+          print('🔄 Updated SettingsController MQTT status');
+        }
+      }
+    } catch (e) {
+      print('🔄 Could not update SettingsController: $e');
+    }
+
+    try {
+      // Try to find and update SettingsControllerFixed
+      if (Get.isRegistered<SettingsControllerFixed>()) {
+        final controller = Get.find<SettingsControllerFixed>();
+        controller.refreshMqttConnectionStatus();
+        print('🔄 Updated SettingsControllerFixed MQTT status');
+      }
+    } catch (e) {
+      print('🔄 Could not update SettingsControllerFixed: $e');
+    }    try {
+      // Try to find and update CombinedSettingsController
+      if (Get.isRegistered<CombinedSettingsController>()) {
+        final controller = Get.find<CombinedSettingsController>();
+        controller.refreshMqttConnectionStatus();
+        print('🔄 Updated CombinedSettingsController MQTT status');
+      }
+    } catch (e) {
+      print('🔄 Could not update CombinedSettingsController: $e');
     }
   }
 }

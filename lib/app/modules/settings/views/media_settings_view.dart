@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
+import '../../../services/media_device_service.dart';
 import '../../../services/media_hardware_detection.dart';
+import '../widgets/camera_preview_widget.dart';
 
 class MediaSettingsView extends GetView<SettingsControllerFixed> {
   const MediaSettingsView({Key? key}) : super(key: key);
@@ -21,6 +23,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildHardwareAccelerationSection(),
+            SizedBox(height: 24),
+            _buildMediaDevicesSection(),
             SizedBox(height: 24),
             _buildDeviceInfoSection(),
             SizedBox(height: 24),
@@ -106,6 +110,290 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
         ),
       ),
     );
+  }
+
+  Widget _buildMediaDevicesSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.devices, color: Colors.green),
+                SizedBox(width: 8),
+                Text(
+                  'Media Devices',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Configure your audio and video input/output devices for communications and media playback.',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 16),
+            _buildMediaDevicesList(),
+          ],
+        ),
+      ),
+    );
+  }
+  Widget _buildMediaDevicesList() {
+    try {
+      Get.find<MediaDeviceService>(); // Verify service is available
+      return Column(
+        children: [
+          // Audio Input Devices
+          _buildAudioInputSelector(),
+          const SizedBox(height: 12.0),
+
+          // Video Input Devices
+          _buildVideoInputSelector(),
+          const SizedBox(height: 12.0),
+
+          // Audio Output Devices
+          _buildAudioOutputSelector(),
+        ],
+      );
+    } catch (e) {
+      // Show error if MediaDeviceService is not available
+      return Container(
+        padding: const EdgeInsets.all(16.0),        decoration: BoxDecoration(
+          color: Colors.orange.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(8.0),
+          border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
+        ),
+        child: Row(
+          children: [
+            Icon(Icons.warning, color: Colors.orange),
+            SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Media device service not available. Please restart the application.',
+                style: TextStyle(color: Colors.orange.shade800),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+  }
+
+  Widget _buildAudioInputSelector() {
+    return Obx(() {
+      try {
+        final mediaDeviceService = Get.find<MediaDeviceService>();
+        final audioInputDevices = mediaDeviceService.audioInputs;
+        final selectedDevice = mediaDeviceService.selectedAudioInput.value;
+
+        if (audioInputDevices.isEmpty) {
+          return Card(
+            color: Colors.grey.shade100,
+            child: ListTile(
+              leading: Icon(Icons.mic_off, color: Colors.grey),
+              title: Text('No microphones found'),
+              subtitle: Text('No audio input devices available'),
+            ),
+          );
+        }
+
+        return Card(
+          child: ListTile(
+            leading: Icon(Icons.mic, color: Colors.blue),
+            title: Text('Microphone'),
+            subtitle: DropdownButtonFormField<String>(
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              value: selectedDevice?.deviceId,
+              items: audioInputDevices.map((device) {
+                return DropdownMenuItem<String>(
+                  value: device.deviceId,
+                  child: Text(
+                    device.label.isNotEmpty ? device.label : 'Default Microphone',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (deviceId) {
+                if (deviceId != null) {
+                  final device = audioInputDevices.firstWhere(
+                    (d) => d.deviceId == deviceId,
+                    orElse: () => audioInputDevices.first,
+                  );
+                  mediaDeviceService.setAudioInput(device);
+                }
+              },
+            ),
+          ),
+        );
+      } catch (e) {
+        return Card(
+          color: Colors.red.shade50,
+          child: ListTile(
+            leading: Icon(Icons.error, color: Colors.red),
+            title: Text('Audio Input Error'),
+            subtitle: Text('Failed to load microphones'),
+          ),
+        );
+      }
+    });
+  }
+
+  Widget _buildVideoInputSelector() {
+    return Obx(() {
+      try {
+        final mediaDeviceService = Get.find<MediaDeviceService>();
+        final videoInputDevices = mediaDeviceService.videoInputs;
+        final selectedDevice = mediaDeviceService.selectedVideoInput.value;
+
+        if (videoInputDevices.isEmpty) {
+          return Card(
+            color: Colors.grey.shade100,
+            child: ListTile(
+              leading: Icon(Icons.videocam_off, color: Colors.grey),
+              title: Text('No cameras found'),
+              subtitle: Text('No video input devices available'),
+            ),
+          );
+        }
+
+        return Card(
+          child: Column(
+            children: [
+              ListTile(
+                leading: Icon(Icons.videocam, color: Colors.green),
+                title: Text('Camera'),
+                subtitle: DropdownButtonFormField<String>(
+                  decoration: const InputDecoration(
+                    border: OutlineInputBorder(),
+                    isDense: true,
+                  ),
+                  value: selectedDevice?.deviceId,
+                  items: videoInputDevices.map((device) {
+                    return DropdownMenuItem<String>(
+                      value: device.deviceId,
+                      child: Text(
+                        device.label.isNotEmpty ? device.label : 'Default Camera',
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    );
+                  }).toList(),
+                  onChanged: (deviceId) {
+                    if (deviceId != null) {
+                      final device = videoInputDevices.firstWhere(
+                        (d) => d.deviceId == deviceId,
+                        orElse: () => videoInputDevices.first,
+                      );
+                      mediaDeviceService.setVideoInput(device);
+                    }
+                  },
+                ),
+              ),
+              // Camera preview
+              if (selectedDevice != null)
+                Padding(
+                  padding: const EdgeInsets.all(8.0),
+                  child: Container(
+                    height: 200,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: CameraPreviewWidget(
+                        deviceId: selectedDevice.deviceId,
+                        width: double.infinity,
+                        height: 200,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      } catch (e) {
+        return Card(
+          color: Colors.red.shade50,
+          child: ListTile(
+            leading: Icon(Icons.error, color: Colors.red),
+            title: Text('Video Input Error'),
+            subtitle: Text('Failed to load cameras'),
+          ),
+        );
+      }
+    });
+  }
+
+  Widget _buildAudioOutputSelector() {
+    return Obx(() {
+      try {
+        final mediaDeviceService = Get.find<MediaDeviceService>();
+        final audioOutputDevices = mediaDeviceService.audioOutputs;
+        final selectedDevice = mediaDeviceService.selectedAudioOutput.value;
+
+        if (audioOutputDevices.isEmpty) {
+          return Card(
+            color: Colors.grey.shade100,
+            child: ListTile(
+              leading: Icon(Icons.speaker_phone, color: Colors.grey),
+              title: Text('No speakers found'),
+              subtitle: Text('No audio output devices available'),
+            ),
+          );
+        }
+
+        return Card(
+          child: ListTile(
+            leading: Icon(Icons.speaker, color: Colors.purple),
+            title: Text('Speaker'),
+            subtitle: DropdownButtonFormField<String>(
+              decoration: const InputDecoration(
+                border: OutlineInputBorder(),
+                isDense: true,
+              ),
+              value: selectedDevice?.deviceId,
+              items: audioOutputDevices.map((device) {
+                return DropdownMenuItem<String>(
+                  value: device.deviceId,
+                  child: Text(
+                    device.label.isNotEmpty ? device.label : 'Default Speaker',
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                );
+              }).toList(),
+              onChanged: (deviceId) {
+                if (deviceId != null) {
+                  final device = audioOutputDevices.firstWhere(
+                    (d) => d.deviceId == deviceId,
+                    orElse: () => audioOutputDevices.first,
+                  );
+                  mediaDeviceService.setAudioOutput(device);
+                }
+              },
+            ),
+          ),
+        );
+      } catch (e) {
+        return Card(
+          color: Colors.red.shade50,
+          child: ListTile(
+            leading: Icon(Icons.error, color: Colors.red),
+            title: Text('Audio Output Error'),
+            subtitle: Text('Failed to load speakers'),
+          ),
+        );
+      }
+    });
   }
 
   Widget _buildDeviceInfoSection() {

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'dart:async';
 import '../../../services/storage_service.dart';
 import '../../../services/theme_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
@@ -116,8 +117,7 @@ class CombinedSettingsController extends GetxController {
       print('❌ Error getting storage info: $e');
     }
   }
-  
-  void _initMqttStatus() {
+    void _initMqttStatus() {
     try {
       if (Get.isRegistered<MqttService>()) {
         _mqttService = Get.find<MqttService>();
@@ -127,6 +127,21 @@ class CombinedSettingsController extends GetxController {
           // Listen for connection status changes
           ever(_mqttService!.isConnected, (bool connected) {
             mqttConnected.value = connected;
+            print('🔄 MQTT connection status updated in combined settings controller: $connected');
+          });
+          
+          // Add retry logic for timing synchronization issues
+          Timer.periodic(Duration(seconds: 1), (timer) {
+            if (timer.tick > 10) {
+              timer.cancel(); // Stop checking after 10 seconds
+              return;
+            }
+            
+            final currentServiceStatus = _mqttService!.isConnected.value;
+            if (currentServiceStatus != mqttConnected.value) {
+              print('🔄 MQTT status sync correction in combined controller: service=$currentServiceStatus, controller=${mqttConnected.value}');
+              mqttConnected.value = currentServiceStatus;
+            }
           });
           
           // Update device name if available
@@ -134,6 +149,25 @@ class CombinedSettingsController extends GetxController {
             deviceName.value = _mqttService!.deviceName.value;
           }
         }
+      } else {
+        // Service not registered yet, retry finding it
+        Timer.periodic(Duration(seconds: 2), (timer) {
+          if (timer.tick > 5) {
+            timer.cancel(); // Stop trying after 10 seconds
+            return;
+          }
+          
+          try {
+            if (Get.isRegistered<MqttService>()) {
+              _mqttService = Get.find<MqttService>();
+              print('🔄 Found MQTT service on retry in combined controller, initializing status');
+              _initMqttStatus(); // Recursively call to set up properly
+              timer.cancel();
+            }
+          } catch (e) {
+            print('🔄 MQTT service still not available on retry in combined controller: $e');
+          }
+        });
       }
     } catch (e) {
       print('MqttService not available: $e');
@@ -341,6 +375,20 @@ class CombinedSettingsController extends GetxController {
       }
     } catch (e) {
       print('Error disconnecting from MQTT: $e');
+    }
+  }
+  
+  /// Force refresh MQTT connection status
+  void refreshMqttConnectionStatus() {
+    if (_mqttService != null) {
+      final actualStatus = _mqttService!.isConnected.value;
+      if (actualStatus != mqttConnected.value) {
+        print('🔄 Force refreshing MQTT status in combined controller: was ${mqttConnected.value}, now $actualStatus');
+        mqttConnected.value = actualStatus;
+      }
+    } else {
+      // Try to re-initialize MQTT service
+      _initMqttStatus();
     }
   }
   

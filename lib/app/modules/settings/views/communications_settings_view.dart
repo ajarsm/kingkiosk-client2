@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
-import '../widgets/camera_preview_widget.dart';
 
 /// Communications settings view for SIP/Drachtio server configuration
 class CommunicationsSettingsView extends StatelessWidget {
@@ -108,33 +107,8 @@ class CommunicationsSettingsView extends StatelessWidget {
                     ),
                     controller: controller.deviceNameController,
                     readOnly: true,
-                    enabled: false,
-                  ),
+                    enabled: false,                  ),
                   const SizedBox(height: 16.0),
-
-                  // Media device selection
-                  if (controller.sipService != null) ...[
-                    Text(
-                      'Media Devices',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 8.0),
-
-                    // Audio Input Devices
-                    _buildAudioInputSelector(controller),
-                    const SizedBox(height: 8.0),
-
-                    // Video Input Devices
-                    _buildVideoInputSelector(controller),
-                    const SizedBox(height: 8.0),
-
-                    // Audio Output Devices
-                    _buildAudioOutputSelector(controller),
-                    const SizedBox(height: 16.0),
-                  ] else ...[
-                    const Text('SIP Service not available'),
-                    const SizedBox(height: 16.0),
-                  ],
 
                   // Connection buttons
                   _buildConnectionButtons(controller),
@@ -143,172 +117,7 @@ class CommunicationsSettingsView extends StatelessWidget {
             }),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildAudioInputSelector(SettingsControllerFixed controller) {
-    return Obx(() {
-      final sipService = controller.sipService;
-      if (sipService == null) return const SizedBox.shrink();
-
-      final audioInputDevices = sipService.audioInputs;
-      final selectedDevice = sipService.selectedAudioInput.value;
-
-      if (audioInputDevices.isEmpty) {
-        return const Text('No audio input devices found');
-      }
-
-      return DropdownButtonFormField<String>(
-        decoration: const InputDecoration(
-          labelText: 'Microphone',
-          border: OutlineInputBorder(),
-        ),
-        value: selectedDevice?.deviceId,
-        items: audioInputDevices.map((device) {
-          return DropdownMenuItem<String>(
-            value: device.deviceId,
-            child: Text(
-              device.label.isNotEmpty ? device.label : 'Default Microphone',
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList(),
-        onChanged: (deviceId) {
-          if (deviceId != null) {
-            final device = audioInputDevices.firstWhere(
-              (d) => d.deviceId == deviceId,
-              orElse: () => audioInputDevices.first,
-            );
-            sipService.setAudioInput(device);
-          }
-        },
-      );
-    });
-  }
-
-  Widget _buildVideoInputSelector(SettingsControllerFixed controller) {
-    return Obx(() {
-      final sipService = controller.sipService;
-      if (sipService == null) return const SizedBox.shrink();
-
-      final videoInputDevices = sipService.videoInputs;
-      final selectedDevice = sipService.selectedVideoInput.value;
-
-      if (videoInputDevices.isEmpty) {
-        return const Text('No video input devices found');
-      }
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          DropdownButtonFormField<String>(
-            decoration: const InputDecoration(
-              labelText: 'Camera',
-              border: OutlineInputBorder(),
-            ),
-            value: selectedDevice?.deviceId,
-            items: videoInputDevices.map((device) {
-              return DropdownMenuItem<String>(
-                value: device.deviceId,
-                child: Text(
-                  device.label.isNotEmpty ? device.label : 'Default Camera',
-                  overflow: TextOverflow.ellipsis,
-                ),
-              );
-            }).toList(),
-            onChanged: (deviceId) {
-              if (deviceId != null) {
-                final device = videoInputDevices.firstWhere(
-                  (d) => d.deviceId == deviceId,
-                  orElse: () => videoInputDevices.first,
-                );
-                sipService.setVideoInput(device);
-              }
-            },
-          ),
-
-          // Camera Preview Section
-          const SizedBox(height: 16),
-          if (selectedDevice != null)
-            _buildCameraPreview(selectedDevice.deviceId),
-        ],
-      );
-    });
-  }
-
-  Widget _buildCameraPreview(String deviceId) {
-    if (deviceId.isEmpty) return const SizedBox();
-
-    try {
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Text(
-            'Camera Preview',
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              fontSize: 14,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.grey),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: CameraPreviewWidget(
-              deviceId: deviceId,
-              width: double.infinity,
-              height: 240,
-            ),
-          ),
-        ],
-      );
-    } catch (e) {
-      print('Error rendering camera preview: $e');
-      return const Text('Camera preview not available');
-    }
-  }
-
-  Widget _buildAudioOutputSelector(SettingsControllerFixed controller) {
-    return Obx(() {
-      final sipService = controller.sipService;
-      if (sipService == null) return const SizedBox.shrink();
-
-      final audioOutputDevices = sipService.audioOutputs;
-      final selectedDevice = sipService.selectedAudioOutput.value;
-
-      if (audioOutputDevices.isEmpty) {
-        return const Text('No audio output devices found');
-      }
-
-      return DropdownButtonFormField<String>(
-        decoration: const InputDecoration(
-          labelText: 'Speaker',
-          border: OutlineInputBorder(),
-        ),
-        value: selectedDevice?.deviceId,
-        items: audioOutputDevices.map((device) {
-          return DropdownMenuItem<String>(
-            value: device.deviceId,
-            child: Text(
-              device.label.isNotEmpty ? device.label : 'Default Speaker',
-              overflow: TextOverflow.ellipsis,
-            ),
-          );
-        }).toList(),
-        onChanged: (deviceId) {
-          if (deviceId != null) {
-            final device = audioOutputDevices.firstWhere(
-              (d) => d.deviceId == deviceId,
-              orElse: () => audioOutputDevices.first,
-            );
-            sipService.setAudioOutput(device);
-          }
-        },
-      );
-    });
+      ),    );
   }
 
   Widget _buildConnectionButtons(SettingsControllerFixed controller) {
@@ -371,8 +180,7 @@ class CommunicationsSettingsView extends StatelessWidget {
           Text(registered
               ? 'Registered ($protocol)'
               : 'Unregistered ($protocol)'),
-        ],
-      );
+        ],      );
     });
   }
 }

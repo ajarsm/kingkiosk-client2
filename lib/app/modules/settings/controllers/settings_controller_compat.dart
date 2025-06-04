@@ -4,12 +4,36 @@
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import '../../../services/storage_service.dart';
+import '../../../services/person_detection_service.dart';
+import '../../../services/media_device_service.dart';
 import '../../../core/utils/app_constants.dart';
 import 'settings_controller.dart';
 
 export 'settings_controller.dart' show SettingsController;
 
 class SettingsControllerFixed extends SettingsController {
+  // Person Detection settings
+  final RxBool personDetectionEnabled = false.obs;
+
+  @override
+  void onInit() {
+    super.onInit();
+    
+    // Load person detection setting from storage
+    personDetectionEnabled.value = Get.find<StorageService>()
+        .read<bool>(AppConstants.keyPersonDetectionEnabled) ?? false;
+    
+    // Listen for changes and sync with PersonDetectionService
+    ever(personDetectionEnabled, (bool enabled) {
+      try {
+        final personDetectionService = Get.find<PersonDetectionService>();
+        personDetectionService.isEnabled.value = enabled;
+      } catch (e) {
+        print('PersonDetectionService not available for sync: $e');
+      }
+    });
+  }
+
   // Additional compatibility methods needed by views
   void toggleMqttEnabled(bool value) {
     mqttEnabled.value = value;
@@ -115,12 +139,13 @@ class SettingsControllerFixed extends SettingsController {
     mqttPasswordController.text = '';
     deviceName.value = '';
     deviceNameController.text = '';
-    mqttHaDiscovery.value = false;
-
-    // Reset SIP settings
+    mqttHaDiscovery.value = false;    // Reset SIP settings
     sipEnabled.value = false;
     sipServerHost.value = '';
     sipServerHostController.text = '';
+
+    // Reset person detection settings
+    personDetectionEnabled.value = false;
 
     // Disconnect from any active connections
     if (mqttConnected.value) {
@@ -130,13 +155,12 @@ class SettingsControllerFixed extends SettingsController {
     // Unregister from SIP if registered
     if (sipRegistered.value) {
       await unregisterSip();
-    }
-
-    // Save the updated settings to storage
+    }    // Save the updated settings to storage
     final storageService = Get.find<StorageService>();
     storageService.write('isDarkMode', isDarkMode.value);
     storageService.write('kioskMode', kioskMode.value);
     storageService.write('showSystemInfo', showSystemInfo.value);
+    storageService.write(AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
     // Add other settings to be saved here
 
     Get.snackbar(
@@ -271,6 +295,62 @@ class SettingsControllerFixed extends SettingsController {
       unregisterSip();
     }
   }
+  // Add person detection toggle method
+  void togglePersonDetection() {
+    print('🔧 SettingsControllerFixed.togglePersonDetection called');
+    personDetectionEnabled.value = !personDetectionEnabled.value;
+    
+    // Save the setting
+    final storageService = Get.find<StorageService>();
+    storageService.write(AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
+    storageService.flush(); // Force flush for Windows persistence
+      
+    // Update the PersonDetectionService if it exists
+    try {
+      final personDetectionService = Get.find<PersonDetectionService>();
+      personDetectionService.isEnabled.value = personDetectionEnabled.value;
+        // If enabling, start detection with the selected camera from MediaDeviceService
+      if (personDetectionEnabled.value) {
+        String? selectedCameraId;
+        try {
+          final mediaDeviceService = Get.find<MediaDeviceService>();
+          if (mediaDeviceService.selectedVideoInput.value != null) {
+            selectedCameraId = mediaDeviceService.selectedVideoInput.value!.deviceId;
+            print('👤 Using camera from MediaDeviceService: ${mediaDeviceService.selectedVideoInput.value!.label}');
+          }
+        } catch (e) {
+          print('⚠️ Could not get selected camera from MediaDeviceService: $e');
+        }
+        
+        // Start detection with selected camera
+        personDetectionService.startDetection(deviceId: selectedCameraId).then((success) {
+          if (success) {
+            print('✅ Person detection started successfully');
+          } else {
+            print('❌ Failed to start person detection');
+            Get.snackbar(
+              'Person Detection',
+              'Failed to start camera for person detection',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.red.withOpacity(0.8),
+              colorText: Colors.white,
+              duration: Duration(seconds: 3),
+            );
+          }
+        });
+      }
+    } catch (e) {
+      print('PersonDetectionService not available: $e');
+    }
+    
+    // Show feedback to user
+    Get.snackbar(
+      'Person Detection',
+      personDetectionEnabled.value ? 'Person detection enabled' : 'Person detection disabled',
+      snackPosition: SnackPosition.BOTTOM,
+      duration: Duration(seconds: 2),
+    );
+  }
 
   // Add SIP protocol selection method
   void setSipProtocol(String protocol) {
@@ -323,5 +403,16 @@ class SettingsControllerFixed extends SettingsController {
 
   Future<void> toggleHardwareAcceleration(bool enabled) async {
     await super.toggleHardwareAcceleration(enabled);
+  }
+
+  /// Force refresh MQTT connection status
+  void refreshMqttConnectionStatus() {
+    if (mqttService != null) {
+      final actualStatus = mqttService!.isConnected.value;
+      if (actualStatus != mqttConnected.value) {
+        print('🔄 Force refreshing MQTT status: was ${mqttConnected.value}, now $actualStatus');
+        mqttConnected.value = actualStatus;
+      }
+    }
   }
 }

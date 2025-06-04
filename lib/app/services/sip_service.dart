@@ -4,7 +4,9 @@ import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:get/get.dart';
 import 'package:sip_ua/sip_ua.dart';
 import '../services/storage_service.dart';
+import '../services/media_device_service.dart';
 import '../core/utils/app_constants.dart';
+import 'person_detection_service.dart';
 
 /// Service for managing SIP UA connections
 class SipService extends GetxService implements SipUaHelperListener {
@@ -13,7 +15,6 @@ class SipService extends GetxService implements SipUaHelperListener {
 
   // SIP UA instance
   late final SIPUAHelper _helper;
-
   // Service state
   final isRegistered = false.obs;
   final currentCall = Rx<Call?>(null);
@@ -22,15 +23,25 @@ class SipService extends GetxService implements SipUaHelperListener {
   final isLocalVideoEnabled = true.obs; // Track video state
   final isCallMuted = false.obs; // Track mute state
 
-  // Device lists for media selection
-  final audioInputs = <webrtc.MediaDeviceInfo>[].obs;
-  final videoInputs = <webrtc.MediaDeviceInfo>[].obs;
-  final audioOutputs = <webrtc.MediaDeviceInfo>[].obs;
+  // Media device service reference for device enumeration
+  MediaDeviceService? get _mediaDeviceService {
+    try {
+      return Get.find<MediaDeviceService>();
+    } catch (e) {
+      debugPrint('MediaDeviceService not available: $e');
+      return null;
+    }
+  }
 
-  // Selected devices
-  final selectedAudioInput = Rx<webrtc.MediaDeviceInfo?>(null);
-  final selectedVideoInput = Rx<webrtc.MediaDeviceInfo?>(null);
-  final selectedAudioOutput = Rx<webrtc.MediaDeviceInfo?>(null);
+  // Device lists - delegate to MediaDeviceService
+  List<webrtc.MediaDeviceInfo> get audioInputs => _mediaDeviceService?.audioInputs ?? [];
+  List<webrtc.MediaDeviceInfo> get videoInputs => _mediaDeviceService?.videoInputs ?? [];
+  List<webrtc.MediaDeviceInfo> get audioOutputs => _mediaDeviceService?.audioOutputs ?? [];
+
+  // Selected devices - delegate to MediaDeviceService
+  webrtc.MediaDeviceInfo? get selectedAudioInput => _mediaDeviceService?.selectedAudioInput.value;
+  webrtc.MediaDeviceInfo? get selectedVideoInput => _mediaDeviceService?.selectedVideoInput.value;
+  webrtc.MediaDeviceInfo? get selectedAudioOutput => _mediaDeviceService?.selectedAudioOutput.value;
 
   // Settings
   final serverHost = ''.obs;
@@ -57,16 +68,11 @@ class SipService extends GetxService implements SipUaHelperListener {
 
       // Load device name - critical for registration
       deviceName.value =
-          _storageService.read<String>(AppConstants.keyDeviceName) ?? '';
-
-      // Register for SIP UA events
+          _storageService.read<String>(AppConstants.keyDeviceName) ?? '';      // Register for SIP UA events
       _helper.addSipUaHelperListener(this);
 
-      // Initialize device lists
-      await loadDevices();
-
-      // Load selected device IDs from storage and set selected devices
-      await loadSelectedDevices();
+      // Device enumeration is now handled by MediaDeviceService
+      // No need to load devices here - they're available via MediaDeviceService
 
       // Auto-register if enabled and we have a device name
       if (enabled.value) {
@@ -194,109 +200,79 @@ class SipService extends GetxService implements SipUaHelperListener {
       lastError.value = 'Failed to unregister: $e';
       debugPrint('Failed to unregister from SIP server: $e');
       return false;
-    }
-  }
+    }  }
 
-  /// Load available media devices
+  /// Refresh device list by asking MediaDeviceService to reload
   Future<void> loadDevices() async {
-    try {
-      final devices = await webrtc.navigator.mediaDevices.enumerateDevices();
-
-      audioInputs.value = devices
-          .where((device) => device.kind == 'audioinput')
-          .cast<webrtc.MediaDeviceInfo>()
-          .toList();
-
-      videoInputs.value = devices
-          .where((device) => device.kind == 'videoinput')
-          .cast<webrtc.MediaDeviceInfo>()
-          .toList();
-
-      audioOutputs.value = devices
-          .where((device) => device.kind == 'audiooutput')
-          .cast<webrtc.MediaDeviceInfo>()
-          .toList();
-
-      debugPrint(
-          'Device counts: Audio inputs: ${audioInputs.length}, Video inputs: ${videoInputs.length}, Audio outputs: ${audioOutputs.length}');
-    } catch (e) {
-      debugPrint('Error enumerating devices: $e');
+    final mediaService = _mediaDeviceService;
+    if (mediaService != null) {
+      await mediaService.refreshDevices();
+      debugPrint('📱 Device enumeration refreshed via MediaDeviceService');
+      debugPrint('   🎤 Audio inputs: ${audioInputs.length}');
+      debugPrint('   📹 Video inputs: ${videoInputs.length}');
+      debugPrint('   🔊 Audio outputs: ${audioOutputs.length}');
+    } else {
+      debugPrint('⚠️ MediaDeviceService not available for device enumeration');
     }
   }
 
-  /// Load selected devices from storage
+  /// Device selection is now handled by MediaDeviceService
+  /// This method is kept for compatibility but does nothing
   Future<void> loadSelectedDevices() async {
-    final savedAudioInputId =
-        _storageService.read<String>(AppConstants.keySelectedAudioInput);
-    final savedVideoInputId =
-        _storageService.read<String>(AppConstants.keySelectedVideoInput);
-    final savedAudioOutputId =
-        _storageService.read<String>(AppConstants.keySelectedAudioOutput);
-
-    if (savedAudioInputId != null && audioInputs.isNotEmpty) {
-      selectedAudioInput.value = audioInputs.firstWhereOrNull(
-              (device) => device.deviceId == savedAudioInputId) ??
-          audioInputs.first;
-    } else if (audioInputs.isNotEmpty) {
-      selectedAudioInput.value = audioInputs.first;
-    }
-
-    if (savedVideoInputId != null && videoInputs.isNotEmpty) {
-      selectedVideoInput.value = videoInputs.firstWhereOrNull(
-              (device) => device.deviceId == savedVideoInputId) ??
-          videoInputs.first;
-    } else if (videoInputs.isNotEmpty) {
-      selectedVideoInput.value = videoInputs.first;
-    }
-
-    if (savedAudioOutputId != null && audioOutputs.isNotEmpty) {
-      selectedAudioOutput.value = audioOutputs.firstWhereOrNull(
-              (device) => device.deviceId == savedAudioOutputId) ??
-          audioOutputs.first;
-    } else if (audioOutputs.isNotEmpty) {
-      selectedAudioOutput.value = audioOutputs.first;
-    }
+    debugPrint('📱 Device selection is now managed by MediaDeviceService');
+    // Selected devices are accessed via MediaDeviceService getters
   }
-
   /// Set audio input device
   Future<void> setAudioInput(webrtc.MediaDeviceInfo device) async {
-    selectedAudioInput.value = device;
-
-    // Save to storage
-    _storageService.write(AppConstants.keySelectedAudioInput, device.deviceId);
+    final mediaService = _mediaDeviceService;
+    if (mediaService != null) {
+      mediaService.setAudioInput(device);
+      debugPrint('🎤 Audio input changed via MediaDeviceService: ${device.label}');
+    } else {
+      debugPrint('⚠️ MediaDeviceService not available for audio input change');
+      return;
+    }
 
     // Apply to current call if exists - this requires advanced WebRTC handling
     if (currentCall.value != null) {
       try {
         debugPrint('Attempting to change microphone to: ${device.label}');
         // This would require accessing the RTCPeerConnection from currentCall and replacing tracks
-
         // In a real implementation, you would access the RTCPeerConnection
         // and replace the audio track with a new one from the selected device
         // This is complex and would require direct WebRTC manipulation
-
-        // Note: If the call object doesn't expose this functionality directly,
-        // you'd need to implement a workaround or live with changing devices
-        // only for new calls.
       } catch (e) {
         debugPrint('Error changing microphone: $e');
       }
     }
-  }
-
-  /// Set video input device
+  }  /// Set video input device
   Future<void> setVideoInput(webrtc.MediaDeviceInfo device) async {
-    selectedVideoInput.value = device;
+    final mediaService = _mediaDeviceService;
+    if (mediaService != null) {
+      mediaService.setVideoInput(device);
+      debugPrint('📹 Video input changed via MediaDeviceService: ${device.label}');
+    } else {
+      debugPrint('⚠️ MediaDeviceService not available for video input change');
+      return;
+    }
 
-    // Save to storage
-    _storageService.write(AppConstants.keySelectedVideoInput, device.deviceId);
+    // Notify PersonDetectionService of camera change if it's active and enabled
+    try {
+      final personDetectionService = Get.find<PersonDetectionService>();
+      if (personDetectionService.isEnabled.value && personDetectionService.isProcessing.value) {
+        debugPrint('📷 Camera changed, switching person detection to: ${device.label}');
+        await personDetectionService.switchCamera(device.deviceId);
+      }
+    } catch (e) {
+      // PersonDetectionService may not be available - that's okay
+      debugPrint('PersonDetectionService not available for camera change notification: $e');
+    }
 
     // Apply to current call if exists
     if (currentCall.value != null) {
       try {
         debugPrint('Attempting to change camera to: ${device.label}');
         // This would require accessing the RTCPeerConnection from currentCall and replacing tracks
-
         // Similar to audio input, this would require direct WebRTC manipulation
         // to replace the video track
       } catch (e) {
@@ -307,10 +283,14 @@ class SipService extends GetxService implements SipUaHelperListener {
 
   /// Set audio output device
   Future<void> setAudioOutput(webrtc.MediaDeviceInfo device) async {
-    selectedAudioOutput.value = device;
-
-    // Save to storage
-    _storageService.write(AppConstants.keySelectedAudioOutput, device.deviceId);
+    final mediaService = _mediaDeviceService;
+    if (mediaService != null) {
+      mediaService.setAudioOutput(device);
+      debugPrint('🔊 Audio output changed via MediaDeviceService: ${device.label}');
+    } else {
+      debugPrint('⚠️ MediaDeviceService not available for audio output change');
+      return;
+    }
 
     // Apply to current call if exists
     if (currentCall.value != null) {
@@ -474,18 +454,16 @@ class SipService extends GetxService implements SipUaHelperListener {
       final mediaConstraints = <String, dynamic>{
         'audio': true,
         'video': video,
-      };
-
-      // Add device constraints if selected
-      if (selectedAudioInput.value != null) {
+      };      // Add device constraints if selected
+      if (selectedAudioInput != null) {
         mediaConstraints['audio'] = {
-          'deviceId': {'exact': selectedAudioInput.value!.deviceId},
+          'deviceId': {'exact': selectedAudioInput!.deviceId},
         };
       }
 
-      if (video && selectedVideoInput.value != null) {
+      if (video && selectedVideoInput != null) {
         mediaConstraints['video'] = {
-          'deviceId': {'exact': selectedVideoInput.value!.deviceId},
+          'deviceId': {'exact': selectedVideoInput!.deviceId},
           'width': {'ideal': 1280},
           'height': {'ideal': 720},
         };

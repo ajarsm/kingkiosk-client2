@@ -40,8 +40,11 @@ dependencies:
   sip_ua: ^1.0.1
   flutter_webrtc: ^0.12.12+hotfix.1  # Version compatible with sip_ua
   pdfrx: ^1.1.29
-  http: ^1.4.0
+  http: ^1.4.0  
   geolocator: ^14.0.1
+  tflite_flutter: ^0.11.0
+  image: ^4.3.0  # For image preprocessing (replacement for tflite_flutter_helper)
+ # tflite_flutter_helper: ^0.3.1
 
 dev_dependencies:
   flutter_test:
@@ -57,8 +60,8 @@ flutter_native_splash:
 
 flutter:
   uses-material-design: true
-
   assets:
     - assets/fonts/
     - assets/images/
     - assets/sounds/
+    - assets/models/

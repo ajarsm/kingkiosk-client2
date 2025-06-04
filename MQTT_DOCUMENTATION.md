@@ -464,6 +464,45 @@ Alerts are modal dialogs that appear on screen with enhanced positioning and aut
 }
 ```
 
+### Person Detection
+
+#### Control Person Detection
+
+```json
+{
+  "command": "person_detection",
+  "action": "enable|disable|toggle|status",
+  "confirm": true|false
+}
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| action | string | No | Action to perform: "enable", "disable", "toggle", or "status" (default: "toggle") |
+| confirm | boolean | No | Whether to send a confirmation message |
+
+**Actions:**
+- **enable**: Enable person presence detection
+- **disable**: Disable person presence detection  
+- **toggle**: Toggle the current state
+- **status**: Get current status without changing state
+
+**Response Topics:**
+- `kingkiosk/{deviceName}/person_detection/status` - Confirmation response (if confirm=true)
+- `kingkiosk/{deviceName}/person_presence` - Current detection status and presence data
+
+**Example Status Response:**
+```json
+{
+  "enabled": true,
+  "person_present": false,
+  "confidence": 0.0,
+  "processing": false,
+  "frames_processed": 1234,
+  "last_error": ""
+}
+```
+
 ### Visual Effects
 
 #### Halo Effect
@@ -750,6 +789,30 @@ mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
 mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
   "command": "screenshot",
   "notify": true,
+  "confirm": true
+}'
+```
+
+### Person Detection Control
+
+```bash
+# Enable person detection
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "person_detection",
+  "action": "enable",
+  "confirm": true
+}'
+
+# Toggle person detection
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "person_detection",
+  "action": "toggle"
+}'
+
+# Get status without changing state
+mosquitto_pub -h localhost -p 1883 -t "kingkiosk/device-12345/command" -m '{
+  "command": "person_detection",
+  "action": "status",
   "confirm": true
 }'
 ```

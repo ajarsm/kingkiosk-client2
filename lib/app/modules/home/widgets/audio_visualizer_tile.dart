@@ -1,9 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
 import 'dart:math' as math;
-import 'dart:typed_data';
 import 'media_tile.dart'; // Import to reuse the PlayerManager
 
 class AudioVisualizerTile extends StatefulWidget {
@@ -27,6 +25,10 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
   bool _hasError = false;
   String _errorMessage = '';
   Duration _position = Duration.zero;
+  
+  // Stream subscriptions to manage memory properly
+  StreamSubscription<Duration>? _positionSubscription;
+  StreamSubscription<bool>? _playingSubscription;
   
   // Visualizer animation properties
   late AnimationController _visualizerController;
@@ -86,7 +88,6 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
       _stopVisualizerAnimation();
     }
   }
-
   Future<void> _initializePlayer() async {
     if (_playerData.isInitialized) {
       setState(() {
@@ -97,8 +98,8 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
     }
 
     try {
-      // Position listener
-      _playerData.player.streams.position.listen((position) {
+      // Position listener with proper subscription management
+      _positionSubscription = _playerData.player.streams.position.listen((position) {
         if (mounted) {
           setState(() {
             _position = position;
@@ -106,8 +107,8 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
         }
       });
       
-      // Playing state listener to control visualizer
-      _playerData.player.streams.playing.listen((isPlaying) {
+      // Playing state listener to control visualizer with proper subscription management
+      _playingSubscription = _playerData.player.streams.playing.listen((isPlaying) {
         if (mounted) {
           if (isPlaying) {
             _startVisualizerAnimation();
@@ -136,14 +137,17 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
       }
     }
   }
-
   void _startVisualizerAnimation() {
-    if (_animationTimer != null) return;
+    if (_animationTimer != null || !mounted) return;
     
     _animationTimer = Timer.periodic(Duration(milliseconds: 50), (timer) {
       if (mounted && _playerData.player.state.playing) {
         _updateFrequencyData();
         _visualizerController.forward(from: 0);
+      } else if (!mounted) {
+        // Cancel timer if widget is disposed
+        timer.cancel();
+        _animationTimer = null;
       }
     });
   }
@@ -388,27 +392,36 @@ class _AudioVisualizerTileState extends State<AudioVisualizerTile>
     String twoDigitSeconds = twoDigits(duration.inSeconds.remainder(60));
     return '${twoDigits(duration.inHours)}:$twoDigitMinutes:$twoDigitSeconds';
   }
-
   @override
   void didUpdateWidget(AudioVisualizerTile oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.url != widget.url) {
+      // Cancel existing subscriptions before reinitializing
+      _positionSubscription?.cancel();
+      _playingSubscription?.cancel();
+      
       _position = Duration.zero;
       _playerData = MediaPlayerManager().getPlayerFor(widget.url);
       _initializePlayer();
     }
   }
-
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    
+    // Cancel stream subscriptions to prevent memory leaks
+    _positionSubscription?.cancel();
+    _playingSubscription?.cancel();
+    
+    // Stop and dispose animation controllers
     _visualizerController.dispose();
     _colorController.dispose();
     _stopVisualizerAnimation();
     
     try {
-      _playerData.player.pause();
-      print('AudioVisualizerTile for ${widget.url} disposed');
+      // Stop audio playback when widget is disposed
+      _playerData.player.stop();
+      print('AudioVisualizerTile for ${widget.url} disposed and audio stopped');
     } catch (e) {
       print('Error cleaning up AudioVisualizerTile resources: $e');
     }

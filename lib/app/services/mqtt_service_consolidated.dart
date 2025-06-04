@@ -21,6 +21,7 @@ import 'media_recovery_service.dart';
 import 'media_control_service.dart'; // Import the MediaControlService
 import 'screenshot_service.dart';
 import 'audio_service.dart'; // Import the AudioService
+import 'person_detection_service.dart';
 import '../controllers/halo_effect_controller.dart';
 import '../controllers/window_halo_controller.dart';
 import '../widgets/halo_effect/halo_effect_overlay.dart'; // Import for HaloPulseMode enum
@@ -910,6 +911,12 @@ class MqttService extends GetxService {
       return;
     }
 
+    // --- person_detection command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'person_detection') {
+      _processPersonDetectionCommand(cmdObj);
+      return;
+    }
+
     // --- screenshot command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'screenshot') {
       _processScreenshotCommand(cmdObj);
@@ -1537,6 +1544,95 @@ class MqttService extends GetxService {
       retain: true,
     );
     print('MQTT DEBUG: Published value for $name');
+  }
+
+  /// Process person detection command
+  void _processPersonDetectionCommand(Map<dynamic, dynamic> cmdObj) {
+    print('👤 [MQTT] Processing person detection command');
+    try {
+      // Check if action is specified (enable/disable/toggle/status)
+      final action = cmdObj['action']?.toString().toLowerCase() ?? 'toggle';
+      
+      // Try to find the PersonDetectionService
+      try {
+        final personDetectionService = Get.find<PersonDetectionService>();
+        
+        switch (action) {
+          case 'enable':
+            personDetectionService.isEnabled.value = true;
+            print('👤 [MQTT] Person detection enabled via MQTT');
+            break;
+          case 'disable':
+            personDetectionService.isEnabled.value = false;
+            print('👤 [MQTT] Person detection disabled via MQTT');
+            break;
+          case 'toggle':
+            personDetectionService.toggleEnabled();
+            print('👤 [MQTT] Person detection toggled via MQTT');
+            break;
+          case 'status':
+            // Just send status, don't change anything
+            print('👤 [MQTT] Person detection status requested via MQTT');
+            break;
+          default:
+            print('⚠️ [MQTT] Unknown person detection action: $action');
+            return;
+        }
+        
+        // Get current status for response
+        final status = personDetectionService.getStatus();
+        
+        // Send confirmation message if requested
+        if (cmdObj['confirm'] == true) {
+          try {
+            final confirmTopic = 'kingkiosk/${deviceName.value}/person_detection/status';
+            final builder = MqttClientPayloadBuilder();
+            builder.addString(jsonEncode({
+              'status': 'success',
+              'action': action,
+              'person_detection': status,
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+            _client?.publishMessage(confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+            print('👤 [MQTT] Sent person detection confirmation message');
+          } catch (e) {
+            print('❌ Error sending person detection confirmation message: $e');
+          }
+        }
+        
+        // Always publish current status to dedicated topic
+        try {
+          final statusTopic = 'kingkiosk/${deviceName.value}/person_presence';
+          publishJsonToTopic(statusTopic, status);
+          print('👤 [MQTT] Published person detection status');
+        } catch (e) {
+          print('❌ Error publishing person detection status: $e');
+        }
+        
+      } catch (e) {
+        print('❌ PersonDetectionService not available: $e');
+        
+        // Send error response if confirmation was requested
+        if (cmdObj['confirm'] == true) {
+          try {
+            final confirmTopic = 'kingkiosk/${deviceName.value}/person_detection/status';
+            final builder = MqttClientPayloadBuilder();
+            builder.addString(jsonEncode({
+              'status': 'error',
+              'action': action,
+              'error': 'PersonDetectionService not available',
+              'timestamp': DateTime.now().toIso8601String(),
+            }));
+            _client?.publishMessage(confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+            print('👤 [MQTT] Sent person detection error message');
+          } catch (e) {
+            print('❌ Error sending person detection error message: $e');
+          }
+        }
+      }
+    } catch (e) {
+      print('❌ Error processing person detection command: $e');
+    }
   }
 
   /// Process screenshot command

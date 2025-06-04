@@ -185,16 +185,27 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
           ],
         ));
   }
-
   Widget _buildConnectionIndicator(SettingsControllerFixed controller) {
-    return Obx(() => Container(
-          width: 12,
-          height: 12,
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: controller.mqttConnected.value ? Colors.green : Colors.red,
-          ),
-        ));
+    return Obx(() {
+      // Force refresh connection status when building indicator
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        controller.refreshMqttConnectionStatus();
+      });
+      
+      return Container(
+        width: 12,
+        height: 12,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          color: controller.mqttConnected.value ? Colors.green : Colors.red,
+        ),
+        child: Tooltip(
+          message: controller.mqttConnected.value 
+            ? 'MQTT Connected' 
+            : 'MQTT Disconnected',
+        ),
+      );
+    });
   }
 
   Widget _buildRepublishSensorsButton(SettingsControllerFixed controller) {

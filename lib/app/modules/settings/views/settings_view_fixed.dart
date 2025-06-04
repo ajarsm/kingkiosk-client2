@@ -118,6 +118,14 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               ],
             ),
 
+            // Vision & Detection Settings
+            _buildSection(
+              title: 'Vision & Detection',
+              children: [
+                _buildPersonDetectionToggle(),
+              ],
+            ),
+
             // Security Settings
             _buildSection(
               title: 'Security',
@@ -347,6 +355,32 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildPersonDetectionToggle() {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+      child: ListTile(
+        leading: ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            colors: [Colors.blueAccent, Colors.cyanAccent],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Icon(Icons.visibility, color: Colors.white),
+        ),
+        title: Text('Person Detection',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text('Enable or disable person detection'),
+        trailing: Obx(() => Switch(
+              value: controller.personDetectionEnabled.value,
+              onChanged: (_) => controller.togglePersonDetection(),
+            )),
+        onTap: () => controller.togglePersonDetection(),
       ),
     );
   }

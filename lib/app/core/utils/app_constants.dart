@@ -11,6 +11,9 @@ class AppConstants {
   static const String keyShowSystemInfo = 'showSystemInfo';
   static const String keyKioskStartUrl = 'kioskStartUrl';
 
+  // Person Detection Keys
+  static const String keyPersonDetectionEnabled = 'personDetectionEnabled';
+
   // MQTT Keys
   static const String keyMqttEnabled = 'mqttEnabled';
   static const String keyMqttBrokerUrl = 'mqttBrokerUrl';
