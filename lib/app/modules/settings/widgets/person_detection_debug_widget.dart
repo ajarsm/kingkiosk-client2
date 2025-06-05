@@ -25,9 +25,10 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                 onPressed: () {
                   personDetectionService.toggleDebugVisualization();
                 },
-                tooltip: personDetectionService.isDebugVisualizationEnabled.value
-                    ? 'Disable Debug Mode'
-                    : 'Enable Debug Mode',
+                tooltip:
+                    personDetectionService.isDebugVisualizationEnabled.value
+                        ? 'Disable Debug Mode'
+                        : 'Enable Debug Mode',
               )),
         ],
       ),
@@ -115,14 +116,16 @@ class PersonDetectionDebugWidget extends StatelessWidget {
       ),
     );
   }
-  Widget _buildDebugVisualization(PersonDetectionService service, BuildContext context) {
+
+  Widget _buildDebugVisualization(
+      PersonDetectionService service, BuildContext context) {
     return Column(
       children: [
         // Status bar
         Container(
           width: double.infinity,
           padding: EdgeInsets.all(16),
-          color: Theme.of(context).brightness == Brightness.dark 
+          color: Theme.of(context).brightness == Brightness.dark
               ? Colors.blue.shade900.withOpacity(0.3)
               : Colors.blue.shade50,
           child: Obx(() => Column(
@@ -148,10 +151,14 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text('Frames Processed: ${service.framesProcessed.value}'),
-                            Text('Person Present: ${service.isPersonPresent.value ? "YES" : "NO"}'),
-                            Text('Confidence: ${service.confidence.value.toStringAsFixed(3)}'),
-                            Text('Detection Boxes: ${service.latestDetectionBoxes.length}'),
+                            Text(
+                                'Frames Processed: ${service.framesProcessed.value}'),
+                            Text(
+                                'Person Present: ${service.isPersonPresent.value ? "YES" : "NO"}'),
+                            Text(
+                                'Confidence: ${service.confidence.value.toStringAsFixed(3)}'),
+                            Text(
+                                'Detection Boxes: ${service.latestDetectionBoxes.length}'),
                           ],
                         ),
                       ),
@@ -165,8 +172,11 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                                 Icon(
                                   Icons.videocam,
                                   size: 16,
-                                  color: service.debugVisualizationFrame.value != null 
-                                      ? Colors.green : Colors.grey,
+                                  color:
+                                      service.debugVisualizationFrame.value !=
+                                              null
+                                          ? Colors.green
+                                          : Colors.grey,
                                 ),
                                 SizedBox(width: 4),
                                 Text(
@@ -176,12 +186,14 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                               ],
                             ),
                             Text(
-                              service.debugVisualizationFrame.value != null 
-                                  ? 'Test Data (Synthetic)' 
+                              service.debugVisualizationFrame.value != null
+                                  ? 'Test Data (Synthetic)'
                                   : 'No frames available',
                               style: TextStyle(
-                                color: service.debugVisualizationFrame.value != null 
-                                    ? Colors.orange : Colors.grey,
+                                color: service.debugVisualizationFrame.value !=
+                                        null
+                                    ? Colors.orange
+                                    : Colors.grey,
                                 fontSize: 12,
                               ),
                             ),
@@ -213,19 +225,26 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                     ],
                   ),
                 ],
-              )),        ),
-        
+              )),
+        ),
+
         // WebRTC Connection Status
-        Obx(() => _buildWebRTCConnectionStatus(service, context)),
-        
+        _buildWebRTCConnectionStatus(service, context),
+
         // Camera feed with bounding boxes
         Expanded(
-          child: Obx(() => _buildCameraWithBoxes(service, context)),
+          child: Obx(() => _buildCameraWithBoxes(
+              service.debugVisualizationFrame.value,
+              List<DetectionBox>.from(service.latestDetectionBoxes),
+              service,
+              context)),
         ),
       ],
-    );  }
+    );
+  }
 
-  Widget _buildWebRTCConnectionStatus(PersonDetectionService service, BuildContext context) {
+  Widget _buildWebRTCConnectionStatus(
+      PersonDetectionService service, BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       child: Card(
@@ -259,9 +278,12 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildStatusItem('Native Plugins', 'Available', Colors.green),
-                        _buildStatusItem('Texture Extraction', 'Mock Mode', Colors.orange),
-                        _buildStatusItem('Frame Capture', 'Test Data', Colors.orange),
+                        _buildStatusItem(
+                            'Native Plugins', 'Available', Colors.green),
+                        _buildStatusItem(
+                            'Texture Extraction', 'Mock Mode', Colors.orange),
+                        _buildStatusItem(
+                            'Frame Capture', 'Test Data', Colors.orange),
                       ],
                     ),
                   ),
@@ -270,9 +292,11 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _buildStatusItem('Camera Stream', 'Not Connected', Colors.grey),
+                        _buildStatusItem(
+                            'Camera Stream', 'Not Connected', Colors.grey),
                         _buildStatusItem('Real Frames', 'Pending', Colors.grey),
-                        _buildStatusItem('Production Ready', '95%', Colors.blue),
+                        _buildStatusItem(
+                            'Production Ready', '95%', Colors.blue),
                       ],
                     ),
                   ),
@@ -288,7 +312,8 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                 ),
                 child: Row(
                   children: [
-                    Icon(Icons.info_outline, size: 16, color: Colors.orange.shade700),
+                    Icon(Icons.info_outline,
+                        size: 16, color: Colors.orange.shade700),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
@@ -334,10 +359,11 @@ class PersonDetectionDebugWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildCameraWithBoxes(PersonDetectionService service, BuildContext context) {
-    final frameData = service.debugVisualizationFrame.value;
-    final detectionBoxes = service.latestDetectionBoxes;
-
+  Widget _buildCameraWithBoxes(
+      String? frameData,
+      List<DetectionBox> detectionBoxes,
+      PersonDetectionService service,
+      BuildContext context) {
     if (frameData == null || frameData.isEmpty) {
       return Center(
         child: Column(
@@ -407,7 +433,8 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                             SizedBox(height: 8),
                             Text(
                               'Image decode error: ${error.toString()}',
-                              style: TextStyle(fontSize: 12, color: Colors.grey),
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey),
                               textAlign: TextAlign.center,
                             ),
                           ],
@@ -418,12 +445,12 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                 ),
               ),
             ),
-          ),          // Bounding boxes overlay - positioned over the centered image
+          ), // Bounding boxes overlay - positioned over the centered image
           Center(
             child: AspectRatio(
               aspectRatio: 1.0, // Same aspect ratio as the image
               child: CustomPaint(
-                painter: BoundingBoxPainter(detectionBoxes.toList(), context),
+                painter: BoundingBoxPainter(detectionBoxes, context),
               ),
             ),
           ),
@@ -439,7 +466,8 @@ class PersonDetectionDebugWidget extends StatelessWidget {
           ],
         ),
       );
-    }  }
+    }
+  }
 }
 
 class BoundingBoxPainter extends CustomPainter {
@@ -464,7 +492,8 @@ class BoundingBoxPainter extends CustomPainter {
 
     // Choose color based on class and confidence
     Color boxColor;
-    if (box.classId == 1) { // Person
+    if (box.classId == 1) {
+      // Person
       if (box.confidence > 0.7) {
         boxColor = Colors.green;
       } else if (box.confidence > 0.5) {
@@ -483,14 +512,17 @@ class BoundingBoxPainter extends CustomPainter {
       ..strokeWidth = 3.0;
 
     final rect = Rect.fromLTRB(left, top, right, bottom);
-    canvas.drawRect(rect, paint);    // Prepare label text
-    final labelText = '${box.className ?? 'Class ${box.classId}'} ${(box.confidence * 100).toInt()}%';
-    
+    canvas.drawRect(rect, paint); // Prepare label text
+    final labelText =
+        '${box.className ?? 'Class ${box.classId}'} ${(box.confidence * 100).toInt()}%';
+
     // Get theme-aware colors - ensure contrast
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final textColor = isDark ? Colors.white : Colors.black;
-    final backgroundColor = isDark ? Colors.black.withOpacity(0.8) : Colors.white.withOpacity(0.9);
-    final shadowColor = isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.8);
+    final backgroundColor =
+        isDark ? Colors.black.withOpacity(0.8) : Colors.white.withOpacity(0.9);
+    final shadowColor =
+        isDark ? Colors.black.withOpacity(0.7) : Colors.white.withOpacity(0.8);
 
     final textPainter = TextPainter(
       text: TextSpan(
@@ -518,7 +550,7 @@ class BoundingBoxPainter extends CustomPainter {
     textPainter.layout();
 
     // Calculate label position (above the box, or below if near top)
-    final labelTop = top > textPainter.height + 8 
+    final labelTop = top > textPainter.height + 8
         ? top - textPainter.height - 8
         : bottom + 8;
 

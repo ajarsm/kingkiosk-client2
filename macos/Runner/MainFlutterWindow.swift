@@ -8,6 +8,7 @@ class MainFlutterWindow: NSWindow {
     self.contentViewController = flutterViewController
     self.setFrame(windowFrame, display: true)
 
+    // Register all generated plugins
     RegisterGeneratedPlugins(registry: flutterViewController)
 
     super.awakeFromNib()

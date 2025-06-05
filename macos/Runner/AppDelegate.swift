@@ -6,11 +6,12 @@ class AppDelegate: FlutterAppDelegate {
   override func applicationDidFinishLaunching(_ notification: Notification) {
     super.applicationDidFinishLaunching(notification)
     
-    // Register FrameCapturePlugin
-    guard let registrar = mainFlutterWindow?.registrar(forPlugin: "FrameCapturePlugin") else {
-      fatalError("Failed to get registrar for FrameCapturePlugin")
+    // Register the FrameCapturePlugin manually since it's not in GeneratedPluginRegistrant
+    if let controller = mainFlutterWindow?.contentViewController as? FlutterViewController {
+      let registrar = controller.registrar(forPlugin: "FrameCapturePlugin")
+      FrameCapturePlugin.register(with: registrar)
+      print("✅ FrameCapturePlugin registered successfully")
     }
-    FrameCapturePlugin.register(with: registrar)
   }
 
   override func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
