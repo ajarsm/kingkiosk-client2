@@ -2,8 +2,8 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import '../../../notification_system/notification_system.dart';
-import '../../../notification_system/services/alert_service.dart';
+import '../../notification_system/notification_system.dart';
+import '../../notification_system/services/alert_service.dart';
 
 /// Helper class to handle MQTT notification commands
 class MqttNotificationHandler {

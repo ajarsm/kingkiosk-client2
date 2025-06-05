@@ -3,7 +3,9 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
 import '../../../services/media_device_service.dart';
 import '../../../services/media_hardware_detection.dart';
+import '../../../services/person_detection_service.dart';
 import '../widgets/camera_preview_widget.dart';
+import '../widgets/person_detection_debug_widget.dart';
 
 class MediaSettingsView extends GetView<SettingsControllerFixed> {
   const MediaSettingsView({Key? key}) : super(key: key);
@@ -29,6 +31,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
             _buildDeviceInfoSection(),
             SizedBox(height: 24),
             if (controller.lastMediaError.value != null) _buildErrorSection(),
+            SizedBox(height: 24),
+            _buildPersonDetectionSection(),
           ],
         ),
       ),
@@ -146,6 +150,7 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
       ),
     );
   }
+
   Widget _buildMediaDevicesList() {
     try {
       Get.find<MediaDeviceService>(); // Verify service is available
@@ -166,7 +171,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
     } catch (e) {
       // Show error if MediaDeviceService is not available
       return Container(
-        padding: const EdgeInsets.all(16.0),        decoration: BoxDecoration(
+        padding: const EdgeInsets.all(16.0),
+        decoration: BoxDecoration(
           color: Colors.orange.withValues(alpha: 0.1),
           borderRadius: BorderRadius.circular(8.0),
           border: Border.all(color: Colors.orange.withValues(alpha: 0.3)),
@@ -308,7 +314,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                     decoration: BoxDecoration(
                       borderRadius: BorderRadius.circular(8),
                       border: Border.all(color: Colors.grey.shade300),
-                    ),                    child: ClipRRect(
+                    ),
+                    child: ClipRRect(
                       borderRadius: BorderRadius.circular(8),
                       child: CameraPreviewWidget(
                         deviceId: selectedDevice.deviceId,
@@ -527,6 +534,167 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                 foregroundColor: Colors.red,
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonDetectionSection() {
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.visibility, color: Colors.blue),
+                SizedBox(width: 8),
+                Text(
+                  'Person Detection',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: 16),
+            Text(
+              'Enable person presence detection using the camera. When enabled, the system will monitor for people in the camera view.',
+              style: TextStyle(fontSize: 14),
+            ),
+            SizedBox(height: 16),            Obx(() => SwitchListTile(
+                  title: Text('Enable Person Detection'),
+                  subtitle: Text(controller.personDetectionEnabled.value
+                      ? 'Person detection is active'
+                      : 'Person detection is disabled'),
+                  value: controller.personDetectionEnabled.value,
+                  onChanged: (_) {
+                    controller.togglePersonDetection();
+                  },
+                  secondary: Icon(
+                    controller.personDetectionEnabled.value
+                        ? Icons.visibility
+                        : Icons.visibility_off,
+                    color: controller.personDetectionEnabled.value
+                        ? Colors.green
+                        : Colors.grey,
+                  ),
+                )),
+            SizedBox(height: 16),            // Debug visualization button - only show when person detection is enabled
+            Obx(() => controller.personDetectionEnabled.value
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          icon: Icon(Icons.bug_report, color: Colors.orange),
+                          label: Text('Debug Visualization'),
+                          onPressed: () {
+                            Get.to(() => PersonDetectionDebugWidget());
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.orange,
+                            side: BorderSide(color: Colors.orange),
+                          ),
+                        ),
+                      ),
+                    ],
+                  )
+                : SizedBox.shrink()),            // Status information
+            Obx(() {
+              if (!controller.personDetectionEnabled.value) {
+                return SizedBox.shrink();
+              }
+
+              try {
+                final personDetectionService = Get.find<PersonDetectionService>();
+                return Container(
+                  margin: EdgeInsets.only(top: 16),
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Detection Status',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: Colors.blue.shade800,
+                        ),
+                      ),
+                      SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Icon(
+                            personDetectionService.isPersonPresent.value
+                                ? Icons.person
+                                : Icons.person_outline,
+                            color: personDetectionService.isPersonPresent.value
+                                ? Colors.green
+                                : Colors.grey,
+                            size: 16,
+                          ),
+                          SizedBox(width: 8),
+                          Text(
+                            personDetectionService.isPersonPresent.value
+                                ? 'Person detected'
+                                : 'No person detected',
+                            style: TextStyle(
+                              color: Colors.blue.shade700,
+                            ),
+                          ),
+                        ],
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        'Confidence: ${(personDetectionService.confidence.value * 100).toStringAsFixed(1)}%',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade600,
+                        ),
+                      ),
+                      Text(
+                        'Frames processed: ${personDetectionService.framesProcessed.value}',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.blue.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              } catch (e) {
+                return Container(
+                  margin: EdgeInsets.only(top: 16),
+                  padding: EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.warning, color: Colors.orange, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Person detection service not available',
+                          style: TextStyle(color: Colors.orange.shade800),
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              }
+            }),
           ],
         ),
       ),

@@ -113,16 +113,7 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                     trailing: Icon(Icons.arrow_forward_ios_rounded,
                         color: Colors.blueGrey.shade300),
                     onTap: () => Get.to(() => MediaSettingsView()),
-                  ),
-                ),
-              ],
-            ),
-
-            // Vision & Detection Settings
-            _buildSection(
-              title: 'Vision & Detection',
-              children: [
-                _buildPersonDetectionToggle(),
+                  ),                ),
               ],
             ),
 
@@ -350,37 +341,10 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                   controller.setSettingsPin(value);
                 }
               },
-            ),
-            Text('Changing this PIN will be required to unlock settings.',
+            ),            Text('Changing this PIN will be required to unlock settings.',
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),
-      ),
-    );
-  }
-
-  Widget _buildPersonDetectionToggle() {
-    return Card(
-      elevation: 8,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-      child: ListTile(
-        leading: ShaderMask(
-          shaderCallback: (rect) => LinearGradient(
-            colors: [Colors.blueAccent, Colors.cyanAccent],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-          ).createShader(rect),
-          child: Icon(Icons.visibility, color: Colors.white),
-        ),
-        title: Text('Person Detection',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('Enable or disable person detection'),
-        trailing: Obx(() => Switch(
-              value: controller.personDetectionEnabled.value,
-              onChanged: (_) => controller.togglePersonDetection(),
-            )),
-        onTap: () => controller.togglePersonDetection(),
       ),
     );
   }

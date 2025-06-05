@@ -23,6 +23,7 @@ import '../../services/media_hardware_detection.dart';
 import '../../services/service_initializer.dart';
 import '../../services/person_detection_service.dart';
 import '../../services/media_device_service.dart';
+import '../../services/webrtc_texture_bridge.dart';
 import '../../core/utils/app_constants.dart';
 
 /// Memory-optimized binding that loads only essential services at startup
@@ -201,21 +202,32 @@ class MemoryOptimizedBinding extends Bindings {
       }, fenix: true);    } else {
       print('⏭️ AI disabled in settings, skipping AI Assistant service');
     }
-  }
-    /// Conditionally load Person Detection service with proper dependencies
+  }    /// Conditionally load Person Detection service with proper dependencies
   void _conditionallyLoadPersonDetection(StorageService storageService) {
     final personDetectionEnabled = storageService.read<bool>(AppConstants.keyPersonDetectionEnabled) ?? false;
     
     if (personDetectionEnabled) {
       print('👤 Person detection enabled - setting up lazy loading for PersonDetectionService');
-      Get.lazyPut<PersonDetectionService>(() {
-        final personDetectionService = PersonDetectionService();
+      
+      // Load WebRTC Texture Bridge first (required for real camera frame access)
+      Get.lazyPut<WebRTCTextureBridge>(() {
+        final bridge = WebRTCTextureBridge();
+        // Note: init() is async, handle when service is accessed
+        return bridge;
+      }, fenix: true);
+      
+      Get.lazyPut<PersonDetectionService>(() {        final personDetectionService = PersonDetectionService();
         // Note: init() is async, handle when service is accessed
         return personDetectionService;
       }, fenix: true);
-        // Trigger immediate access to start the service since it's enabled
-      Future.delayed(Duration(seconds: 2), () {
-        try {
+      
+      // Trigger immediate access to start the service since it's enabled
+      Future.delayed(Duration(seconds: 2), () {        try {
+          // Initialize WebRTC bridge first
+          Get.find<WebRTCTextureBridge>();
+          print('🌉 WebRTC texture bridge initialized');
+          
+          // Then initialize person detection
           Get.find<PersonDetectionService>();
           print('👤 Person detection service initialized and ready');
         } catch (e) {

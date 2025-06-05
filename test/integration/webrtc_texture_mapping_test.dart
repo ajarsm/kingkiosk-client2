@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import '../../lib/app/services/person_detection_service.dart';
 import '../../lib/app/services/storage_service.dart';
+import '../../lib/app/services/webrtc_texture_bridge.dart';
 import '../../lib/app/core/platform/frame_capture_platform.dart';
 import '../../lib/app/core/utils/app_constants.dart';
 
@@ -12,7 +13,9 @@ class MockStorageService extends GetxService implements StorageService {
   Map<String, dynamic> _storage = {};
   
   @override
-  Future<void> init() async {}
+  Future<StorageService> init() async {
+    return this;
+  }
   
   @override
   T? read<T>(String key) => _storage[key] as T?;
@@ -27,15 +30,25 @@ class MockStorageService extends GetxService implements StorageService {
   Future<void> erase() async => _storage.clear();
   
   @override
-  bool hasData(String key) => _storage.containsKey(key);
+  void debugStorageStatus() {
+    print('Mock storage contains ${_storage.length} items');
+  }
+  
+  @override
+  Future<void> flush() async {
+    // Mock implementation - no action needed
+  }
+  
+  @override
+  void listenKey(String key, Function(dynamic) callback) {
+    // Mock implementation - no action needed for tests
+  }
 }
 
 void main() {
   group('WebRTC Texture Mapping Integration Tests', () {
     late MockStorageService mockStorageService;
-    late PersonDetectionService personDetectionService;
-
-    setUp(() {
+    late PersonDetectionService personDetectionService;    setUp(() {
       mockStorageService = MockStorageService();
       
       // Reset GetX state
@@ -43,6 +56,9 @@ void main() {
       
       // Register mock storage service
       Get.put<StorageService>(mockStorageService);
+      
+      // Register WebRTC Texture Bridge (required for PersonDetectionService)
+      Get.put<WebRTCTextureBridge>(WebRTCTextureBridge());
       
       // Mock storage service responses
       mockStorageService.write(AppConstants.keyPersonDetectionEnabled, true);
