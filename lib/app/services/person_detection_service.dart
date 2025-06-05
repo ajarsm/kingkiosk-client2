@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:typed_data';
-import 'dart:math' as math;
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:get/get.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
@@ -11,6 +12,133 @@ import 'storage_service.dart';
 import 'mqtt_service_consolidated.dart';
 import 'media_device_service.dart';
 
+/// Data structure for passing inference data to background processing
+class InferenceData {
+  final Object inputData;
+  final int personClassId;
+  final double confidenceThreshold;
+  final Uint8List modelBytes;
+
+  InferenceData({
+    required this.inputData,
+    required this.personClassId,
+    required this.confidenceThreshold,
+    required this.modelBytes,
+  });
+}
+
+/// Result structure for inference results
+class InferenceResult {
+  final double maxPersonConfidence;
+  final int numDetections;
+  final String? error;
+
+  InferenceResult({
+    required this.maxPersonConfidence,
+    required this.numDetections,
+    this.error,
+  });
+}
+
+/// Background inference function that runs in a separate isolate
+Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
+  try {
+    // Load the interpreter from model bytes in the background isolate
+    final interpreter = Interpreter.fromBuffer(data.modelBytes);
+    
+    // Get output tensor shapes to determine the correct structure
+    final outputShapes = <List<int>>[];
+    for (int i = 0; i < interpreter.getOutputTensors().length; i++) {
+      outputShapes.add(interpreter.getOutputTensor(i).shape);
+    }
+    
+    // For SSD MobileNet models, we typically have 4 outputs:
+    // 0: detection_boxes [1, num_detections, 4] 
+    // 1: detection_classes [1, num_detections]
+    // 2: detection_scores [1, num_detections]  
+    // 3: num_detections [1]
+    
+    final outputTensors = <int, Object>{};
+    
+    if (outputShapes.length >= 4) {
+      // Standard SSD MobileNet format
+      final numDetections = outputShapes[0][1]; // Get num_detections from boxes shape
+      
+      outputTensors[0] = List.generate(1, (_) => List.generate(numDetections, (_) => List.filled(4, 0.0))); // boxes
+      outputTensors[1] = List.generate(1, (_) => List.filled(numDetections, 0.0)); // classes
+      outputTensors[2] = List.generate(1, (_) => List.filled(numDetections, 0.0)); // scores
+      outputTensors[3] = [0.0]; // num_detections
+    } else {
+      // Fallback for simpler models - use actual output shapes
+      for (int i = 0; i < outputShapes.length; i++) {
+        final shape = outputShapes[i];
+        if (shape.length == 3 && shape[2] == 4) {
+          // This looks like detection boxes [1, num_detections, 4]
+          outputTensors[i] = List.generate(shape[0], (_) => List.generate(shape[1], (_) => List.filled(shape[2], 0.0)));
+        } else if (shape.length == 2) {
+          // This looks like scores or classes [1, num_detections]
+          outputTensors[i] = List.generate(shape[0], (_) => List.filled(shape[1], 0.0));
+        } else if (shape.length == 1) {
+          // This looks like num_detections [1]
+          outputTensors[i] = List.filled(shape[0], 0.0);
+        }
+      }
+    }
+    
+    // Run inference (this heavy computation is now in background)
+    interpreter.runForMultipleInputs([data.inputData], outputTensors);
+    
+    // Parse results for person detection
+    double maxPersonConfidence = 0.0;
+    int totalDetections = 0;
+    
+    // Handle different output formats
+    if (outputTensors.containsKey(2) && outputTensors.containsKey(1)) {
+      // Standard SSD format with separate scores and classes
+      final scores = outputTensors[2] as List<List<double>>;
+      final classes = outputTensors[1] as List<List<double>>;
+      
+      // Get number of detections
+      if (outputTensors.containsKey(3)) {
+        totalDetections = (outputTensors[3] as List<double>)[0].toInt();
+      } else {
+        totalDetections = scores[0].length;
+      }
+      
+      for (int i = 0; i < totalDetections && i < scores[0].length; i++) {
+        final classId = classes[0][i].toInt();
+        final score = scores[0][i];
+        
+        if (classId == data.personClassId && score > maxPersonConfidence) {
+          maxPersonConfidence = score;
+        }
+      }
+    } else if (outputTensors.containsKey(0)) {
+      // Simpler format - check if first output contains confidence scores
+      final output = outputTensors[0];
+      if (output is List<List<double>> && output.isNotEmpty) {
+        // Assume first output contains confidence scores
+        maxPersonConfidence = output[0].isNotEmpty ? output[0][0] : 0.0;
+        totalDetections = 1;
+      }
+    }
+    
+    interpreter.close();
+    
+    return InferenceResult(
+      maxPersonConfidence: maxPersonConfidence,
+      numDetections: totalDetections,
+    );
+    
+  } catch (e) {
+    return InferenceResult(
+      maxPersonConfidence: 0.0,
+      numDetections: 0,
+      error: e.toString(),
+    );
+  }
+}
+
 /// Service for person presence detection using TensorFlow Lite
 class PersonDetectionService extends GetxService {
   // Dependencies
@@ -18,6 +146,7 @@ class PersonDetectionService extends GetxService {
   
   // TensorFlow Lite interpreter
   Interpreter? _interpreter;
+  Uint8List? _modelBytes; // Store model bytes for background processing
   
   // Observable properties
   final RxBool isEnabled = false.obs;
@@ -26,22 +155,27 @@ class PersonDetectionService extends GetxService {
   final RxString lastError = ''.obs;
   final RxDouble confidence = 0.0.obs;
   final RxInt framesProcessed = 0.obs;
-    // Processing configuration for SSD MobileNet
-  final int inputWidth = 300;
-  final int inputHeight = 300;
+  
+  // Processing configuration for SSD MobileNet
+  final int inputWidth = 300; // Matches your current model requirements
+  final int inputHeight = 300; // Matches your current model requirements
   final int numChannels = 3;
   final double confidenceThreshold = 0.5; // Threshold for person detection
-  final int personClassId = 1; // Person class ID in COCO dataset// Frame processing timer and stream
+  final int personClassId = 1; // Person class ID in COCO dataset
+
+  // Frame processing timer and stream
   Timer? _processingTimer;
   webrtc.MediaStream? _cameraStream;
   webrtc.RTCVideoRenderer? _videoRenderer;
-    // Platform support flags
+  
+  // Platform support flags
   bool _isFrameCaptureSupported = false;
   int? _rendererTextureId;
   
-  // Processing rate configuration
-  final Duration processingInterval = Duration(milliseconds: 500); // Process 2 frames per second
-    @override
+  // Processing rate configuration - optimized for performance
+  final Duration processingInterval = Duration(milliseconds: 2000); // Process 0.5 frames per second
+  
+  @override
   Future<void> onInit() async {
     super.onInit();
     
@@ -51,7 +185,8 @@ class PersonDetectionService extends GetxService {
     
     // Load settings
     isEnabled.value = _storageService.read<bool>(AppConstants.keyPersonDetectionEnabled) ?? false;
-      // Initialize if enabled
+    
+    // Initialize if enabled
     if (isEnabled.value) {
       final modelInitialized = await _initializeModel();
       if (modelInitialized) {
@@ -64,7 +199,8 @@ class PersonDetectionService extends GetxService {
         }
       }
     }
-      // Listen for setting changes
+    
+    // Listen for setting changes
     ever(isEnabled, (bool enabled) async {
       _storageService.write(AppConstants.keyPersonDetectionEnabled, enabled);
       if (enabled) {
@@ -97,6 +233,10 @@ class PersonDetectionService extends GetxService {
       
       // Try to load the TensorFlow Lite model from assets
       try {
+        // Load model as bytes for background processing
+        final modelData = await rootBundle.load('assets/models/person_detect.tflite');
+        _modelBytes = modelData.buffer.asUint8List();
+        
         _interpreter = await Interpreter.fromAsset('assets/models/person_detect.tflite');
         
         // Verify model input/output shape
@@ -136,7 +276,9 @@ class PersonDetectionService extends GetxService {
     } finally {
       isProcessing.value = false;
     }
-  }  /// Start person detection with camera access
+  }
+  
+  /// Start person detection with camera access
   Future<bool> startDetection({String? deviceId}) async {
     if (!isEnabled.value) {
       lastError.value = 'Person detection is disabled';
@@ -149,7 +291,8 @@ class PersonDetectionService extends GetxService {
       if (!initialized) return false;
     }
 
-    try {      // Get device ID from MediaDeviceService if not provided
+    try {
+      // Get device ID from MediaDeviceService if not provided
       String? actualDeviceId = deviceId;
       if (actualDeviceId == null || actualDeviceId.isEmpty) {
         try {
@@ -171,14 +314,14 @@ class PersonDetectionService extends GetxService {
         _videoRenderer = webrtc.RTCVideoRenderer();
         await _videoRenderer!.initialize();
       }
-
+      
       // Configure camera constraints for efficient processing
       final Map<String, dynamic> mediaConstraints = {
         'audio': false,
         'video': {
-          'width': {'ideal': 640},
-          'height': {'ideal': 480},
-          'frameRate': {'ideal': 15}, // Lower frame rate for efficiency
+          'width': {'ideal': 320}, // Lower resolution for better performance
+          'height': {'ideal': 240}, // Lower resolution for better performance
+          'frameRate': {'ideal': 10}, // Even lower frame rate for efficiency
           'facingMode': 'user', // Default to front camera
         }
       };
@@ -231,7 +374,8 @@ class PersonDetectionService extends GetxService {
       return false;
     }
   }
-    /// Stop person detection
+  
+  /// Stop person detection
   void _stopDetection() {
     _processingTimer?.cancel();
     _processingTimer = null;
@@ -263,7 +407,8 @@ class PersonDetectionService extends GetxService {
       _processCurrentFrame();
     });
   }
-    /// Process the current camera frame for person detection
+  
+  /// Process the current camera frame for person detection
   Future<void> _processCurrentFrame() async {
     if (_videoRenderer == null || isProcessing.value) {
       return;
@@ -273,7 +418,8 @@ class PersonDetectionService extends GetxService {
       isProcessing.value = true;
       
       // If TensorFlow Lite interpreter is available, use real detection
-      if (_interpreter != null) {        // Capture frame from video renderer
+      if (_interpreter != null) {
+        // Capture frame from video renderer
         final frameData = await _captureFrame();
         if (frameData == null) {
           if (framesProcessed.value % 20 == 0) {
@@ -286,72 +432,57 @@ class PersonDetectionService extends GetxService {
         if (framesProcessed.value % 50 == 0) {
           print('📷 Frame captured successfully: ${frameData.length} bytes (${inputWidth}x${inputHeight})');
         }
+          // Preprocess frame for model input
+        final inputData = _preprocessFrame(frameData);
         
-        // Preprocess frame for model input
-        final inputData = _preprocessFrame(frameData);        // Run inference with proper input/output tensors for SSD MobileNet
-        final inputTensor = inputData.reshape([1, inputHeight, inputWidth, numChannels]);
-        
-        // SSD MobileNet has multiple outputs indexed by integer
-        final outputTensors = <int, Object>{};
-        
-        // Prepare output tensors (SSD MobileNet standard outputs)
-        final detectionBoxes = List.filled(40, 0.0).reshape([1, 10, 4]); // 10 boxes with 4 coordinates each
-        final detectionClasses = List.filled(10, 0.0).reshape([1, 10]); // Max 10 detections
-        final detectionScores = List.filled(10, 0.0).reshape([1, 10]);
-        final numDetections = List.filled(1, 0.0).reshape([1]);
-        
-        // Map outputs by index (SSD MobileNet standard output order)
-        outputTensors[0] = detectionBoxes;
-        outputTensors[1] = detectionClasses;  
-        outputTensors[2] = detectionScores;
-        outputTensors[3] = numDetections;
+        // Check if model bytes are available for background processing
+        if (_modelBytes == null) {
+          print('⚠️ Model bytes not available for background processing');
+          return;
+        }
         
         try {
-          _interpreter!.runForMultipleInputs([inputTensor], outputTensors);
+          // Run inference in background using compute to prevent UI blocking
+          final inferenceData = InferenceData(
+            inputData: inputData,
+            personClassId: personClassId,
+            confidenceThreshold: confidenceThreshold,
+            modelBytes: _modelBytes!,
+          );
           
-          // Parse detection results for person class
-          double maxPersonConfidence = 0.0;
+          final result = await compute(_runInferenceInBackground, inferenceData);
           
-          final scores = detectionScores[0] as List<double>;
-          final classes = detectionClasses[0] as List<double>;
-          final numDets = (numDetections[0] as List<double>)[0].toInt();
-          
-          for (int i = 0; i < numDets && i < 10; i++) {
-            final classId = classes[i].toInt();
-            final score = scores[i];
-            
-            // Check if this is a person detection (class ID 1 in COCO)
-            if (classId == personClassId && score > maxPersonConfidence) {
-              maxPersonConfidence = score;
-            }
+          if (result.error != null) {
+            throw Exception('Background inference error: ${result.error}');
           }
-            confidence.value = maxPersonConfidence;
+          
+          confidence.value = result.maxPersonConfidence;
           
           // Enhanced debugging output
           if (framesProcessed.value % 10 == 0) { // Log every 10th frame
             print('🤖 Person Detection Frame ${framesProcessed.value}:');
-            print('   📊 Detections found: $numDets');
-            print('   🎯 Max person confidence: ${maxPersonConfidence.toStringAsFixed(3)}');
-            print('   👤 Person present: ${maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)');
-            
-            // Show top 3 detections for debugging
-            for (int i = 0; i < math.min(3, numDets); i++) {
-              final classId = classes[i].toInt();
-              final score = scores[i];
-              print('   Detection $i: Class $classId, Score ${score.toStringAsFixed(3)}');
-            }
+            print('   📊 Detections found: ${result.numDetections}');
+            print('   🎯 Max person confidence: ${result.maxPersonConfidence.toStringAsFixed(3)}');
+            print('   👤 Person present: ${result.maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)');
+            print('   ⚡ Processed in background isolate');
           }
           
         } catch (e) {
-          print('Error running SSD MobileNet inference: $e');
+          print('Error running background inference: $e');
           // Fallback to simple single output processing if multi-output fails
           final outputShape = _interpreter!.getOutputTensor(0).shape;
-          final output = List.filled(outputShape.last, 0.0).reshape([1, outputShape.last]);
-          _interpreter!.run(inputTensor, output);
+          
+          // Create output tensor with proper shape [batch_size, output_size]
+          final outputSize = outputShape.isNotEmpty ? outputShape.last : 1;
+          final output = List.generate(1, (_) => List.filled(outputSize, 0.0));
+          
+          _interpreter!.run(inputData, output);
           
           // For simple models, assume first output is confidence
           confidence.value = output[0][0];
-        }          // Update presence detection
+        }
+
+        // Update presence detection
         final wasPersonPresent = isPersonPresent.value;
         isPersonPresent.value = confidence.value > confidenceThreshold;
         
@@ -404,7 +535,9 @@ class PersonDetectionService extends GetxService {
     if (framesProcessed.value % 20 == 0) {
       print('Person detection running in simulation mode (frame ${framesProcessed.value})');
     }
-  }/// Capture current frame from video renderer
+  }
+
+  /// Capture current frame from video renderer
   Future<Uint8List?> _captureFrame() async {
     try {
       // Check if platform capture is supported and texture ID is available
@@ -455,8 +588,10 @@ class PersonDetectionService extends GetxService {
       lastError.value = 'Frame capture error: $e';
       return null;
     }
-  }/// Preprocess frame data for model input using the image package
-  Float32List _preprocessFrame(Uint8List frameData) {
+  }
+  
+  /// Preprocess frame data for model input using the image package
+  Object _preprocessFrame(Uint8List frameData) {
     try {
       img.Image? image;
       
@@ -484,34 +619,87 @@ class PersonDetectionService extends GetxService {
         image = img.copyResize(image, width: inputWidth, height: inputHeight);
       }
       
-      // Convert to Float32List with normalization
-      final input = Float32List(1 * inputHeight * inputWidth * numChannels);
-      int pixelIndex = 0;
+      // Check model input tensor type to determine preprocessing
+      final inputTensor = _interpreter!.getInputTensor(0);
+      final inputType = inputTensor.type;
       
-      for (int y = 0; y < inputHeight; y++) {
-        for (int x = 0; x < inputWidth; x++) {
-          final pixel = image.getPixel(x, y);
-          
-          // Extract RGB values and normalize to [0, 1] range
-          final r = pixel.r / 255.0;
-          final g = pixel.g / 255.0;
-          final b = pixel.b / 255.0;
-          
-          // Store in HWC format (Height, Width, Channels)
-          input[pixelIndex * numChannels + 0] = r;
-          input[pixelIndex * numChannels + 1] = g;
-          input[pixelIndex * numChannels + 2] = b;
-          
-          pixelIndex++;
+      // Check if this is a quantized model (uint8) or float model
+      // TfLiteType enum values vary by package version, so we check the string representation
+      final isQuantized = inputType.toString().contains('uint8') || 
+                         inputType.toString().contains('UINT8');
+      
+      if (isQuantized) {
+        // Quantized model - use efficient Uint8List for raw uint8 values (0-255)
+        // Create flat tensor data: [batch_size * height * width * channels]
+        final totalSize = 1 * inputHeight * inputWidth * numChannels;
+        final input = Uint8List(totalSize);
+        
+        int index = 0;
+        for (int y = 0; y < inputHeight; y++) {
+          for (int x = 0; x < inputWidth; x++) {
+            final pixel = image.getPixel(x, y);
+            
+            // Store raw RGB values (0-255) for quantized model in BHWC format
+            input[index++] = pixel.r.toInt().clamp(0, 255);
+            input[index++] = pixel.g.toInt().clamp(0, 255);
+            input[index++] = pixel.b.toInt().clamp(0, 255);
+          }
         }
+        
+        // Reshape to 4D tensor format [1, height, width, channels]
+        return input.reshape([1, inputHeight, inputWidth, numChannels]);
+        
+      } else {
+        // Float model - use efficient Float32List and normalize to [0, 1] range
+        // Create flat tensor data: [batch_size * height * width * channels]
+        final totalSize = 1 * inputHeight * inputWidth * numChannels;
+        final input = Float32List(totalSize);
+        
+        int index = 0;
+        for (int y = 0; y < inputHeight; y++) {
+          for (int x = 0; x < inputWidth; x++) {
+            final pixel = image.getPixel(x, y);
+            
+            // Extract RGB values and normalize to [0, 1] range in BHWC format
+            input[index++] = (pixel.r / 255.0).clamp(0.0, 1.0);
+            input[index++] = (pixel.g / 255.0).clamp(0.0, 1.0);
+            input[index++] = (pixel.b / 255.0).clamp(0.0, 1.0);
+          }
+        }
+        
+        // Reshape to 4D tensor format [1, height, width, channels]  
+        return input.reshape([1, inputHeight, inputWidth, numChannels]);
       }
-      
-      return input;
-      
     } catch (e) {
       print('Error preprocessing frame: $e');
-      // Return zeros as fallback
-      return Float32List(1 * inputHeight * inputWidth * numChannels);
+      
+      // Return appropriate fallback based on model type
+      try {
+        final inputTensor = _interpreter!.getInputTensor(0);
+        final inputType = inputTensor.type;
+        
+        // Check if this is a quantized model using string representation
+        final isQuantized = inputType.toString().contains('uint8') || 
+                           inputType.toString().contains('UINT8');
+        
+        if (isQuantized) {
+          // Return efficient Uint8List filled with zeros for quantized model
+          final totalSize = 1 * inputHeight * inputWidth * numChannels;
+          final input = Uint8List(totalSize);
+          return input.reshape([1, inputHeight, inputWidth, numChannels]);
+        } else {
+          // Return efficient Float32List filled with zeros for float model
+          final totalSize = 1 * inputHeight * inputWidth * numChannels;
+          final input = Float32List(totalSize);
+          return input.reshape([1, inputHeight, inputWidth, numChannels]);
+        }
+        
+      } catch (_) {
+        // If we can't determine type, default to efficient Float32List 4D tensor
+        final totalSize = 1 * inputHeight * inputWidth * numChannels;
+        final input = Float32List(totalSize);
+        return input.reshape([1, inputHeight, inputWidth, numChannels]);
+      }
     }
   }
   
@@ -551,7 +739,8 @@ class PersonDetectionService extends GetxService {
       'processing': isProcessing.value,
       'frames_processed': framesProcessed.value,
       'last_error': lastError.value,
-    };  }
+    };
+  }
   
   /// Check if camera is available for detection
   Future<bool> isCameraAvailable() async {
@@ -564,7 +753,8 @@ class PersonDetectionService extends GetxService {
       return false;
     }
   }
-    /// Get the currently selected camera device from MediaDeviceService
+  
+  /// Get the currently selected camera device from MediaDeviceService
   String? getSelectedCameraDevice() {
     try {
       final mediaDeviceService = Get.find<MediaDeviceService>();
@@ -595,6 +785,7 @@ class PersonDetectionService extends GetxService {
     // Start with new device
     return await startDetection(deviceId: deviceId);
   }
+
   /// Get available camera devices from MediaDeviceService
   List<String> getAvailableCameras() {
     try {

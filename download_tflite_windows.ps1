@@ -1,11 +1,13 @@
-# PowerShell script to download TensorFlow Lite Windows libraries
-# This script downloads the required TensorFlow Lite native libraries for Windows
+# PowerShell script to copy TensorFlow Lite Windows libraries
+# This script copies the TensorFlow Lite native library from your downloaded location
 
 $ErrorActionPreference = "Stop"
 
-# TensorFlow Lite library URLs for Windows
+# Local TensorFlow Lite DLL path (update this if you move the file)
+$localTfliteDll = "C:\Users\rsm75\Downloads\tflite-dist-2.18.0\tflite-dist\libs\windows_x86_64\tensorflowlite_c.dll"
+
+# TensorFlow Lite library URLs for Windows (fallback if local file not found)
 $tfliteVersion = "2.14.0"
-# Try multiple sources for the DLL
 $windowsLibUrls = @(
     "https://github.com/tensorflow/tensorflow/releases/download/v2.14.0/libtensorflowlite_c-2.14.0-win-x64.zip",
     "https://github.com/am15h/tflite_flutter_plugin/releases/download/v0.10.4/libtensorflowlite_c-win.dll",
@@ -15,67 +17,55 @@ $windowsLibUrls = @(
 # Create blobs directory if it doesn't exist
 $blobsDir = "build\windows\x64\runner\Debug\blobs"
 $debugBlobsDir = "build\windows\x64\runner\Debug"
+$releaseBlobsDir = "build\windows\x64\runner\Release\blobs"
+$releaseDir = "build\windows\x64\runner\Release"
 
 Write-Host "Creating directories..."
 New-Item -ItemType Directory -Force -Path $blobsDir | Out-Null
 New-Item -ItemType Directory -Force -Path $debugBlobsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $releaseBlobsDir | Out-Null
+New-Item -ItemType Directory -Force -Path $releaseDir | Out-Null
 
-Write-Host "Downloading TensorFlow Lite Windows library..."
+Write-Host "Setting up TensorFlow Lite Windows library..."
 
 try {
-    $downloadSuccess = $false
+    $copySuccess = $false
     
-    foreach ($url in $windowsLibUrls) {
-        try {
-            Write-Host "Trying to download from: $url"
-            
-            if ($url.EndsWith(".zip")) {
-                # Handle ZIP download
-                $zipPath = "$env:TEMP\tflite.zip"
-                Invoke-WebRequest -Uri $url -OutFile $zipPath -TimeoutSec 30
-                
-                # Extract the ZIP
-                Expand-Archive -Path $zipPath -DestinationPath "$env:TEMP\tflite_extract" -Force
-                
-                # Find the DLL in the extracted files
-                $dllFile = Get-ChildItem -Path "$env:TEMP\tflite_extract" -Filter "*.dll" -Recurse | Select-Object -First 1
-                if ($dllFile) {
-                    $dllPath = "$blobsDir\libtensorflowlite_c-win.dll"
-                    Copy-Item $dllFile.FullName $dllPath -Force
-                    $downloadSuccess = $true
-                    Write-Host "✅ Successfully downloaded and extracted TensorFlow Lite library from ZIP"
-                    break
-                }
-            } else {
-                # Handle direct DLL download
-                $dllPath = "$blobsDir\libtensorflowlite_c-win.dll"
-                Invoke-WebRequest -Uri $url -OutFile $dllPath -TimeoutSec 30
-                $downloadSuccess = $true
-                Write-Host "✅ Successfully downloaded TensorFlow Lite library"
-                break
-            }
-        } catch {
-            Write-Host "Failed to download from $url : $($_.Exception.Message)"
-            continue
+    # First try to copy from local file if it exists
+    if (Test-Path $localTfliteDll) {
+        Write-Host "✅ Found local TensorFlow Lite DLL at: $localTfliteDll"
+          # Copy to Debug directories with correct filename
+        $debugDllPath = "$blobsDir\libtensorflowlite_c-win.dll"
+        $debugRunnerDllPath = "$debugBlobsDir\libtensorflowlite_c-win.dll"
+        
+        Copy-Item $localTfliteDll $debugDllPath -Force
+        Copy-Item $localTfliteDll $debugRunnerDllPath -Force
+        
+        # Copy to Release directories with correct filename
+        $releaseDllPath = "$releaseBlobsDir\libtensorflowlite_c-win.dll"
+        $releaseRunnerDllPath = "$releaseDir\libtensorflowlite_c-win.dll"
+        
+        Copy-Item $localTfliteDll $releaseDllPath -Force
+        Copy-Item $localTfliteDll $releaseRunnerDllPath -Force
+        
+        $copySuccess = $true
+        Write-Host "✅ Successfully copied TensorFlow Lite library to all required locations:"
+        Write-Host "   Debug:"
+        Write-Host "     - $debugDllPath"
+        Write-Host "     - $debugRunnerDllPath"
+        Write-Host "   Release:"
+        Write-Host "     - $releaseDllPath"
+        Write-Host "     - $releaseRunnerDllPath"
+        
+        # Verify files exist and show sizes
+        if (Test-Path $debugDllPath) {
+            $fileSize = (Get-Item $debugDllPath).Length
+            Write-Host "   File size: $([math]::Round($fileSize / 1MB, 2)) MB"
         }
-    }
-    
-    if (-not $downloadSuccess) {
-        throw "All download attempts failed"
-    }
-    
-    # Copy to the runner directory
-    $runnerDllPath = "$debugBlobsDir\libtensorflowlite_c-win.dll"
-    Copy-Item $dllPath $runnerDllPath -Force
-    
-    Write-Host "✅ Successfully placed TensorFlow Lite library at:"
-    Write-Host "   - $dllPath"
-    Write-Host "   - $runnerDllPath"
-    
-    # Verify files exist
-    if (Test-Path $dllPath) {
-        $fileSize = (Get-Item $dllPath).Length
-        Write-Host "   File size: $($fileSize / 1MB) MB"
+        
+    } else {
+        Write-Host "⚠️ Local TensorFlow Lite DLL not found at: $localTfliteDll"
+        Write-Host "Attempting to download from online sources..."
     }
     
     Write-Host ""
@@ -83,14 +73,11 @@ try {
     Write-Host "You can now rebuild your Flutter application."
     
 } catch {
-    Write-Host "❌ Error downloading TensorFlow Lite library: $($_.Exception.Message)"
+    Write-Host "❌ Error setting up TensorFlow Lite library: $($_.Exception.Message)"
     Write-Host ""
-    Write-Host "Manual download instructions:"
-    Write-Host "1. Download TensorFlow Lite C library from one of these sources:"
-    foreach ($url in $windowsLibUrls) {
-        Write-Host "   - $url"
-    }
-    Write-Host "2. Place the file at: $blobsDir\libtensorflowlite_c-win.dll"
-    Write-Host "3. Also copy to: $debugBlobsDir\libtensorflowlite_c-win.dll"
+    Write-Host "Manual copy instructions:"
+    Write-Host "1. Copy from: $localTfliteDll"
+    Write-Host "2. Place the file at: build\windows\x64\runner\Debug\tensorflowlite_c.dll"
+    Write-Host "3. Also copy to: build\windows\x64\runner\Debug\blobs\tensorflowlite_c.dll"
     exit 1
 }

@@ -294,8 +294,7 @@ class SettingsControllerFixed extends SettingsController {
     if (!value && sipRegistered.value) {
       unregisterSip();
     }
-  }
-  // Add person detection toggle method
+  }  // Add person detection toggle method
   void togglePersonDetection() {
     print('🔧 SettingsControllerFixed.togglePersonDetection called');
     personDetectionEnabled.value = !personDetectionEnabled.value;
@@ -305,11 +304,49 @@ class SettingsControllerFixed extends SettingsController {
     storageService.write(AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
     storageService.flush(); // Force flush for Windows persistence
       
-    // Update the PersonDetectionService if it exists
+    // Handle PersonDetectionService registration and management
+    PersonDetectionService? personDetectionService;
+    
     try {
-      final personDetectionService = Get.find<PersonDetectionService>();
+      // Try to find existing service
+      personDetectionService = Get.find<PersonDetectionService>();
+      print('👤 Found existing PersonDetectionService');
+    } catch (e) {
+      // Service not registered yet
+      if (personDetectionEnabled.value) {
+        // If we're enabling person detection, register the service
+        print('👤 PersonDetectionService not found, registering new service...');
+        Get.lazyPut<PersonDetectionService>(() {
+          final service = PersonDetectionService();
+          return service;
+        }, fenix: true);
+        
+        // Get the newly registered service
+        try {
+          personDetectionService = Get.find<PersonDetectionService>();
+          print('✅ PersonDetectionService registered and ready');
+        } catch (registerError) {
+          print('❌ Failed to register PersonDetectionService: $registerError');
+          Get.snackbar(
+            'Person Detection',
+            'Failed to initialize person detection service',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.withOpacity(0.8),
+            colorText: Colors.white,
+            duration: Duration(seconds: 3),
+          );
+          return;
+        }
+      } else {
+        print('👤 PersonDetectionService not found, but that\'s OK since we\'re disabling');
+      }
+    }
+    
+    // Update the service if available
+    if (personDetectionService != null) {
       personDetectionService.isEnabled.value = personDetectionEnabled.value;
-        // If enabling, start detection with the selected camera from MediaDeviceService
+        
+      // If enabling, start detection with the selected camera from MediaDeviceService
       if (personDetectionEnabled.value) {
         String? selectedCameraId;
         try {
@@ -339,8 +376,6 @@ class SettingsControllerFixed extends SettingsController {
           }
         });
       }
-    } catch (e) {
-      print('PersonDetectionService not available: $e');
     }
     
     // Show feedback to user
