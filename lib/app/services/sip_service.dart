@@ -34,14 +34,20 @@ class SipService extends GetxService implements SipUaHelperListener {
   }
 
   // Device lists - delegate to MediaDeviceService
-  List<webrtc.MediaDeviceInfo> get audioInputs => _mediaDeviceService?.audioInputs ?? [];
-  List<webrtc.MediaDeviceInfo> get videoInputs => _mediaDeviceService?.videoInputs ?? [];
-  List<webrtc.MediaDeviceInfo> get audioOutputs => _mediaDeviceService?.audioOutputs ?? [];
+  List<webrtc.MediaDeviceInfo> get audioInputs =>
+      _mediaDeviceService?.audioInputs ?? [];
+  List<webrtc.MediaDeviceInfo> get videoInputs =>
+      _mediaDeviceService?.videoInputs ?? [];
+  List<webrtc.MediaDeviceInfo> get audioOutputs =>
+      _mediaDeviceService?.audioOutputs ?? [];
 
   // Selected devices - delegate to MediaDeviceService
-  webrtc.MediaDeviceInfo? get selectedAudioInput => _mediaDeviceService?.selectedAudioInput.value;
-  webrtc.MediaDeviceInfo? get selectedVideoInput => _mediaDeviceService?.selectedVideoInput.value;
-  webrtc.MediaDeviceInfo? get selectedAudioOutput => _mediaDeviceService?.selectedAudioOutput.value;
+  webrtc.MediaDeviceInfo? get selectedAudioInput =>
+      _mediaDeviceService?.selectedAudioInput.value;
+  webrtc.MediaDeviceInfo? get selectedVideoInput =>
+      _mediaDeviceService?.selectedVideoInput.value;
+  webrtc.MediaDeviceInfo? get selectedAudioOutput =>
+      _mediaDeviceService?.selectedAudioOutput.value;
 
   // Settings
   final serverHost = ''.obs;
@@ -68,7 +74,8 @@ class SipService extends GetxService implements SipUaHelperListener {
 
       // Load device name - critical for registration
       deviceName.value =
-          _storageService.read<String>(AppConstants.keyDeviceName) ?? '';      // Register for SIP UA events
+          _storageService.read<String>(AppConstants.keyDeviceName) ??
+              ''; // Register for SIP UA events
       _helper.addSipUaHelperListener(this);
 
       // Device enumeration is now handled by MediaDeviceService
@@ -200,7 +207,8 @@ class SipService extends GetxService implements SipUaHelperListener {
       lastError.value = 'Failed to unregister: $e';
       debugPrint('Failed to unregister from SIP server: $e');
       return false;
-    }  }
+    }
+  }
 
   /// Refresh device list by asking MediaDeviceService to reload
   Future<void> loadDevices() async {
@@ -222,12 +230,14 @@ class SipService extends GetxService implements SipUaHelperListener {
     debugPrint('📱 Device selection is now managed by MediaDeviceService');
     // Selected devices are accessed via MediaDeviceService getters
   }
+
   /// Set audio input device
   Future<void> setAudioInput(webrtc.MediaDeviceInfo device) async {
     final mediaService = _mediaDeviceService;
     if (mediaService != null) {
       mediaService.setAudioInput(device);
-      debugPrint('🎤 Audio input changed via MediaDeviceService: ${device.label}');
+      debugPrint(
+          '🎤 Audio input changed via MediaDeviceService: ${device.label}');
     } else {
       debugPrint('⚠️ MediaDeviceService not available for audio input change');
       return;
@@ -245,12 +255,15 @@ class SipService extends GetxService implements SipUaHelperListener {
         debugPrint('Error changing microphone: $e');
       }
     }
-  }  /// Set video input device
+  }
+
+  /// Set video input device
   Future<void> setVideoInput(webrtc.MediaDeviceInfo device) async {
     final mediaService = _mediaDeviceService;
     if (mediaService != null) {
       mediaService.setVideoInput(device);
-      debugPrint('📹 Video input changed via MediaDeviceService: ${device.label}');
+      debugPrint(
+          '📹 Video input changed via MediaDeviceService: ${device.label}');
     } else {
       debugPrint('⚠️ MediaDeviceService not available for video input change');
       return;
@@ -259,13 +272,16 @@ class SipService extends GetxService implements SipUaHelperListener {
     // Notify PersonDetectionService of camera change if it's active and enabled
     try {
       final personDetectionService = Get.find<PersonDetectionService>();
-      if (personDetectionService.isEnabled.value && personDetectionService.isProcessing.value) {
-        debugPrint('📷 Camera changed, switching person detection to: ${device.label}');
+      if (personDetectionService.isEnabled.value &&
+          personDetectionService.isProcessing.value) {
+        debugPrint(
+            '📷 Camera changed, switching person detection to: ${device.label}');
         await personDetectionService.switchCamera(device.deviceId);
       }
     } catch (e) {
       // PersonDetectionService may not be available - that's okay
-      debugPrint('PersonDetectionService not available for camera change notification: $e');
+      debugPrint(
+          'PersonDetectionService not available for camera change notification: $e');
     }
 
     // Apply to current call if exists
@@ -286,7 +302,8 @@ class SipService extends GetxService implements SipUaHelperListener {
     final mediaService = _mediaDeviceService;
     if (mediaService != null) {
       mediaService.setAudioOutput(device);
-      debugPrint('🔊 Audio output changed via MediaDeviceService: ${device.label}');
+      debugPrint(
+          '🔊 Audio output changed via MediaDeviceService: ${device.label}');
     } else {
       debugPrint('⚠️ MediaDeviceService not available for audio output change');
       return;
@@ -401,11 +418,53 @@ class SipService extends GetxService implements SipUaHelperListener {
       // Reset state when starting a new call
       isCallMuted.value = false;
       isLocalVideoEnabled.value = true;
+
+      // Upgrade camera to 720p for better call quality
+      _upgradeCameraResolutionForCall();
     } else if (state.state == CallStateEnum.ENDED) {
       currentCall.value = null;
       // Reset state when call ends
       isCallMuted.value = false;
       isLocalVideoEnabled.value = true;
+
+      // Downgrade camera back to 300x300 for person detection
+      _downgradeCameraResolutionAfterCall();
+    }
+  }
+
+  /// Upgrade camera resolution to 720p when a SIP call starts
+  Future<void> _upgradeCameraResolutionForCall() async {
+    try {
+      // Get PersonDetectionService if available
+      if (Get.isRegistered<PersonDetectionService>()) {
+        final personDetectionService = Get.find<PersonDetectionService>();
+        final success = await personDetectionService.upgradeTo720p();
+        if (success) {
+          debugPrint('📹 Camera upgraded to 720p for SIP call');
+        } else {
+          debugPrint('⚠️ Failed to upgrade camera to 720p for SIP call');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error upgrading camera resolution for call: $e');
+    }
+  }
+
+  /// Downgrade camera resolution to 300x300 when a SIP call ends
+  Future<void> _downgradeCameraResolutionAfterCall() async {
+    try {
+      // Get PersonDetectionService if available
+      if (Get.isRegistered<PersonDetectionService>()) {
+        final personDetectionService = Get.find<PersonDetectionService>();
+        final success = await personDetectionService.downgradeTo300x300();
+        if (success) {
+          debugPrint('📹 Camera downgraded to 300x300 for person detection');
+        } else {
+          debugPrint('⚠️ Failed to downgrade camera to 300x300 after call');
+        }
+      }
+    } catch (e) {
+      debugPrint('Error downgrading camera resolution after call: $e');
     }
   }
 
@@ -454,7 +513,7 @@ class SipService extends GetxService implements SipUaHelperListener {
       final mediaConstraints = <String, dynamic>{
         'audio': true,
         'video': video,
-      };      // Add device constraints if selected
+      }; // Add device constraints if selected
       if (selectedAudioInput != null) {
         mediaConstraints['audio'] = {
           'deviceId': {'exact': selectedAudioInput!.deviceId},
@@ -502,6 +561,9 @@ class SipService extends GetxService implements SipUaHelperListener {
         // Reset mute and video states
         isCallMuted.value = false;
         isLocalVideoEnabled.value = true;
+
+        // Downgrade camera resolution when manually ending call
+        _downgradeCameraResolutionAfterCall();
       } catch (e) {
         lastError.value = 'Hangup failed: $e';
       }

@@ -359,6 +359,9 @@ class PersonDetectionService extends GetxService {
   final Duration processingInterval =
       Duration(milliseconds: 2000); // Process 0.5 frames per second
 
+  // Camera resolution management for SIP calls (reactive)
+  final RxBool isUpgradedTo720p = false.obs;
+
   @override
   Future<void> onInit() async {
     super.onInit();
@@ -412,6 +415,114 @@ class PersonDetectionService extends GetxService {
     _stopDetection();
     _interpreter?.close();
     super.onClose();
+  }
+
+  /// Upgrade camera resolution to 720p for SIP calls
+  Future<bool> upgradeTo720p({String? deviceId}) async {
+    if (isUpgradedTo720p.value) {
+      print('📹 Camera is already at 720p resolution');
+      return true;
+    }
+
+    print('📹 Upgrading camera to 720p for SIP call...');
+
+    try {
+      // Stop current stream
+      _stopDetection();
+
+      // Get device ID from MediaDeviceService if not provided
+      String? actualDeviceId = deviceId;
+      if (actualDeviceId == null || actualDeviceId.isEmpty) {
+        try {
+          final mediaDeviceService = Get.find<MediaDeviceService>();
+          if (mediaDeviceService.selectedVideoInput.value != null) {
+            actualDeviceId =
+                mediaDeviceService.selectedVideoInput.value!.deviceId;
+          } else if (mediaDeviceService.videoInputs.isNotEmpty) {
+            actualDeviceId = mediaDeviceService.videoInputs.first.deviceId;
+          }
+        } catch (e) {
+          print('⚠️ MediaDeviceService not available: $e');
+        }
+      }
+
+      // Set up 720p constraints
+      final Map<String, dynamic> mediaConstraints = {
+        'audio': false,
+        'video': {
+          'width': {'ideal': 1280},
+          'height': {'ideal': 720},
+          'frameRate': {'ideal': 30},
+          'facingMode': 'user',
+        }
+      };
+
+      if (actualDeviceId != null && actualDeviceId.isNotEmpty) {
+        mediaConstraints['video']['deviceId'] = actualDeviceId;
+      }
+
+      // Initialize renderer if needed
+      if (_videoRenderer == null) {
+        _videoRenderer = webrtc.RTCVideoRenderer();
+        await _videoRenderer!.initialize();
+      }
+
+      // Get 720p camera stream
+      _cameraStream =
+          await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _videoRenderer!.srcObject = _cameraStream;
+
+      isUpgradedTo720p.value = true;
+      print('✅ Camera upgraded to 720p successfully');
+      return true;
+    } catch (e) {
+      print('❌ Failed to upgrade camera to 720p: $e');
+      lastError.value = 'Failed to upgrade to 720p: $e';
+      return false;
+    }
+  }
+
+  /// Downgrade camera resolution to 300x300 for person detection
+  Future<bool> downgradeTo300x300({String? deviceId}) async {
+    if (!isUpgradedTo720p.value) {
+      print('📹 Camera is already at 300x300 resolution');
+      return true;
+    }
+
+    print('📹 Downgrading camera to 300x300 for person detection...');
+
+    try {
+      // Stop current stream
+      _stopDetection();
+
+      // Restart detection with 300x300 resolution (this will handle the camera setup)
+      final success = await startDetection(deviceId: deviceId);
+
+      if (success) {
+        isUpgradedTo720p.value = false;
+        print('✅ Camera downgraded to 300x300 successfully');
+        return true;
+      } else {
+        print('❌ Failed to restart detection with 300x300');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Failed to downgrade camera to 300x300: $e');
+      lastError.value = 'Failed to downgrade to 300x300: $e';
+      return false;
+    }
+  }
+
+  /// Get current camera resolution mode as a string
+  String getCurrentResolutionMode() {
+    return isUpgradedTo720p.value
+        ? '720p (SIP Call)'
+        : '300x300 (Person Detection)';
+  }
+
+  /// Check if camera is currently at 720p resolution
+  bool isAt720p() {
+    return isUpgradedTo720p.value;
   }
 
   /// Initialize the TensorFlow Lite model
@@ -510,13 +621,16 @@ class PersonDetectionService extends GetxService {
         await _videoRenderer!.initialize();
       }
 
-      // Configure camera constraints for efficient processing
+      // Configure camera constraints for person detection (300x300 for efficiency)
+      // Note: Will be upgraded to 720p during SIP calls
       final Map<String, dynamic> mediaConstraints = {
         'audio': false,
         'video': {
-          'width': {'ideal': 320}, // Lower resolution for better performance
-          'height': {'ideal': 240}, // Lower resolution for better performance
-          'frameRate': {'ideal': 10}, // Even lower frame rate for efficiency
+          'width': {'ideal': 300}, // 300x300 for person detection
+          'height': {
+            'ideal': 300
+          }, // Square aspect ratio for better ML processing
+          'frameRate': {'ideal': 30}, // Higher frame rate for smooth detection
           'facingMode': 'user', // Default to front camera
         }
       };
@@ -1451,6 +1565,16 @@ class PersonDetectionService extends GetxService {
   /// Get the latest frame as base64 for debug visualization
   String? getLatestDebugFrame() {
     return debugVisualizationFrame.value;
+  }
+
+  /// Get the WebRTC video renderer for displaying real camera feed
+  webrtc.RTCVideoRenderer? getVideoRenderer() {
+    return _videoRenderer;
+  }
+
+  /// Check if the camera stream is active
+  bool isCameraStreamActive() {
+    return _cameraStream != null && _videoRenderer != null && isEnabled.value;
   }
 
   /// Generate realistic debug data with simulated camera frames and detection boxes

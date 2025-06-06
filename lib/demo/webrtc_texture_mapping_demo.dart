@@ -16,7 +16,8 @@ class WebRTCTextureMappingDemo extends StatefulWidget {
   const WebRTCTextureMappingDemo({Key? key}) : super(key: key);
 
   @override
-  State<WebRTCTextureMappingDemo> createState() => _WebRTCTextureMappingDemoState();
+  State<WebRTCTextureMappingDemo> createState() =>
+      _WebRTCTextureMappingDemoState();
 }
 
 class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
@@ -48,7 +49,8 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
       print('Frame capture platform support: $isFrameCaptureSupported');
 
       setState(() {
-        _statusMessage = 'Platform support: ${isFrameCaptureSupported ? "✅ Available" : "❌ Not available"}';
+        _statusMessage =
+            'Platform support: ${isFrameCaptureSupported ? "✅ Available" : "❌ Not available"}';
       });
 
       await Future.delayed(Duration(seconds: 1));
@@ -65,12 +67,14 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
         // Service is already loaded (person detection enabled in settings)
         _personDetectionService = Get.find<PersonDetectionService>();
         setState(() {
-          _statusMessage = '✅ PersonDetectionService found (enabled in settings)';
+          _statusMessage =
+              '✅ PersonDetectionService found (enabled in settings)';
         });
       } else {
         // Service not loaded (person detection disabled in settings)
         setState(() {
-          _statusMessage = '⏭️ PersonDetectionService not loaded (disabled in settings)';
+          _statusMessage =
+              '⏭️ PersonDetectionService not loaded (disabled in settings)';
         });
       }
 
@@ -87,11 +91,13 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
         'videoTrackId': 'test-track',
       };
 
-      final extractedTextureId = await FrameCapturePlatform.getRendererTextureId(testRendererData);
+      final extractedTextureId =
+          await FrameCapturePlatform.getRendererTextureId(testRendererData);
       print('Extracted texture ID: $extractedTextureId');
 
       setState(() {
-        _statusMessage = 'Texture ID extraction: ${extractedTextureId != null ? "✅ Working" : "⚠️ Test mode"}';
+        _statusMessage =
+            'Texture ID extraction: ${extractedTextureId != null ? "✅ Working" : "⚠️ Test mode"}';
       });
 
       await Future.delayed(Duration(seconds: 1));
@@ -111,11 +117,13 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
         if (frameData != null) {
           print('Frame capture successful: ${frameData.length} bytes');
           setState(() {
-            _statusMessage = '✅ Frame capture working (${frameData.length} bytes)';
+            _statusMessage =
+                '✅ Frame capture working (${frameData.length} bytes)';
           });
         } else {
           setState(() {
-            _statusMessage = '⚠️ Frame capture returned null (expected in test)';
+            _statusMessage =
+                '⚠️ Frame capture returned null (expected in test)';
           });
         }
       } else {
@@ -131,11 +139,12 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
         _statusMessage = 'Checking memory optimization...';
       });
 
-      final serviceStatus = MemoryOptimizedBinding.getServiceStatus();
+      final serviceStatus = ServiceHelpers.getServiceStatus();
       print('Service initialization status: $serviceStatus');
 
       setState(() {
-        _statusMessage = '✅ Memory optimization active (${serviceStatus.length} services tracked)';
+        _statusMessage =
+            '✅ Memory optimization active (${serviceStatus.length} services tracked)';
       });
 
       await Future.delayed(Duration(seconds: 1));
@@ -150,7 +159,6 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
       if (_personDetectionService != null) {
         _startStatusUpdates();
       }
-
     } catch (e) {
       setState(() {
         _statusMessage = '❌ Initialization error: $e';
@@ -166,9 +174,11 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
           final service = _personDetectionService!;
           if (service.isEnabled.value) {
             if (service.isProcessing.value) {
-              _statusMessage = '🔄 Processing frames... (${service.framesProcessed.value} processed)';
+              _statusMessage =
+                  '🔄 Processing frames... (${service.framesProcessed.value} processed)';
             } else if (service.isPersonPresent.value) {
-              _statusMessage = '👤 Person detected! Confidence: ${service.confidence.value.toStringAsFixed(2)}';
+              _statusMessage =
+                  '👤 Person detected! Confidence: ${service.confidence.value.toStringAsFixed(2)}';
             } else {
               _statusMessage = '👁️ Monitoring for person presence...';
             }
@@ -251,14 +261,22 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
                       ),
                     ),
                     SizedBox(height: 12),
-                    _buildComponentItem('✅ FrameCapturePlatform.dart', 'Cross-platform interface for WebRTC frame capture'),
-                    _buildComponentItem('✅ Windows D3D11 Plugin', 'Native frame capture using Direct3D 11'),
-                    _buildComponentItem('✅ Android OpenGL Plugin', 'Native frame capture using OpenGL ES'),
-                    _buildComponentItem('✅ iOS Metal Plugin', 'Native frame capture using Metal framework'),
-                    _buildComponentItem('✅ PersonDetectionService', 'TensorFlow Lite integration with WebRTC'),
-                    _buildComponentItem('✅ Memory Optimization', 'Conditional lazy loading based on settings'),
-                    _buildComponentItem('✅ Texture ID Extraction', 'Get GPU texture from WebRTC renderer'),
-                    _buildComponentItem('✅ RGBA Frame Processing', 'Convert GPU frames for ML inference'),
+                    _buildComponentItem('✅ FrameCapturePlatform.dart',
+                        'Cross-platform interface for WebRTC frame capture'),
+                    _buildComponentItem('✅ Windows D3D11 Plugin',
+                        'Native frame capture using Direct3D 11'),
+                    _buildComponentItem('✅ Android OpenGL Plugin',
+                        'Native frame capture using OpenGL ES'),
+                    _buildComponentItem('✅ iOS Metal Plugin',
+                        'Native frame capture using Metal framework'),
+                    _buildComponentItem('✅ PersonDetectionService',
+                        'TensorFlow Lite integration with WebRTC'),
+                    _buildComponentItem('✅ Memory Optimization',
+                        'Conditional lazy loading based on settings'),
+                    _buildComponentItem('✅ Texture ID Extraction',
+                        'Get GPU texture from WebRTC renderer'),
+                    _buildComponentItem('✅ RGBA Frame Processing',
+                        'Convert GPU frames for ML inference'),
                   ],
                 ),
               ),
@@ -285,18 +303,23 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
                       ),
                       SizedBox(height: 12),
                       Obx(() => SwitchListTile(
-                        title: Text('Enable Person Detection'),
-                        subtitle: Text('Toggle WebRTC-based person detection'),
-                        value: _personDetectionService!.isEnabled.value,
-                        onChanged: (value) {
-                          _personDetectionService!.toggleEnabled();
-                        },
-                      )),
+                            title: Text('Enable Person Detection'),
+                            subtitle:
+                                Text('Toggle WebRTC-based person detection'),
+                            value: _personDetectionService!.isEnabled.value,
+                            onChanged: (value) {
+                              _personDetectionService!.toggleEnabled();
+                            },
+                          )),
                       SizedBox(height: 8),
-                      Obx(() => _buildStatusRow('Processing', _personDetectionService!.isProcessing.value)),
-                      Obx(() => _buildStatusRow('Person Present', _personDetectionService!.isPersonPresent.value)),
-                      Obx(() => Text('Confidence: ${_personDetectionService!.confidence.value.toStringAsFixed(2)}')),
-                      Obx(() => Text('Frames Processed: ${_personDetectionService!.framesProcessed.value}')),
+                      Obx(() => _buildStatusRow('Processing',
+                          _personDetectionService!.isProcessing.value)),
+                      Obx(() => _buildStatusRow('Person Present',
+                          _personDetectionService!.isPersonPresent.value)),
+                      Obx(() => Text(
+                          'Confidence: ${_personDetectionService!.confidence.value.toStringAsFixed(2)}')),
+                      Obx(() => Text(
+                          'Frames Processed: ${_personDetectionService!.framesProcessed.value}')),
                     ],
                   ),
                 ),

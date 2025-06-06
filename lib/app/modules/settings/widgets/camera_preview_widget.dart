@@ -3,12 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart';
 import '../../../core/utils/permissions_manager.dart'; // Import PermissionsManager
 
+/// Camera resolution modes for different use cases
+enum CameraResolutionMode {
+  preview, // HD preview for settings (1280x720)
+  personDetection, // Square format for ML processing (300x300)
+  sipCall, // High quality for video calls (720p)
+}
+
 /// A widget that displays a live preview of the selected video device
 class CameraPreviewWidget extends StatefulWidget {
   final String deviceId;
   final double width;
   final double height;
   final BoxFit fit;
+  final CameraResolutionMode resolutionMode;
 
   const CameraPreviewWidget({
     Key? key,
@@ -16,6 +24,7 @@ class CameraPreviewWidget extends StatefulWidget {
     this.width = 320,
     this.height = 240,
     this.fit = BoxFit.contain,
+    this.resolutionMode = CameraResolutionMode.preview,
   }) : super(key: key);
 
   @override
@@ -65,16 +74,48 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
 
   Future<void> _startCamera() async {
     try {
+      // Determine camera constraints based on resolution mode
+      Map<String, dynamic> videoConstraints;
+
+      switch (widget.resolutionMode) {
+        case CameraResolutionMode.personDetection:
+          // Square 300x300 for person detection ML processing
+          videoConstraints = {
+            'deviceId': widget.deviceId,
+            'width': {'ideal': 300},
+            'height': {'ideal': 300},
+            'frameRate': {
+              'ideal': 30
+            }, // Higher frame rate for smooth detection
+          };
+          break;
+        case CameraResolutionMode.sipCall:
+          // High quality 720p for SIP video calls
+          videoConstraints = {
+            'deviceId': widget.deviceId,
+            'width': {'ideal': 1280},
+            'height': {'ideal': 720},
+            'frameRate': {'ideal': 30},
+          };
+          break;
+        case CameraResolutionMode.preview:
+        default:
+          // HD quality for settings preview
+          videoConstraints = {
+            'deviceId': widget.deviceId,
+            'width': {'ideal': 1280},
+            'height': {'ideal': 720},
+          };
+          break;
+      }
+
       final Map<String, dynamic> mediaConstraints = {
         'audio': false,
-        'video': {
-          'deviceId': widget.deviceId,
-          'width': {'ideal': 1280},
-          'height': {'ideal': 720},
-        }
+        'video': videoConstraints,
       };
 
-      _localStream = await MediaDevices.getUserMedia(mediaConstraints);
+      _localStream =
+          await navigator.mediaDevices.getUserMedia(mediaConstraints);
       await _localRenderer.srcObject?.dispose();
       _localRenderer.srcObject = _localStream;
 
