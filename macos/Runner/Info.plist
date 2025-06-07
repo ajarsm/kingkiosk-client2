@@ -34,5 +34,11 @@
 	<string>This application needs access to the microphone for audio calls</string>
 	<key>NSCameraUseContinuityCameraDeviceType</key>
 	<true/>
+	<key>NSLocationUsageDescription</key>
+	<string>This application needs access to location services for location-based features</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>This application needs access to location services when in use</string>
+	<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+	<string>This application needs access to location services</string>
 </dict>
 </plist>

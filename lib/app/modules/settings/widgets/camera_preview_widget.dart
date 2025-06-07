@@ -40,6 +40,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   Timer? _retryTimer;
   int _retryCount = 0;
   final _maxRetryCount = 3;
+  bool _usingSharedStream = false; // Track if using shared stream
 
   @override
   void initState() {
@@ -71,32 +72,37 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       return;
     }
     await _localRenderer.initialize();
-    _startCamera();
+    await _startCamera();
   }
 
   Future<void> _startCamera() async {
     try {
-      // Determine camera constraints based on resolution mode
-      switch (widget.resolutionMode) {
-        case CameraResolutionMode.personDetection:
-          // Square 300x300 for person detection ML processing
-          break;
-        case CameraResolutionMode.sipCall:
-          // High quality 720p for SIP video calls
-          break;
-        case CameraResolutionMode.preview:
-        default:
-          // HD quality for settings preview
-          break;
+      // Check if PersonDetectionService is active and has a camera stream
+      final personDetectionService = Get.isRegistered<PersonDetectionService>()
+          ? Get.find<PersonDetectionService>()
+          : null;
+      final sharedStream = personDetectionService?.cameraStream;
+      final isServiceActive = personDetectionService?.isEnabled.value == true &&
+          sharedStream != null;
+
+      if (isServiceActive) {
+        // Use the shared stream from PersonDetectionService
+        print(
+            '[CameraPreviewWidget] Using shared camera stream from PersonDetectionService.');
+        _localStream = sharedStream;
+        _usingSharedStream = true;
+      } else {
+        // Only acquire a new stream if the service is not running
+        print(
+            '[CameraPreviewWidget] Acquiring new camera stream (service not active).');
+        final Map<String, dynamic> mediaConstraints = {
+          'audio': false,
+          'video': true,
+        };
+        _localStream =
+            await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
+        _usingSharedStream = false;
       }
-
-      final Map<String, dynamic> mediaConstraints = {
-        'audio': false,
-        'video': true,
-      };
-
-      _localStream =
-          await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
       await _localRenderer.srcObject?.dispose();
       _localRenderer.srcObject = _localStream;
 
@@ -131,10 +137,13 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
           : null;
       final sharedStream = personDetectionService?.cameraStream;
       if (_localStream != null && _localStream != sharedStream) {
+        print('[CameraPreviewWidget] Disposing local camera stream.');
         _localStream?.getTracks().forEach((track) {
           track.stop();
         });
         _localStream?.dispose();
+      } else if (_localStream == sharedStream) {
+        print('[CameraPreviewWidget] Not disposing shared camera stream.');
       }
     } catch (e) {
       // If PersonDetectionService is not available, dispose as normal
@@ -144,6 +153,7 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       _localStream?.dispose();
     }
     _localStream = null;
+    _usingSharedStream = false;
   }
 
   @override

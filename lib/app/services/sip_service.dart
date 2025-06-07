@@ -513,16 +513,16 @@ class SipService extends GetxService implements SipUaHelperListener {
       final mediaConstraints = <String, dynamic>{
         'audio': true,
         'video': video,
-      }; // Add device constraints if selected
+      }; // Add device constraints if selected (use simple string format for better compatibility)
       if (selectedAudioInput != null) {
         mediaConstraints['audio'] = {
-          'deviceId': {'exact': selectedAudioInput!.deviceId},
+          'deviceId': selectedAudioInput!.deviceId,
         };
       }
 
       if (video && selectedVideoInput != null) {
         mediaConstraints['video'] = {
-          'deviceId': {'exact': selectedVideoInput!.deviceId},
+          'deviceId': selectedVideoInput!.deviceId,
           'width': {'ideal': 1280},
           'height': {'ideal': 720},
         };

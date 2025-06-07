@@ -332,9 +332,10 @@ class PersonDetectionService extends GetxService {
   final int inputWidth = 300; // Matches your current model requirements
   final int inputHeight = 300; // Matches your current model requirements
   final int numChannels = 3;
-  final double confidenceThreshold = 0.5; // Threshold for object detection
+  final double confidenceThreshold =
+      0.5; // Higher threshold for person detection
   final double objectDetectionThreshold =
-      0.3; // Lower threshold for general objects
+      0.3; // Reasonable threshold for person detection only
   final int personClassId = 1; // Person class ID in COCO dataset
 
   // Frame processing timer and stream
@@ -614,60 +615,56 @@ class PersonDetectionService extends GetxService {
   /// Get camera stream with progressive fallback on constraint failures
   Future<webrtc.MediaStream?> _getCameraStreamWithFallback(
       String? deviceId) async {
+    // Create base video constraints with deviceId if available
+    Map<String, dynamic> createVideoConstraints(
+        Map<String, dynamic>? sizeConstraints) {
+      final videoConstraints = <String, dynamic>{};
+
+      // Add device ID constraint if available (use simple string format for better compatibility)
+      if (deviceId != null && deviceId.isNotEmpty) {
+        videoConstraints['deviceId'] = deviceId;
+      }
+
+      // Add size constraints if provided
+      if (sizeConstraints != null) {
+        videoConstraints.addAll(sizeConstraints);
+      }
+
+      return videoConstraints;
+    }
+
     // Try multiple constraint configurations in order of preference
     final constraintConfigurations = [
-      // First try: Ideal resolution for good quality
+      // 1. Try simple resolution constraints (most compatible with macOS)
       {
         'audio': false,
-        'video': {
-          'width': {'ideal': 640, 'min': 480},
-          'height': {'ideal': 480, 'min': 360},
-          'frameRate': {'ideal': 30, 'min': 15},
-          'facingMode': 'user',
-        }
+        'video': createVideoConstraints({
+          'width': 1280,
+          'height': 720,
+        })
       },
-      // Second try: Lower but acceptable resolution
+      // 2. Try lower resolution
       {
         'audio': false,
-        'video': {
-          'width': {'ideal': 480, 'min': 320},
-          'height': {'ideal': 360, 'min': 240},
-          'frameRate': {'ideal': 30, 'min': 15},
-          'facingMode': 'user',
-        }
+        'video': createVideoConstraints({
+          'width': 640,
+          'height': 360,
+        })
       },
-      // Third try: Minimum acceptable resolution
-      {
-        'audio': false,
-        'video': {
-          'width': {'ideal': 320, 'min': 240},
-          'height': {'ideal': 240, 'min': 180},
-          'frameRate': {'ideal': 30, 'min': 10},
-          'facingMode': 'user',
-        }
-      },
-      // Last resort: No specific constraints
-      {
-        'audio': false,
-        'video': {'facingMode': 'user'}
-      },
+      // 3. Default (no size constraints, just deviceId if available)
+      {'audio': false, 'video': createVideoConstraints(null)}
     ];
 
     for (int i = 0; i < constraintConfigurations.length; i++) {
       try {
-        final constraints =
-            Map<String, dynamic>.from(constraintConfigurations[i]);
-
-        // Add device ID if available
-        if (deviceId != null && deviceId.isNotEmpty) {
-          constraints['video']['deviceId'] = deviceId;
-        }
+        final constraints = constraintConfigurations[i];
 
         print(
-            '📹 Attempting camera constraints (attempt ${i + 1}/${constraintConfigurations.length}):');
-        print('   Width: ${constraints['video']['width'] ?? 'no constraint'}');
+            '📹 Attempting camera constraints (attempt [1m${i + 1}/${constraintConfigurations.length}[0m):');
         print(
-            '   Height: ${constraints['video']['height'] ?? 'no constraint'}');
+            '   Width: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['width'] : 'no constraint'}[0m');
+        print(
+            '   Height: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['height'] : 'no constraint'}[0m');
 
         final stream =
             await webrtc.navigator.mediaDevices.getUserMedia(constraints);
@@ -682,33 +679,27 @@ class PersonDetectionService extends GetxService {
 
             print('📹 Camera stream acquired successfully:');
             print(
-                '   Actual resolution: ${width ?? 'unknown'}x${height ?? 'unknown'}');
+                '   Actual resolution: [1m${width ?? 'unknown'}x${height ?? 'unknown'}[0m');
             print('   Frame rate: ${settings['frameRate'] ?? 'unknown'}');
 
-            // Check if resolution is acceptable (at least 240x180)
+            // Accept only if at least 640x360
             if (width != null &&
                 height != null &&
-                width >= 240 &&
-                height >= 180) {
+                width >= 640 &&
+                height >= 360) {
               print('✅ Camera resolution is acceptable for frame capture');
               return stream;
-            } else if (width != null && height != null) {
-              print(
-                  '⚠️ Camera resolution is below recommended minimum (${width}x${height})');
-              if (i == constraintConfigurations.length - 1) {
-                // Last attempt - accept whatever we get
-                print('📹 Accepting low resolution as last resort');
-                return stream;
-              } else {
-                // Try next constraint configuration
-                // Only stop/dispose the stream if we are NOT returning it
-                stream.getTracks().forEach((track) => track.stop());
-                await stream.dispose();
-                continue;
-              }
+            } else if (i == constraintConfigurations.length - 1) {
+              // Last attempt - accept whatever we get
+              print('📹 Accepting low resolution as last resort');
+              return stream;
             } else {
-              print('⚠️ Could not determine camera resolution');
-              return stream; // Return it anyway
+              print(
+                  '⚠️ Camera resolution is below required minimum (got ${width}x${height}, need at least 640x360)');
+              // Only stop/dispose the stream if we are NOT returning it
+              stream.getTracks().forEach((track) => track.stop());
+              await stream.dispose();
+              continue;
             }
           } catch (e) {
             print('⚠️ Could not get camera settings: $e');
@@ -1211,7 +1202,7 @@ class PersonDetectionService extends GetxService {
         print('🟦 _captureFrame: _cameraStream is not null');
         final videoTracks = _cameraStream!.getVideoTracks();
         print(
-            '🟦 _captureFrame: videoTracks.length = [1m${videoTracks.length}[0m');
+            '🟦 _captureFrame: videoTracks.length = [1m${videoTracks.length}[0m');
         if (videoTracks.isNotEmpty) {
           final videoTrack = videoTracks.first;
           print(
@@ -1225,13 +1216,13 @@ class PersonDetectionService extends GetxService {
                 .map((b) => b.toRadixString(16).padLeft(2, '0'))
                 .join(' ');
             print(
-                '🟦 _captureFrame: length=[1m${frameBytes.length}[0m, first 16 bytes: $hexSample');
+                '🟦 _captureFrame: length=[1m${frameBytes.length}[0m, first 16 bytes: $hexSample');
             isFrameSourceReal.value = true;
             frameSourceStatus.value =
-                'Real frame captured from video track ([1m${frameBytes.length}[0m bytes)';
+                'Real frame captured from video track ([1m${frameBytes.length}[0m bytes)';
             if (framesProcessed.value % 100 == 0) {
               print(
-                  '✅ Direct video track capture: [1m${frameBytes.length}[0m bytes');
+                  '✅ Direct video track capture: [1m${frameBytes.length}[0m bytes');
             }
             return frameBytes;
           } catch (e, st) {
@@ -1460,10 +1451,42 @@ class PersonDetectionService extends GetxService {
 
   /// Process all detected objects and update observable properties
   void _processAllDetectedObjects(List<DetectionBox> detectionBoxes) {
+    // Only process person detections - ignore all other objects
+    print("🔍 Total raw detections: ${detectionBoxes.length}");
+
+    // Print all detections for debugging
+    for (int i = 0; i < detectionBoxes.length && i < 10; i++) {
+      final box = detectionBoxes[i];
+      print(
+          "Detection $i: class='${box.className}', confidence=${box.confidence.toStringAsFixed(3)}, bbox=[${box.x1.toStringAsFixed(2)}, ${box.y1.toStringAsFixed(2)}, ${box.x2.toStringAsFixed(2)}, ${box.y2.toStringAsFixed(2)}]");
+    }
+
+    // ONLY allow person class - ignore everything else
+    const allowedClasses = ['person'];
+
     // Filter objects above the general detection threshold
-    final validDetections = detectionBoxes
+    final aboveThreshold = detectionBoxes
         .where((box) => box.confidence > objectDetectionThreshold)
         .toList();
+
+    print(
+        "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}");
+
+    // Filter for ONLY person class
+    final filtered = aboveThreshold
+        .where((box) =>
+            box.className != null && box.className!.toLowerCase() == 'person')
+        .toList();
+
+    print("✅ After person-only filtering: ${filtered.length}");
+
+    // Sort by confidence descending
+    filtered.sort((a, b) => b.confidence.compareTo(a.confidence));
+
+    // Limit to top 3 person detections
+    final validDetections = filtered.take(3).toList();
+
+    print("🏆 Final person detections: ${validDetections.length}");
 
     // Update detected objects list
     detectedObjects.value = validDetections;
@@ -1475,7 +1498,6 @@ class PersonDetectionService extends GetxService {
     for (final detection in validDetections) {
       final className = detection.className ?? 'unknown';
       counts[className] = (counts[className] ?? 0) + 1;
-
       // Keep the highest confidence for each class
       if (!confidences.containsKey(className) ||
           detection.confidence > confidences[className]!) {
@@ -1860,14 +1882,35 @@ class PersonDetectionService extends GetxService {
     if (!isDebugVisualizationEnabled.value) return;
 
     try {
+      Uint8List? pixelData = frameData;
+      // If the frame is a PNG, decode it to RGBA for analysis
+      if (frameData.length > 8 &&
+          frameData[0] == 0x89 &&
+          frameData[1] == 0x50 &&
+          frameData[2] == 0x4E &&
+          frameData[3] == 0x47) {
+        final img.Image? decoded = img.decodeImage(frameData);
+        if (decoded != null) {
+          // Use toUint8List() if available, else getBytes()
+          try {
+            pixelData = decoded.toUint8List();
+          } catch (_) {
+            pixelData = decoded.getBytes();
+          }
+        } else {
+          print('⚠️ Could not decode PNG for frame analysis');
+          return;
+        }
+      }
+
       // Analyze frame data characteristics
-      final stats = _analyzeFrameDataStats(frameData);
+      final stats = _analyzeFrameDataStats(pixelData);
 
       // Only save every 30 frames to avoid spam
       if (framesProcessed.value % 30 == 0) {
-        print('🔍 FRAME DEBUG ANALYSIS [$source]:');
+        print('🔍 FRAME DEBUG ANALYSIS [\u001b[1m$source\u001b[0m]:');
         print(
-            '   📊 Size: ${frameData.length} bytes (${inputWidth}x${inputHeight})');
+            '   📊 Size: \u001b[1m${pixelData.length}\u001b[0m bytes (${inputWidth}x${inputHeight})');
         print(
             '   🎨 RGB Averages: R=${stats['avgR']}, G=${stats['avgG']}, B=${stats['avgB']}');
         print(
@@ -1881,20 +1924,20 @@ class PersonDetectionService extends GetxService {
             '   📊 Is synthetic pattern: ${stats['isSynthetic'] ? "YES (test data)" : "NO (possibly real camera)"}');
 
         // Convert to PNG and store for debug visualization
-        final pngData = _convertRawFrameToPng(frameData);
+        final pngData = _convertRawFrameToPng(pixelData);
         if (pngData != null) {
           debugVisualizationFrame.value = base64Encode(pngData);
           print('   💾 Frame saved for debug visualization');
         }
 
         // Save sample pixels for detailed analysis
-        if (frameData.length >= 16) {
+        if (pixelData.length >= 16) {
           print('   🔬 First 4 pixels (RGBA):');
-          for (int i = 0; i < 4 && i * 4 + 3 < frameData.length; i++) {
-            final r = frameData[i * 4];
-            final g = frameData[i * 4 + 1];
-            final b = frameData[i * 4 + 2];
-            final a = frameData[i * 4 + 3];
+          for (int i = 0; i < 4 && i * 4 + 3 < pixelData.length; i++) {
+            final r = pixelData[i * 4];
+            final g = pixelData[i * 4 + 1];
+            final b = pixelData[i * 4 + 2];
+            final a = pixelData[i * 4 + 3];
             print('      Pixel $i: R=$r, G=$g, B=$b, A=$a');
           }
         }

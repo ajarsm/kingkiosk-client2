@@ -1,4 +1,6 @@
 import 'dart:convert';
+import 'dart:typed_data';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../services/person_detection_service.dart';
@@ -732,92 +734,96 @@ class PersonDetectionDebugWidget extends StatelessWidget {
     // Show processed ML frame data with detection results
     try {
       final imageBytes = base64Decode(frameData);
-      return Stack(
-        children: [
-          // Processed ML frame with analysis results
-          Container(
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: Theme.of(context).brightness == Brightness.dark
-                    ? Colors.grey.shade600
-                    : Colors.grey.shade300,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.memory(
-                imageBytes,
-                fit: BoxFit.contain,
-                width: double.infinity,
-                height: double.infinity,
-                errorBuilder: (context, error, stackTrace) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.error, color: Colors.red, size: 48),
-                        SizedBox(height: 16),
-                        Text(
-                          'Failed to load ML analysis frame',
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.red,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          'Analysis error: ${error.toString()}',
-                          style: TextStyle(fontSize: 12, color: Colors.grey),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
-          // Bounding boxes overlay showing detection results
-          Positioned.fill(
-            child: CustomPaint(
-              painter: BoundingBoxPainter(
-                detectionBoxes,
-                context,
-                imageSize:
-                    Size(300.0, 300.0), // ML analysis frame is always 300x300
-              ),
-            ),
-          ),
-          // ML Analysis indicator
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.purple.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.psychology, color: Colors.white, size: 12),
-                  SizedBox(width: 4),
-                  Text(
-                    'ML ANALYSIS',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          // Use a GlobalKey to get the rendered image size
+          final imageKey = GlobalKey();
+          return Stack(
+            children: [
+              // Processed ML frame with analysis results
+              Container(
+                decoration: BoxDecoration(
+                  border: Border.all(
+                    color: Theme.of(context).brightness == Brightness.dark
+                        ? Colors.grey.shade600
+                        : Colors.grey.shade300,
                   ),
-                ],
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.memory(
+                    imageBytes,
+                    key: imageKey,
+                    fit: BoxFit.contain,
+                    width: double.infinity,
+                    height: double.infinity,
+                    errorBuilder: (context, error, stackTrace) {
+                      return Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.error, color: Colors.red, size: 48),
+                            SizedBox(height: 16),
+                            Text(
+                              'Failed to load ML analysis frame',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.red,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              'Analysis error: ${error.toString()}',
+                              style:
+                                  TextStyle(fontSize: 12, color: Colors.grey),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+              // Bounding boxes overlay showing detection results
+              Positioned.fill(
+                child: _DynamicBoundingBoxOverlay(
+                  detectionBoxes: detectionBoxes,
+                  imageBytes: imageBytes,
+                ),
+              ),
+              // ML Analysis indicator
+              Positioned(
+                top: 8,
+                left: 8,
+                child: Container(
+                  padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.purple.withOpacity(0.9),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.psychology, color: Colors.white, size: 12),
+                      SizedBox(width: 4),
+                      Text(
+                        'ML ANALYSIS',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          );
+        },
       );
     } catch (e) {
       return Container(
@@ -850,6 +856,64 @@ class PersonDetectionDebugWidget extends StatelessWidget {
         ),
       );
     }
+  }
+}
+
+class _DynamicBoundingBoxOverlay extends StatefulWidget {
+  final List<DetectionBox> detectionBoxes;
+  final Uint8List imageBytes;
+
+  const _DynamicBoundingBoxOverlay({
+    Key? key,
+    required this.detectionBoxes,
+    required this.imageBytes,
+  }) : super(key: key);
+
+  @override
+  State<_DynamicBoundingBoxOverlay> createState() =>
+      _DynamicBoundingBoxOverlayState();
+}
+
+class _DynamicBoundingBoxOverlayState
+    extends State<_DynamicBoundingBoxOverlay> {
+  Size? _imageSize;
+
+  @override
+  void initState() {
+    super.initState();
+    _decodeImageSize();
+  }
+
+  void _decodeImageSize() async {
+    final codec = await ui.instantiateImageCodec(widget.imageBytes);
+    final frame = await codec.getNextFrame();
+    if (mounted) {
+      setState(() {
+        _imageSize = Size(
+          frame.image.width.toDouble(),
+          frame.image.height.toDouble(),
+        );
+      });
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _DynamicBoundingBoxOverlay oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageBytes != widget.imageBytes) {
+      _decodeImageSize();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: BoundingBoxPainter(
+        widget.detectionBoxes,
+        context,
+        imageSize: _imageSize,
+      ),
+    );
   }
 }
 
