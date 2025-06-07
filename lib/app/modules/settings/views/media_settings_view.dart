@@ -3,7 +3,7 @@ import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
 import '../../../services/media_device_service.dart';
 import '../../../services/media_hardware_detection.dart';
-import '../../../services/person_detection_service.dart';
+// import '../../../services/person_detection_service.dart';  // Temporarily commented due to FFI issues
 import '../widgets/camera_preview_widget.dart';
 import '../widgets/person_detection_debug_widget.dart';
 
@@ -225,7 +225,9 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                 return DropdownMenuItem<String>(
                   value: device.deviceId,
                   child: Text(
-                    device.label.isNotEmpty ? device.label : 'Default Microphone',
+                    device.label.isNotEmpty
+                        ? device.label
+                        : 'Default Microphone',
                     overflow: TextOverflow.ellipsis,
                   ),
                 );
@@ -289,7 +291,9 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                     return DropdownMenuItem<String>(
                       value: device.deviceId,
                       child: Text(
-                        device.label.isNotEmpty ? device.label : 'Default Camera',
+                        device.label.isNotEmpty
+                            ? device.label
+                            : 'Default Camera',
                         overflow: TextOverflow.ellipsis,
                       ),
                     );
@@ -567,7 +571,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
               'Enable person presence detection using the camera. When enabled, the system will monitor for people in the camera view.',
               style: TextStyle(fontSize: 14),
             ),
-            SizedBox(height: 16),            Obx(() => SwitchListTile(
+            SizedBox(height: 16),
+            Obx(() => SwitchListTile(
                   title: Text('Enable Person Detection'),
                   subtitle: Text(controller.personDetectionEnabled.value
                       ? 'Person detection is active'
@@ -585,7 +590,9 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                         : Colors.grey,
                   ),
                 )),
-            SizedBox(height: 16),            // Debug visualization button - only show when person detection is enabled
+            SizedBox(
+                height:
+                    16), // Debug visualization button - only show when person detection is enabled
             Obx(() => controller.personDetectionEnabled.value
                 ? Row(
                     children: [
@@ -594,7 +601,7 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                           icon: Icon(Icons.bug_report, color: Colors.orange),
                           label: Text('Debug Visualization'),
                           onPressed: () {
-                            Get.to(() => PersonDetectionDebugWidget());
+                            Get.to(() => const PersonDetectionDebugWidget());
                           },
                           style: OutlinedButton.styleFrom(
                             foregroundColor: Colors.orange,
@@ -604,14 +611,20 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                       ),
                     ],
                   )
-                : SizedBox.shrink()),            // Status information
+                : SizedBox.shrink()), // Status information
             Obx(() {
               if (!controller.personDetectionEnabled.value) {
                 return SizedBox.shrink();
               }
 
               try {
-                final personDetectionService = Get.find<PersonDetectionService>();
+                // Temporarily disabled due to PersonDetectionService compilation issues
+                // final personDetectionService = Get.find<PersonDetectionService>();
+                throw Exception(
+                    'PersonDetectionService temporarily unavailable');
+
+                // The original code will be restored once FFI/tflite_flutter issues are resolved
+                /*
                 return Container(
                   margin: EdgeInsets.only(top: 16),
                   padding: EdgeInsets.all(12),
@@ -671,6 +684,7 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                     ],
                   ),
                 );
+                */
               } catch (e) {
                 return Container(
                   margin: EdgeInsets.only(top: 16),

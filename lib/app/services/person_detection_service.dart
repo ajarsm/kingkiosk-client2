@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math' as math;
 import 'dart:typed_data';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
@@ -9,11 +8,9 @@ import 'package:get/get.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import '../core/utils/app_constants.dart';
-import '../core/platform/frame_capture_platform.dart';
 import 'storage_service.dart';
 import 'mqtt_service_consolidated.dart';
 import 'media_device_service.dart';
-import 'webrtc_texture_bridge.dart';
 
 /// Data structure for passing inference data to background processing
 class InferenceData {
@@ -300,21 +297,7 @@ Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
 class PersonDetectionService extends GetxService {
   // Dependencies
   final StorageService _storageService = Get.find<StorageService>();
-  WebRTCTextureBridge? _textureBridge; // Lazy-loaded dependency
-
-  /// Get WebRTC texture bridge (lazy initialization)
-  WebRTCTextureBridge? _getTextureBridge() {
-    if (_textureBridge == null) {
-      try {
-        _textureBridge = Get.find<WebRTCTextureBridge>();
-        print('🔗 WebRTC texture bridge found and cached');
-      } catch (e) {
-        print('⚠️ WebRTC texture bridge not available: $e');
-        return null;
-      }
-    }
-    return _textureBridge;
-  }
+  // Removed WebRTC frame callback service - using direct video track capture
 
   // TensorFlow Lite interpreter
   Interpreter? _interpreter;
@@ -336,7 +319,15 @@ class PersonDetectionService extends GetxService {
   // Debug visualization properties
   final RxBool isDebugVisualizationEnabled = false.obs;
   final RxList<DetectionBox> latestDetectionBoxes = <DetectionBox>[].obs;
-  final RxnString debugVisualizationFrame = RxnString(); // Base64 encoded frame
+  final RxnString debugVisualizationFrame =
+      RxnString(); // Base64 encoded processed frame with bounding boxes
+  final RxnString rawCapturedFrame =
+      RxnString(); // Base64 encoded raw captured frame before processing
+
+  // Frame source tracking for debug widget
+  final RxBool isFrameSourceReal =
+      false.obs; // Track if frames are real camera or simulated
+  final RxString frameSourceStatus = 'No frames captured'.obs;
   // Processing configuration for SSD MobileNet
   final int inputWidth = 300; // Matches your current model requirements
   final int inputHeight = 300; // Matches your current model requirements
@@ -352,12 +343,16 @@ class PersonDetectionService extends GetxService {
   webrtc.RTCVideoRenderer? _videoRenderer;
 
   // Platform support flags
-  bool _isFrameCaptureSupported = false;
-  int? _rendererTextureId;
+  bool _isFrameCaptureSupported = true; // Always true for WebRTC capture
+  // Removed _rendererTextureId - using direct video track capture
 
-  // Processing rate configuration - optimized for performance
-  final Duration processingInterval =
-      Duration(milliseconds: 2000); // Process 0.5 frames per second
+  // ML Analysis configuration - configurable and optimized for performance
+  static const Duration defaultAnalysisInterval =
+      Duration(milliseconds: 2000); // Analyze every 2 seconds
+  late Duration analysisInterval;
+
+  // Last analysis timestamp for rate limiting
+  DateTime? _lastAnalysisTime;
 
   // Camera resolution management for SIP calls (reactive)
   final RxBool isUpgradedTo720p = false.obs;
@@ -366,9 +361,12 @@ class PersonDetectionService extends GetxService {
   Future<void> onInit() async {
     super.onInit();
 
-    // Check platform support for frame capture
-    _isFrameCaptureSupported = await FrameCapturePlatform.isSupported();
-    print('Frame capture platform support: $_isFrameCaptureSupported');
+    print('✅ WebRTC frame capture always supported');
+
+    // Initialize ML analysis interval (configurable)
+    analysisInterval = defaultAnalysisInterval;
+    print(
+        '📊 ML Analysis interval set to: ${analysisInterval.inMilliseconds}ms');
 
     // Load settings
     isEnabled.value =
@@ -449,12 +447,7 @@ class PersonDetectionService extends GetxService {
       // Set up 720p constraints
       final Map<String, dynamic> mediaConstraints = {
         'audio': false,
-        'video': {
-          'width': {'ideal': 1280},
-          'height': {'ideal': 720},
-          'frameRate': {'ideal': 30},
-          'facingMode': 'user',
-        }
+        'video': true
       };
 
       if (actualDeviceId != null && actualDeviceId.isNotEmpty) {
@@ -525,6 +518,44 @@ class PersonDetectionService extends GetxService {
     return isUpgradedTo720p.value;
   }
 
+  /// Configure ML analysis interval (how often to run object detection)
+  void setAnalysisInterval(Duration interval) {
+    if (interval.inMilliseconds < 500) {
+      print(
+          '⚠️ Warning: Analysis interval too short (${interval.inMilliseconds}ms), minimum is 500ms');
+      analysisInterval = Duration(milliseconds: 500);
+    } else if (interval.inMilliseconds > 30000) {
+      print(
+          '⚠️ Warning: Analysis interval too long (${interval.inMilliseconds}ms), maximum is 30s');
+      analysisInterval = Duration(milliseconds: 30000);
+    } else {
+      analysisInterval = interval;
+    }
+    print(
+        '📊 ML Analysis interval updated to: ${analysisInterval.inMilliseconds}ms');
+
+    // Restart processing timer with new interval if currently running
+    if (_processingTimer != null) {
+      _startFrameProcessing();
+    }
+  }
+
+  /// Check if enough time has passed since last analysis to run a new one
+  bool _shouldRunAnalysis() {
+    final now = DateTime.now();
+    if (_lastAnalysisTime == null) {
+      return true; // First analysis
+    }
+
+    final timeSinceLastAnalysis = now.difference(_lastAnalysisTime!);
+    return timeSinceLastAnalysis >= analysisInterval;
+  }
+
+  /// Mark that analysis was performed
+  void _markAnalysisPerformed() {
+    _lastAnalysisTime = DateTime.now();
+  }
+
   /// Initialize the TensorFlow Lite model
   Future<bool> _initializeModel() async {
     try {
@@ -580,6 +611,127 @@ class PersonDetectionService extends GetxService {
     }
   }
 
+  /// Get camera stream with progressive fallback on constraint failures
+  Future<webrtc.MediaStream?> _getCameraStreamWithFallback(
+      String? deviceId) async {
+    // Try multiple constraint configurations in order of preference
+    final constraintConfigurations = [
+      // First try: Ideal resolution for good quality
+      {
+        'audio': false,
+        'video': {
+          'width': {'ideal': 640, 'min': 480},
+          'height': {'ideal': 480, 'min': 360},
+          'frameRate': {'ideal': 30, 'min': 15},
+          'facingMode': 'user',
+        }
+      },
+      // Second try: Lower but acceptable resolution
+      {
+        'audio': false,
+        'video': {
+          'width': {'ideal': 480, 'min': 320},
+          'height': {'ideal': 360, 'min': 240},
+          'frameRate': {'ideal': 30, 'min': 15},
+          'facingMode': 'user',
+        }
+      },
+      // Third try: Minimum acceptable resolution
+      {
+        'audio': false,
+        'video': {
+          'width': {'ideal': 320, 'min': 240},
+          'height': {'ideal': 240, 'min': 180},
+          'frameRate': {'ideal': 30, 'min': 10},
+          'facingMode': 'user',
+        }
+      },
+      // Last resort: No specific constraints
+      {
+        'audio': false,
+        'video': {'facingMode': 'user'}
+      },
+    ];
+
+    for (int i = 0; i < constraintConfigurations.length; i++) {
+      try {
+        final constraints =
+            Map<String, dynamic>.from(constraintConfigurations[i]);
+
+        // Add device ID if available
+        if (deviceId != null && deviceId.isNotEmpty) {
+          constraints['video']['deviceId'] = deviceId;
+        }
+
+        print(
+            '📹 Attempting camera constraints (attempt ${i + 1}/${constraintConfigurations.length}):');
+        print('   Width: ${constraints['video']['width'] ?? 'no constraint'}');
+        print(
+            '   Height: ${constraints['video']['height'] ?? 'no constraint'}');
+
+        final stream =
+            await webrtc.navigator.mediaDevices.getUserMedia(constraints);
+
+        // Validate the resulting resolution
+        final videoTracks = stream.getVideoTracks();
+        if (videoTracks.isNotEmpty) {
+          try {
+            final settings = await videoTracks.first.getSettings();
+            final width = settings['width'] as int?;
+            final height = settings['height'] as int?;
+
+            print('📹 Camera stream acquired successfully:');
+            print(
+                '   Actual resolution: ${width ?? 'unknown'}x${height ?? 'unknown'}');
+            print('   Frame rate: ${settings['frameRate'] ?? 'unknown'}');
+
+            // Check if resolution is acceptable (at least 240x180)
+            if (width != null &&
+                height != null &&
+                width >= 240 &&
+                height >= 180) {
+              print('✅ Camera resolution is acceptable for frame capture');
+              return stream;
+            } else if (width != null && height != null) {
+              print(
+                  '⚠️ Camera resolution is below recommended minimum (${width}x${height})');
+              if (i == constraintConfigurations.length - 1) {
+                // Last attempt - accept whatever we get
+                print('📹 Accepting low resolution as last resort');
+                return stream;
+              } else {
+                // Try next constraint configuration
+                // Only stop/dispose the stream if we are NOT returning it
+                stream.getTracks().forEach((track) => track.stop());
+                await stream.dispose();
+                continue;
+              }
+            } else {
+              print('⚠️ Could not determine camera resolution');
+              return stream; // Return it anyway
+            }
+          } catch (e) {
+            print('⚠️ Could not get camera settings: $e');
+            return stream; // Return it anyway
+          }
+        } else {
+          print('❌ No video tracks in camera stream');
+          stream.dispose();
+          continue;
+        }
+      } catch (e) {
+        print('❌ Camera constraint attempt ${i + 1} failed: $e');
+        if (i == constraintConfigurations.length - 1) {
+          print('❌ All camera constraint attempts failed');
+          return null;
+        }
+        // Continue to next attempt
+      }
+    }
+
+    return null;
+  }
+
   /// Start person detection with camera access
   Future<bool> startDetection({String? deviceId}) async {
     if (!isEnabled.value) {
@@ -621,74 +773,44 @@ class PersonDetectionService extends GetxService {
         await _videoRenderer!.initialize();
       }
 
-      // Configure camera constraints for person detection (300x300 for efficiency)
-      // Note: Will be upgraded to 720p during SIP calls
-      final Map<String, dynamic> mediaConstraints = {
-        'audio': false,
-        'video': {
-          'width': {'ideal': 300}, // 300x300 for person detection
-          'height': {
-            'ideal': 300
-          }, // Square aspect ratio for better ML processing
-          'frameRate': {'ideal': 30}, // Higher frame rate for smooth detection
-          'facingMode': 'user', // Default to front camera
-        }
-      };
+      // Get camera stream with progressive fallback
+      _cameraStream = await _getCameraStreamWithFallback(actualDeviceId);
+      if (_cameraStream == null) {
+        throw Exception('Failed to acquire camera stream');
+      }
 
-      // Add device ID if available
-      if (actualDeviceId != null && actualDeviceId.isNotEmpty) {
-        mediaConstraints['video']['deviceId'] = actualDeviceId;
-        print('👤 Person detection using camera device: $actualDeviceId');
-      } else {
-        print('⚠️ No specific camera device selected, using default');
-      } // Get camera stream
-      _cameraStream =
-          await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
       _videoRenderer!.srcObject = _cameraStream;
 
-      // Register renderer with WebRTC texture bridge for proper texture access
-      if (_isFrameCaptureSupported) {
-        try {
-          // Register the video renderer with the texture bridge
-          final textureBridge = _getTextureBridge();
-          if (textureBridge != null) {
-            _rendererTextureId =
-                textureBridge.registerRenderer(_videoRenderer!);
-            print(
-                '✅ Registered WebRTC renderer with texture bridge: $_rendererTextureId');
+      // Log the actual resolution that was negotiated
+      final videoTracks = _cameraStream!.getVideoTracks();
+      if (videoTracks.isNotEmpty) {
+        final track = videoTracks.first;
+        final settings = await track.getSettings();
+        print('📹 Camera resolution negotiated for person detection:');
+        print('   Width: ${settings['width'] ?? 'unknown'}');
+        print('   Height: ${settings['height'] ?? 'unknown'}');
+        print('   Frame rate: ${settings['frameRate'] ?? 'unknown'}');
 
-            // Get the actual WebRTC texture ID for verification
-            final webrtcTextureId =
-                textureBridge.getWebRTCTextureId(_rendererTextureId!);
-            print('🔗 WebRTC texture ID: $webrtcTextureId');
-
-            // Attempt to get native platform texture handle for enhanced access
-            final platformTextureId = await textureBridge
-                .getNativePlatformTextureId(_rendererTextureId!);
-            if (platformTextureId != null) {
-              print(
-                  '🏆 Got native platform texture ID: $platformTextureId for enhanced frame capture');
-            } else {
-              print(
-                  '⚠️ Native platform texture access not available, using standard WebRTC capture');
-            }
-          } else {
+        // If we got a very small resolution, warn about it
+        final width = settings['width'] as int?;
+        final height = settings['height'] as int?;
+        if (width != null && height != null) {
+          if (width < 200 || height < 200) {
             print(
-                '⚠️ WebRTC texture bridge not available, using fallback texture ID');
-            _rendererTextureId = _videoRenderer!.textureId;
+                '⚠️ WARNING: Camera resolution is very small (${width}x${height}). This may cause poor detection performance.');
           }
-        } catch (e) {
-          print(
-              '❌ Error registering with texture bridge: $e, falling back to standard texture ID');
-          _rendererTextureId = _videoRenderer!.textureId;
         }
       }
 
-      // Start frame processing
+      // Wait for video stream to start receiving frames
+      print('⏳ Waiting for video stream to start rendering frames...');
+      await _waitForVideoStreamReady();
+
+      // Start frame processing using direct video track capture
       _startFrameProcessing();
 
       print(
-          'Person detection started successfully with texture ID: $_rendererTextureId');
+          '✅ Person detection started successfully using direct video track capture');
       return true;
     } catch (e) {
       lastError.value = 'Failed to start camera: $e';
@@ -702,7 +824,7 @@ class PersonDetectionService extends GetxService {
     _processingTimer?.cancel();
     _processingTimer = null;
 
-    // Stop camera stream
+    // Clean up camera stream and video renderer - direct approach
     _cameraStream?.getTracks().forEach((track) => track.stop());
     _cameraStream?.dispose();
     _cameraStream = null;
@@ -710,9 +832,6 @@ class PersonDetectionService extends GetxService {
     // Dispose video renderer
     _videoRenderer?.dispose();
     _videoRenderer = null;
-
-    // Reset texture ID
-    _rendererTextureId = null;
 
     // Reset state
     isPersonPresent.value = false;
@@ -723,16 +842,118 @@ class PersonDetectionService extends GetxService {
   }
 
   /// Start periodic frame processing
+  /// Uses a shorter check interval (500ms) for responsiveness but only runs ML analysis at the configured interval
   void _startFrameProcessing() {
     _processingTimer?.cancel();
-    _processingTimer = Timer.periodic(processingInterval, (_) {
-      _processCurrentFrame();
+
+    // Use a shorter interval for checking (500ms) to be responsive
+    const Duration checkInterval = Duration(milliseconds: 500);
+
+    _processingTimer = Timer.periodic(checkInterval, (_) {
+      // Only run ML analysis if enough time has passed since the last analysis
+      if (_shouldRunAnalysis()) {
+        _processCurrentFrame();
+      }
     });
+
+    print(
+        '📊 Frame processing timer started: check every ${checkInterval.inMilliseconds}ms, analyze every ${analysisInterval.inMilliseconds}ms');
+  }
+
+  /// Wait for the video stream to be ready for frame capture
+  Future<void> _waitForVideoStreamReady() async {
+    if (_videoRenderer == null) {
+      throw Exception('Video renderer is not initialized');
+    }
+
+    const int maxAttempts = 50; // 5 seconds at 100ms intervals
+    const Duration checkInterval = Duration(milliseconds: 100);
+    int attempts = 0;
+
+    while (attempts < maxAttempts) {
+      try {
+        // Check if the video renderer has a valid source object
+        if (_videoRenderer!.srcObject != null) {
+          // Additional checks for readiness based on platform
+          if (kIsWeb) {
+            // On web, we can check video element readiness through DOM queries
+            // The web implementation handles video element detection separately
+            // For now, check if we have video tracks with settings
+            final videoTracks = _cameraStream?.getVideoTracks();
+            if (videoTracks != null && videoTracks.isNotEmpty) {
+              try {
+                final settings = await videoTracks.first.getSettings();
+                final width = settings['width'] as int?;
+                final height = settings['height'] as int?;
+
+                if (width != null &&
+                    height != null &&
+                    width > 0 &&
+                    height > 0) {
+                  print(
+                      '✅ Video stream is ready for capture (${width}x${height})');
+                  return;
+                }
+              } catch (e) {
+                // Settings might not be available yet, continue waiting
+              }
+            }
+          } else {
+            // For non-web platforms, check if we have video tracks with settings
+            final videoTracks = _cameraStream?.getVideoTracks();
+            if (videoTracks != null && videoTracks.isNotEmpty) {
+              try {
+                final settings = await videoTracks.first.getSettings();
+                final width = settings['width'] as int?;
+                final height = settings['height'] as int?;
+
+                if (width != null &&
+                    height != null &&
+                    width > 0 &&
+                    height > 0) {
+                  print(
+                      '✅ Video stream is ready for capture (${width}x${height})');
+                  return;
+                }
+              } catch (e) {
+                // Settings might not be available yet, continue waiting
+              }
+            }
+          }
+
+          // Additional check: verify renderer has valid texture ID and dimensions
+          if (_videoRenderer!.textureId != null &&
+              _videoRenderer!.value.width > 0 &&
+              _videoRenderer!.value.height > 0) {
+            print(
+                '✅ Video renderer has valid texture and dimensions (${_videoRenderer!.value.width.toInt()}x${_videoRenderer!.value.height.toInt()})');
+            return;
+          }
+        }
+
+        attempts++;
+        if (attempts < maxAttempts) {
+          await Future.delayed(checkInterval);
+        }
+      } catch (e) {
+        print('⚠️ Error checking video stream readiness: $e');
+        attempts++;
+        if (attempts < maxAttempts) {
+          await Future.delayed(checkInterval);
+        }
+      }
+    }
+
+    // If we reach here, we've exceeded max attempts
+    print(
+        '⚠️ Warning: Video stream readiness check timed out after ${maxAttempts * checkInterval.inMilliseconds}ms');
+    print(
+        '   Proceeding with frame capture setup, but there may be timing issues');
   }
 
   /// Process the current camera frame for person detection
   Future<void> _processCurrentFrame() async {
-    if (_videoRenderer == null || isProcessing.value) {
+    if (_videoRenderer == null || isProcessing.value || !_shouldRunAnalysis()) {
       return;
     }
 
@@ -749,25 +970,57 @@ class PersonDetectionService extends GetxService {
                 '⚠️  Frame capture failed - no frame data available (frame ${framesProcessed.value})');
           }
 
-          // If debug visualization is enabled and we can't capture real frames, use realistic test data
+          // In debug mode, don't generate synthetic data - let the debug widget show "No frame available"
           if (isDebugVisualizationEnabled.value) {
-            if (framesProcessed.value % 2 == 0) {
-              // Generate more frequently for smooth visualization
-              _generateRealisticDebugData();
-              if (framesProcessed.value % 20 == 0) {
-                print(
-                    '🎨 Generated realistic test data for debug visualization (frame ${framesProcessed.value})');
-              }
+            if (framesProcessed.value % 20 == 0) {
+              print(
+                  '🔍 Debug mode: No real WebRTC frames available - debug widget will show status');
             }
           }
           framesProcessed.value++; // Still count the frame
           return;
         }
 
-        // Determine if this is real or synthetic frame data
+        // Analyze and save frame data for inspection
+        _analyzeAndSaveFrameData(frameData, "Captured Frame");
+
+        // Store raw captured frame for debug visualization (before TensorFlow processing)
+        if (isDebugVisualizationEnabled.value) {
+          // If the frame is already a PNG, just use it directly
+          if (frameData.length > 8 &&
+              frameData[0] == 0x89 &&
+              frameData[1] == 0x50 &&
+              frameData[2] == 0x4E &&
+              frameData[3] == 0x47) {
+            // PNG header detected
+            final base64Raw = base64Encode(frameData);
+            rawCapturedFrame.value = base64Raw;
+            print(
+                '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}');
+          } else {
+            // Fallback: try to convert to PNG
+            Uint8List? rawPngData = _convertRawFrameToPng(frameData);
+            if (rawPngData == null) {
+              print(
+                  '⚠️ _convertRawFrameToPng returned null, using fallback image');
+              rawPngData = _generateFallbackPngImage();
+            }
+            if (rawPngData != null) {
+              final base64Raw = base64Encode(rawPngData);
+              rawCapturedFrame.value = base64Raw;
+              print(
+                  '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}');
+            } else {
+              print('❌ Failed to generate any PNG for rawCapturedFrame');
+              rawCapturedFrame.value = null;
+            }
+          }
+        }
+
+        // Determine if this is real frame from direct video track capture
         final isRealFrame = _isFrameCaptureSupported &&
-            _rendererTextureId != null &&
-            _rendererTextureId! > 0;
+            _cameraStream != null &&
+            _videoRenderer != null;
 
         // Log successful frame capture occasionally
         if (framesProcessed.value % 50 == 0) {
@@ -807,18 +1060,45 @@ class PersonDetectionService extends GetxService {
           // Store debug visualization data if enabled
           if (isDebugVisualizationEnabled.value) {
             latestDetectionBoxes.value = result.detectionBoxes;
-
-            // Store the frame data for debug visualization (convert raw RGBA to PNG)
+            // Store the frame data for debug visualization (convert to PNG if needed)
             try {
-              final debugFrame = _convertRawFrameToPng(frameData);
+              Uint8List? debugFrame;
+              // If the frame is already a PNG, decode, annotate, and re-encode
+              if (frameData.length > 8 &&
+                  frameData[0] == 0x89 &&
+                  frameData[1] == 0x50 &&
+                  frameData[2] == 0x4E &&
+                  frameData[3] == 0x47) {
+                // PNG header detected
+                final img.Image? decoded = img.decodeImage(frameData);
+                if (decoded != null) {
+                  // Optionally, draw detection boxes here if needed
+                  debugFrame = Uint8List.fromList(img.encodePng(decoded));
+                } else {
+                  print('⚠️ Could not decode PNG for debugVisualizationFrame');
+                  debugFrame = _generateFallbackPngImage();
+                }
+              } else {
+                debugFrame = _convertRawFrameToPng(frameData);
+                if (debugFrame == null) {
+                  print(
+                      '⚠️ _convertRawFrameToPng (debug) returned null, using fallback image');
+                  debugFrame = _generateFallbackPngImage();
+                }
+              }
               if (debugFrame != null) {
-                debugVisualizationFrame.value = base64Encode(debugFrame);
+                final base64Debug = base64Encode(debugFrame);
+                debugVisualizationFrame.value = base64Debug;
+                print(
+                    '🐞 debugVisualizationFrame.value set, length: ${base64Debug.length}');
               } else {
                 print(
-                    '⚠️ Failed to convert frame to PNG for debug visualization');
+                    '❌ Failed to generate any PNG for debugVisualizationFrame');
+                debugVisualizationFrame.value = null;
               }
             } catch (e) {
               print('⚠️ Failed to encode frame for debug visualization: $e');
+              debugVisualizationFrame.value = null;
             }
           }
 
@@ -837,6 +1117,9 @@ class PersonDetectionService extends GetxService {
                   '   🐛 Debug boxes stored: ${result.detectionBoxes.length}');
             }
           }
+
+          // Mark that ML analysis was successfully performed
+          _markAnalysisPerformed();
         } catch (e) {
           print('Error running background inference: $e');
           // Fallback to simple single output processing if multi-output fails
@@ -850,6 +1133,9 @@ class PersonDetectionService extends GetxService {
 
           // For simple models, assume first output is confidence
           confidence.value = output[0][0];
+
+          // Mark that ML analysis was performed (even in fallback mode)
+          _markAnalysisPerformed();
         } // Update presence detection
         final wasPersonPresent = isPersonPresent.value;
         isPersonPresent.value = confidence.value > confidenceThreshold;
@@ -900,142 +1186,76 @@ class PersonDetectionService extends GetxService {
     }
     framesProcessed.value++;
 
-    // Generate synthetic debug data if visualization is enabled
-    if (isDebugVisualizationEnabled.value && framesProcessed.value % 5 == 0) {
-      _generateSyntheticDebugData();
+    // In debug mode, don't generate synthetic data - let the debug widget show actual status
+    // This ensures the debug widget displays real information about WebRTC frame availability
+    if (isDebugVisualizationEnabled.value && framesProcessed.value % 20 == 0) {
+      print(
+          'Debug mode active: Frame source real=${isFrameSourceReal.value}, status="${frameSourceStatus.value}"');
     }
 
-    // Log simulation mode periodically
-    if (framesProcessed.value % 20 == 0) {
+    // Log simulation mode periodically (only when actually in simulation and not in debug mode)
+    if (!isFrameSourceReal.value &&
+        !isDebugVisualizationEnabled.value &&
+        framesProcessed.value % 20 == 0) {
       print(
-          'Person detection running in simulation mode (frame ${framesProcessed.value})');
+          'Person detection running in simulation mode (frame ${framesProcessed.value}) - real WebRTC frames not available');
     }
   }
 
-  /// Capture current frame from video renderer
+  /// Capture current frame from video renderer using direct VideoTrack.captureFrame()
   Future<Uint8List?> _captureFrame() async {
+    print('🟦 _captureFrame: called'); // Explicit entry log
     try {
-      // Check if platform capture is supported and texture ID is available
-      if (_isFrameCaptureSupported &&
-          _rendererTextureId != null &&
-          _rendererTextureId! > 0) {
-        // Use WebRTC texture bridge for enhanced frame capture
-        final textureBridge = _getTextureBridge();
-        if (textureBridge != null) {
-          final frameData = await textureBridge.captureFrame(
-            _rendererTextureId!,
-            inputWidth,
-            inputHeight,
-          );
-
-          if (frameData != null && frameData.isNotEmpty) {
-            // Validate frame data size
-            final expectedSize = inputWidth * inputHeight * 4; // RGBA
-            if (frameData.length == expectedSize) {
-              // Log successful capture for debugging (but not too frequently)
-              if (framesProcessed.value % 100 == 0) {
-                print(
-                    '✅ Real frame captured via WebRTC bridge: ${frameData.length} bytes');
-              }
-              return frameData;
-            } else {
+      // Direct approach: Use videoTrack.captureFrame() method
+      if (_cameraStream != null) {
+        print('🟦 _captureFrame: _cameraStream is not null');
+        final videoTracks = _cameraStream!.getVideoTracks();
+        print(
+            '🟦 _captureFrame: videoTracks.length = [1m${videoTracks.length}[0m');
+        if (videoTracks.isNotEmpty) {
+          final videoTrack = videoTracks.first;
+          print(
+              '🟦 _captureFrame: videoTrack found, attempting captureFrame()');
+          try {
+            final ByteBuffer frameBuffer = await videoTrack.captureFrame();
+            print('🟦 _captureFrame: captureFrame() completed');
+            final Uint8List frameBytes = frameBuffer.asUint8List();
+            final hexSample = frameBytes
+                .take(16)
+                .map((b) => b.toRadixString(16).padLeft(2, '0'))
+                .join(' ');
+            print(
+                '🟦 _captureFrame: length=[1m${frameBytes.length}[0m, first 16 bytes: $hexSample');
+            isFrameSourceReal.value = true;
+            frameSourceStatus.value =
+                'Real frame captured from video track ([1m${frameBytes.length}[0m bytes)';
+            if (framesProcessed.value % 100 == 0) {
               print(
-                  'Warning: Frame data size mismatch. Expected: $expectedSize, Got: ${frameData.length}');
-              // Try to process anyway if size is close
-              if (frameData.length >= expectedSize * 0.8) {
-                return frameData;
-              }
+                  '✅ Direct video track capture: [1m${frameBytes.length}[0m bytes');
             }
-          } else {
-            if (framesProcessed.value % 50 == 0) {
-              print(
-                  '⚠️ WebRTC texture bridge capture returned null (frame ${framesProcessed.value})');
-            }
+            return frameBytes;
+          } catch (e, st) {
+            print('❌ Direct video track capture failed: $e\n$st');
+            isFrameSourceReal.value = false;
+            frameSourceStatus.value = 'Video track capture failed: $e';
           }
         } else {
-          if (framesProcessed.value % 100 == 0) {
-            print(
-                '⚠️ WebRTC texture bridge not available (frame ${framesProcessed.value})');
-          }
+          print('❌ No video tracks available in camera stream');
+          isFrameSourceReal.value = false;
+          frameSourceStatus.value = 'No video tracks available';
         }
       } else {
-        if (framesProcessed.value % 100 == 0) {
-          print(
-              '⚠️ Frame capture not available - platform support: $_isFrameCaptureSupported, texture ID: $_rendererTextureId (frame ${framesProcessed.value})');
-        }
+        print('❌ No camera stream available for frame capture');
+        isFrameSourceReal.value = false;
+        frameSourceStatus.value = 'No camera stream available';
       }
-
-      // Enhanced fallback: Try alternative WebRTC frame access methods
-      if (_videoRenderer != null && _cameraStream != null) {
-        // Future implementation could include:
-        // 1. Direct WebRTC frame callback registration
-        // 2. Canvas-based capture for web platforms
-        // 3. Platform-specific video pipeline access
-
-        // For now, attempt to create a realistic test frame based on camera state
-        return _createRealisticTestFrame();
-      }
-
+      print('🟦 _captureFrame: returning null (frame capture failed)');
       return null;
-    } catch (e) {
-      print('Error capturing frame: $e');
-      lastError.value = 'Frame capture error: $e';
-      return null;
-    }
-  }
-
-  /// Create a realistic test frame that simulates camera data
-  /// This provides better debugging experience until real WebRTC capture is implemented
-  Uint8List? _createRealisticTestFrame() {
-    try {
-      final frameData = Uint8List(inputWidth * inputHeight * 4);
-
-      // Create a more realistic camera-like frame with:
-      // - Natural color variations
-      // - Simulated person-like shapes
-      // - Temporal changes to simulate video
-
-      final frameTime = DateTime.now().millisecondsSinceEpoch / 1000.0;
-
-      for (int y = 0; y < inputHeight; y++) {
-        for (int x = 0; x < inputWidth; x++) {
-          final offset = (y * inputWidth + x) * 4;
-
-          // Create a realistic background with subtle noise
-          final baseR = 120 + (math.sin(x * 0.02) * 20).toInt();
-          final baseG = 140 + (math.cos(y * 0.03) * 15).toInt();
-          final baseB = 160 + (math.sin((x + y) * 0.01) * 10).toInt();
-
-          // Add temporal variation to simulate live video
-          final timeOffset = (math.sin(frameTime * 0.5) * 10).toInt();
-
-          // Simulate a person-like shape in the center area
-          final centerX = inputWidth / 2;
-          final centerY = inputHeight / 2;
-          final distFromCenter =
-              math.sqrt(math.pow(x - centerX, 2) + math.pow(y - centerY, 2));
-
-          if (distFromCenter < 80 &&
-              y > inputHeight * 0.3 &&
-              y < inputHeight * 0.8) {
-            // Person-like region (darker, skin-tone colors)
-            frameData[offset + 0] = (200 + timeOffset).clamp(0, 255); // R
-            frameData[offset + 1] = (170 + timeOffset).clamp(0, 255); // G
-            frameData[offset + 2] = (140 + timeOffset).clamp(0, 255); // B
-          } else {
-            // Background
-            frameData[offset + 0] = (baseR + timeOffset).clamp(0, 255); // R
-            frameData[offset + 1] = (baseG + timeOffset).clamp(0, 255); // G
-            frameData[offset + 2] = (baseB + timeOffset).clamp(0, 255); // B
-          }
-
-          frameData[offset + 3] = 255; // A (fully opaque)
-        }
-      }
-
-      return frameData;
-    } catch (e) {
-      print('Error creating test frame: $e');
+    } catch (e, st) {
+      print('❌ Frame capture error: $e\n$st');
+      isFrameSourceReal.value = false;
+      frameSourceStatus.value = 'Frame capture error: $e';
+      print('🟦 _captureFrame: returning null (exception)');
       return null;
     }
   }
@@ -1045,22 +1265,26 @@ class PersonDetectionService extends GetxService {
     try {
       img.Image? image;
 
-      // Check if this is RGBA data from platform capture or encoded image
-      if (frameData.length == inputWidth * inputHeight * 4) {
-        // Raw RGBA data from platform capture
-        image = img.Image.fromBytes(
-          width: inputWidth,
-          height: inputHeight,
-          bytes: frameData.buffer,
-          format: img.Format.uint8,
-          numChannels: 4,
-        );
-      } else {
-        // Encoded image data (JPEG, PNG, etc.)
-        image = img.decodeImage(frameData);
+      // Always try to decode as image first (handles JPEG/PNG and raw RGBA)
+      image = img.decodeImage(frameData);
+      if (image == null && frameData.length == inputWidth * inputHeight * 4) {
+        // Fallback: try raw RGBA if decodeImage failed
+        try {
+          image = img.Image.fromBytes(
+            width: inputWidth,
+            height: inputHeight,
+            bytes: frameData.buffer,
+            format: img.Format.uint8,
+            numChannels: 4,
+          );
+        } catch (e) {
+          print('⚠️ Fallback to raw RGBA failed: $e');
+        }
       }
 
       if (image == null) {
+        print(
+            '❌ _preprocessFrame: Failed to decode image. Data length: ${frameData.length}');
         throw Exception('Failed to decode image');
       }
 
@@ -1074,49 +1298,34 @@ class PersonDetectionService extends GetxService {
       final inputType = inputTensor.type;
 
       // Check if this is a quantized model (uint8) or float model
-      // TfLiteType enum values vary by package version, so we check the string representation
       final isQuantized = inputType.toString().contains('uint8') ||
           inputType.toString().contains('UINT8');
 
       if (isQuantized) {
-        // Quantized model - use efficient Uint8List for raw uint8 values (0-255)
-        // Create flat tensor data: [batch_size * height * width * channels]
         final totalSize = 1 * inputHeight * inputWidth * numChannels;
         final input = Uint8List(totalSize);
-
         int index = 0;
         for (int y = 0; y < inputHeight; y++) {
           for (int x = 0; x < inputWidth; x++) {
             final pixel = image.getPixel(x, y);
-
-            // Store raw RGB values (0-255) for quantized model in BHWC format
             input[index++] = pixel.r.toInt().clamp(0, 255);
             input[index++] = pixel.g.toInt().clamp(0, 255);
             input[index++] = pixel.b.toInt().clamp(0, 255);
           }
         }
-
-        // Reshape to 4D tensor format [1, height, width, channels]
         return input.reshape([1, inputHeight, inputWidth, numChannels]);
       } else {
-        // Float model - use efficient Float32List and normalize to [0, 1] range
-        // Create flat tensor data: [batch_size * height * width * channels]
         final totalSize = 1 * inputHeight * inputWidth * numChannels;
         final input = Float32List(totalSize);
-
         int index = 0;
         for (int y = 0; y < inputHeight; y++) {
           for (int x = 0; x < inputWidth; x++) {
             final pixel = image.getPixel(x, y);
-
-            // Extract RGB values and normalize to [0, 1] range in BHWC format
             input[index++] = (pixel.r / 255.0).clamp(0.0, 1.0);
             input[index++] = (pixel.g / 255.0).clamp(0.0, 1.0);
             input[index++] = (pixel.b / 255.0).clamp(0.0, 1.0);
           }
         }
-
-        // Reshape to 4D tensor format [1, height, width, channels]
         return input.reshape([1, inputHeight, inputWidth, numChannels]);
       }
     } catch (e) {
@@ -1158,33 +1367,93 @@ class PersonDetectionService extends GetxService {
       const int width = 300;
       const int height = 300;
       const int channels = 4; // RGBA
+      const int expectedSize = width * height * channels;
 
-      if (rawRgbaData.length != width * height * channels) {
+      if (rawRgbaData.length != expectedSize) {
         print(
-            '⚠️ Unexpected frame data size: ${rawRgbaData.length} bytes (expected ${width * height * channels})');
+            '⚠️ Frame data size mismatch: ${rawRgbaData.length} bytes (expected $expectedSize for ${width}x${height} RGBA)');
+
+        // Try to handle different sizes
+        if (rawRgbaData.length == width * height * 3) {
+          // RGB data without alpha
+          print('📷 Converting RGB data to RGBA for PNG encoding');
+          final rgbaData = Uint8List(expectedSize);
+          for (int i = 0; i < width * height; i++) {
+            final rgbIndex = i * 3;
+            final rgbaIndex = i * 4;
+            rgbaData[rgbaIndex] = rawRgbaData[rgbIndex]; // R
+            rgbaData[rgbaIndex + 1] = rawRgbaData[rgbIndex + 1]; // G
+            rgbaData[rgbaIndex + 2] = rawRgbaData[rgbIndex + 2]; // B
+            rgbaData[rgbaIndex + 3] = 255; // A (full opacity)
+          }
+          return _convertRawFrameToPng(
+              rgbaData); // Recursive call with corrected data
+        }
+
+        // If size is completely wrong, return null
         return null;
       }
 
-      // Create an image from raw RGBA data
-      final image = img.Image(width: width, height: height);
-
-      // Copy RGBA data to image
-      for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-          final int pixelIndex = (y * width + x) * channels;
-          final int r = rawRgbaData[pixelIndex];
-          final int g = rawRgbaData[pixelIndex + 1];
-          final int b = rawRgbaData[pixelIndex + 2];
-          final int a = rawRgbaData[pixelIndex + 3];
-
-          image.setPixelRgba(x, y, r, g, b, a);
+      // Validate data is not all zeros (which would create a black image)
+      bool hasNonZeroData = false;
+      for (int i = 0; i < rawRgbaData.length && !hasNonZeroData; i += 4) {
+        if (rawRgbaData[i] != 0 ||
+            rawRgbaData[i + 1] != 0 ||
+            rawRgbaData[i + 2] != 0) {
+          hasNonZeroData = true;
         }
       }
 
-      // Encode as PNG
-      return Uint8List.fromList(img.encodePng(image));
+      if (!hasNonZeroData) {
+        print(
+            '⚠️ Warning: Frame data is all zeros - this will create a black image');
+        // Continue processing anyway as this might be expected for test data
+      }
+
+      // Create an image from raw RGBA data using the newer Image.fromBytes method
+      final image = img.Image.fromBytes(
+        width: width,
+        height: height,
+        bytes: rawRgbaData.buffer,
+        format: img.Format.uint8,
+        numChannels: 4,
+      );
+
+      // Encode as PNG and return bytes
+      final pngBytes = img.encodePng(image);
+      print(
+          '✅ Successfully converted ${rawRgbaData.length} bytes to PNG (${pngBytes.length} bytes)');
+      return Uint8List.fromList(pngBytes);
     } catch (e) {
       print('⚠️ Error converting raw frame to PNG: $e');
+      // Generate a fallback test image instead of returning null
+      return _generateFallbackPngImage();
+    }
+  }
+
+  /// Generate a fallback PNG image when frame conversion fails
+  Uint8List? _generateFallbackPngImage() {
+    try {
+      const int width = 300;
+      const int height = 300;
+
+      // Create a simple gradient test image
+      final image = img.Image(width: width, height: height);
+
+      for (int y = 0; y < height; y++) {
+        for (int x = 0; x < width; x++) {
+          final r = (x / width * 255).toInt();
+          final g = (y / height * 255).toInt();
+          final b = 128;
+          image.setPixelRgba(x, y, r, g, b, 255);
+        }
+      }
+
+      final pngBytes = img.encodePng(image);
+      print('🎨 Generated fallback test image (${pngBytes.length} bytes)');
+      return Uint8List.fromList(pngBytes);
+    } catch (e) {
+      print('❌ Failed to generate fallback image: $e');
       return null;
     }
   }
@@ -1533,11 +1802,15 @@ class PersonDetectionService extends GetxService {
   /// Enable debug visualization to show detection boxes
   void enableDebugVisualization() {
     isDebugVisualizationEnabled.value = true;
-    print('🐛 Debug visualization enabled - detection boxes will be captured');
+    print(
+        '🐛 Debug visualization enabled - will capture real WebRTC frames when available');
 
-    // Immediately generate synthetic data for testing
-    _generateSyntheticDebugData();
-    print('🎨 Generated initial synthetic data for debug visualization');
+    // Don't immediately generate synthetic data - let real frame capture take priority
+    // In debug mode, only show real WebRTC frames - no synthetic data generation
+    print(
+        '🎯 Debug mode enabled: Will only show real WebRTC frames (no synthetic data)');
+    print(
+        '📺 Debug widget will display "No frame available" when real WebRTC frames are not accessible');
   }
 
   /// Disable debug visualization
@@ -1577,136 +1850,189 @@ class PersonDetectionService extends GetxService {
     return _cameraStream != null && _videoRenderer != null && isEnabled.value;
   }
 
+  /// Public getter for the current camera stream (for use in settings preview widget)
+  webrtc.MediaStream? get cameraStream => _cameraStream;
+
   /// Generate realistic debug data with simulated camera frames and detection boxes
-  void _generateRealisticDebugData() {
+
+  /// Debug method to analyze and save frame data for inspection
+  void _analyzeAndSaveFrameData(Uint8List frameData, String source) {
     if (!isDebugVisualizationEnabled.value) return;
 
     try {
-      // Create realistic detection boxes that change over time
-      final frameTime = DateTime.now().millisecondsSinceEpoch / 1000.0;
-      final boxes = <DetectionBox>[];
+      // Analyze frame data characteristics
+      final stats = _analyzeFrameDataStats(frameData);
 
-      // Simulate a person moving slightly in the center
-      final personX = 0.4 + 0.1 * math.sin(frameTime * 0.3);
-      final personY = 0.3 + 0.05 * math.cos(frameTime * 0.4);
+      // Only save every 30 frames to avoid spam
+      if (framesProcessed.value % 30 == 0) {
+        print('🔍 FRAME DEBUG ANALYSIS [$source]:');
+        print(
+            '   📊 Size: ${frameData.length} bytes (${inputWidth}x${inputHeight})');
+        print(
+            '   🎨 RGB Averages: R=${stats['avgR']}, G=${stats['avgG']}, B=${stats['avgB']}');
+        print(
+            '   📈 Variance: R=${stats['varR']}, G=${stats['varG']}, B=${stats['varB']}');
+        print(
+            '   ⚫ All black pixels: ${stats['allBlack']}/${stats['totalPixels']} (${(stats['allBlack'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)');
+        print(
+            '   ⚪ All white pixels: ${stats['allWhite']}/${stats['totalPixels']} (${(stats['allWhite'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)');
+        print('   🌈 Unique colors: ${stats['uniqueColors']}');
+        print(
+            '   📊 Is synthetic pattern: ${stats['isSynthetic'] ? "YES (test data)" : "NO (possibly real camera)"}');
 
-      boxes.add(DetectionBox(
-        x1: personX,
-        y1: personY,
-        x2: personX + 0.2,
-        y2: personY + 0.4,
-        confidence: 0.85 + 0.1 * math.sin(frameTime * 0.8),
-        classId: 1,
-        className: 'person',
-      ));
+        // Convert to PNG and store for debug visualization
+        final pngData = _convertRawFrameToPng(frameData);
+        if (pngData != null) {
+          debugVisualizationFrame.value = base64Encode(pngData);
+          print('   💾 Frame saved for debug visualization');
+        }
 
-      // Occasionally add other objects
-      if ((frameTime * 2).toInt() % 3 == 0) {
-        boxes.add(DetectionBox(
-          x1: 0.1,
-          y1: 0.1,
-          x2: 0.25,
-          y2: 0.3,
-          confidence: 0.45 + 0.05 * math.cos(frameTime),
-          classId: 57,
-          className: 'chair',
-        ));
-      }
-
-      // Update detection data
-      latestDetectionBoxes.value = boxes;
-      confidence.value = boxes.isNotEmpty ? boxes.first.confidence : 0.0;
-      isPersonPresent.value = boxes.any(
-          (box) => box.classId == 1 && box.confidence > confidenceThreshold);
-
-      // Generate a realistic test frame
-      final testFrame = _createRealisticTestFrame();
-      if (testFrame != null) {
-        // Convert to PNG for debug visualization
-        final debugFrame = _convertRawFrameToPng(testFrame);
-        if (debugFrame != null) {
-          debugVisualizationFrame.value = base64Encode(debugFrame);
+        // Save sample pixels for detailed analysis
+        if (frameData.length >= 16) {
+          print('   🔬 First 4 pixels (RGBA):');
+          for (int i = 0; i < 4 && i * 4 + 3 < frameData.length; i++) {
+            final r = frameData[i * 4];
+            final g = frameData[i * 4 + 1];
+            final b = frameData[i * 4 + 2];
+            final a = frameData[i * 4 + 3];
+            print('      Pixel $i: R=$r, G=$g, B=$b, A=$a');
+          }
         }
       }
-
-      if (framesProcessed.value % 50 == 0) {
-        print(
-            '🎨 Generated realistic debug data with ${boxes.length} detection boxes (person detected: ${isPersonPresent.value})');
-      }
     } catch (e) {
-      print('⚠️ Failed to generate realistic debug data: $e');
-      // Fallback to basic synthetic data
-      _generateSyntheticDebugData();
+      print('❌ Error analyzing frame data: $e');
     }
   }
 
-  /// Generate basic synthetic debug data for testing
-  void _generateSyntheticDebugData() {
-    if (!isDebugVisualizationEnabled.value) return;
-
-    // Create synthetic detection boxes for testing
-    final syntheticBoxes = <DetectionBox>[
-      DetectionBox(
-        x1: 0.3, y1: 0.2, x2: 0.7, y2: 0.8, // Person in center
-        confidence: 0.85,
-        classId: 1,
-        className: 'person',
-      ),
-      DetectionBox(
-        x1: 0.1, y1: 0.1, x2: 0.25, y2: 0.3, // Object in top-left
-        confidence: 0.45,
-        classId: 3,
-        className: 'car',
-      ),
-      DetectionBox(
-        x1: 0.75, y1: 0.6, x2: 0.9, y2: 0.9, // Object in bottom-right
-        confidence: 0.62,
-        classId: 2,
-        className: 'bicycle',
-      ),
-    ];
-
-    // Update detection data
-    latestDetectionBoxes.value = syntheticBoxes;
-    confidence.value = 0.85; // High confidence for person
-    isPersonPresent.value = true;
-
-    // Generate a simple synthetic image as base64
-    try {
-      // Create a simple colored rectangle as a placeholder
-      // This represents a 300x300 RGB image (red background for testing)
-      final width = 300;
-      final height = 300;
-      final imageData = Uint8List(width * height * 3); // RGB format
-
-      // Fill with a gradient pattern for visual testing
-      for (int y = 0; y < height; y++) {
-        for (int x = 0; x < width; x++) {
-          final index = (y * width + x) * 3;
-          imageData[index] = (x / width * 255).toInt(); // Red gradient
-          imageData[index + 1] = (y / height * 255).toInt(); // Green gradient
-          imageData[index + 2] = 128; // Blue constant
-        }
-      }
-
-      // Convert to PNG format using the image package
-      final image = img.Image.fromBytes(
-        width: width,
-        height: height,
-        bytes: imageData.buffer,
-        format: img.Format.uint8,
-        numChannels: 3,
-      );
-
-      final pngBytes = img.encodePng(image);
-      debugVisualizationFrame.value = base64Encode(pngBytes);
-
-      print(
-          '🎨 Generated synthetic debug visualization data with ${syntheticBoxes.length} detection boxes');
-    } catch (e) {
-      print('⚠️ Failed to generate synthetic debug data: $e');
-      // Fallback: just update detection boxes without frame
-      debugVisualizationFrame.value = null;
+  /// Analyze frame data statistics to determine if it's real camera data or synthetic
+  Map<String, dynamic> _analyzeFrameDataStats(Uint8List frameData) {
+    if (frameData.length < 4) {
+      return {
+        'avgR': 0,
+        'avgG': 0,
+        'avgB': 0,
+        'varR': 0,
+        'varG': 0,
+        'varB': 0,
+        'allBlack': 0,
+        'allWhite': 0,
+        'totalPixels': 0,
+        'uniqueColors': 0,
+        'isSynthetic': true
+      };
     }
+
+    final totalPixels = frameData.length ~/ 4;
+    int sumR = 0, sumG = 0, sumB = 0;
+    int allBlack = 0, allWhite = 0;
+    final uniqueColors = <int>{};
+
+    // First pass: calculate averages and count special pixels
+    for (int i = 0; i < frameData.length; i += 4) {
+      final r = frameData[i];
+      final g = frameData[i + 1];
+      final b = frameData[i + 2];
+
+      sumR += r;
+      sumG += g;
+      sumB += b;
+
+      // Check for all black pixels
+      if (r == 0 && g == 0 && b == 0) allBlack++;
+
+      // Check for all white pixels
+      if (r == 255 && g == 255 && b == 255) allWhite++;
+
+      // Track unique colors (simplified to RGB only)
+      final color = (r << 16) | (g << 8) | b;
+      uniqueColors.add(color);
+    }
+
+    final avgR = (sumR / totalPixels).round();
+    final avgG = (sumG / totalPixels).round();
+    final avgB = (sumB / totalPixels).round();
+
+    // Second pass: calculate variance
+    double varR = 0, varG = 0, varB = 0;
+    for (int i = 0; i < frameData.length; i += 4) {
+      final r = frameData[i];
+      final g = frameData[i + 1];
+      final b = frameData[i + 2];
+
+      varR += (r - avgR) * (r - avgR);
+      varG += (g - avgG) * (g - avgG);
+      varB += (b - avgB) * (b - avgB);
+    }
+
+    varR = varR / totalPixels;
+    varG = varG / totalPixels;
+    varB = varB / totalPixels;
+
+    // Determine if this looks like synthetic data
+    bool isSynthetic = false;
+
+    // Check for patterns typical of test data:
+    // 1. Very low variance (solid colors)
+    // 2. High percentage of black pixels
+    // 3. Very few unique colors
+    // 4. Mathematical patterns in color values
+
+    if (varR < 100 && varG < 100 && varB < 100) {
+      isSynthetic = true; // Very low variance
+    }
+
+    if (allBlack > totalPixels * 0.8) {
+      isSynthetic = true; // Mostly black
+    }
+
+    if (uniqueColors.length < totalPixels * 0.01) {
+      isSynthetic = true; // Very few unique colors
+    }
+
+    // Check for gradient patterns typical of test data
+    bool hasGradientPattern = false;
+    if (frameData.length >= inputWidth * 4 * 2) {
+      // Check first two rows for gradient patterns
+      for (int row = 0; row < 2; row++) {
+        int consecutiveGradient = 0;
+        for (int col = 1; col < inputWidth && col < 50; col++) {
+          final idx1 = (row * inputWidth + col - 1) * 4;
+          final idx2 = (row * inputWidth + col) * 4;
+
+          if (idx2 + 2 < frameData.length) {
+            final diff = (frameData[idx2] - frameData[idx1]).abs();
+            if (diff == 1 || diff == 2) {
+              // Smooth gradient
+              consecutiveGradient++;
+              if (consecutiveGradient > 10) {
+                hasGradientPattern = true;
+                break;
+              }
+            } else {
+              consecutiveGradient = 0;
+            }
+          }
+        }
+        if (hasGradientPattern) break;
+      }
+    }
+
+    if (hasGradientPattern) {
+      isSynthetic = true;
+    }
+
+    return {
+      'avgR': avgR,
+      'avgG': avgG,
+      'avgB': avgB,
+      'varR': varR.toInt(),
+      'varG': varG.toInt(),
+      'varB': varB.toInt(),
+      'allBlack': allBlack,
+      'allWhite': allWhite,
+      'totalPixels': totalPixels,
+      'uniqueColors': uniqueColors.length,
+      'isSynthetic': isSynthetic
+    };
   }
 }

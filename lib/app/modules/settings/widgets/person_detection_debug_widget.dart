@@ -175,9 +175,11 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                                 Icon(
                                   Icons.videocam,
                                   size: 16,
-                                  color: service.framesProcessed.value > 0
+                                  color: service.isFrameSourceReal.value
                                       ? Colors.green
-                                      : Colors.grey,
+                                      : service.framesProcessed.value > 0
+                                          ? Colors.orange
+                                          : Colors.grey,
                                 ),
                                 SizedBox(width: 4),
                                 Text(
@@ -187,13 +189,17 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                               ],
                             ),
                             Text(
-                              service.framesProcessed.value > 0
-                                  ? 'Real Camera (WebRTC)'
-                                  : 'No frames captured',
+                              service.frameSourceStatus.value.isNotEmpty
+                                  ? service.frameSourceStatus.value
+                                  : (service.framesProcessed.value > 0
+                                      ? 'Processing...'
+                                      : 'No frames captured'),
                               style: TextStyle(
-                                color: service.framesProcessed.value > 0
+                                color: service.isFrameSourceReal.value
                                     ? Colors.green
-                                    : Colors.grey,
+                                    : service.framesProcessed.value > 0
+                                        ? Colors.orange
+                                        : Colors.grey,
                                 fontSize: 12,
                               ),
                             ),
@@ -209,7 +215,7 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                                 ),
                                 SizedBox(width: 4),
                                 Text(
-                                  'WebRTC Connection:',
+                                  'Connection Status:',
                                   style: TextStyle(fontWeight: FontWeight.w500),
                                 ),
                               ],
@@ -234,8 +240,8 @@ class PersonDetectionDebugWidget extends StatelessWidget {
               )),
         ),
 
-        // WebRTC Connection Status
-        _buildWebRTCConnectionStatus(service, context),
+        // ML Analysis Status
+        _buildMLAnalysisStatus(service, context),
 
         // Camera feed with bounding boxes
         Expanded(
@@ -405,7 +411,7 @@ class PersonDetectionDebugWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildWebRTCConnectionStatus(
+  Widget _buildMLAnalysisStatus(
       PersonDetectionService service, BuildContext context) {
     return Container(
       margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -419,16 +425,16 @@ class PersonDetectionDebugWidget extends StatelessWidget {
               Row(
                 children: [
                   Icon(
-                    Icons.router,
-                    color: Colors.orange,
+                    Icons.psychology,
+                    color: Colors.purple,
                     size: 20,
                   ),
                   SizedBox(width: 8),
                   Text(
-                    'WebRTC Integration Status',
+                    'ML Analysis Status',
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade800,
+                      color: Colors.purple.shade800,
                     ),
                   ),
                 ],
@@ -441,21 +447,25 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildStatusItem(
-                            'Native Plugins', 'Available', Colors.green),
+                            'Person Detection', 'Active', Colors.green),
                         _buildStatusItem(
-                            'Texture Extraction',
+                            'Frame Analysis',
                             service.framesProcessed.value > 0
-                                ? 'Active'
-                                : 'Pending',
+                                ? 'Processing'
+                                : 'Waiting',
                             service.framesProcessed.value > 0
                                 ? Colors.green
                                 : Colors.orange),
                         _buildStatusItem(
-                            'Frame Capture',
-                            service.framesProcessed.value > 0
-                                ? 'Real Data'
+                            'ML Output',
+                            service.debugVisualizationFrame.value != null &&
+                                    service.debugVisualizationFrame.value!
+                                        .isNotEmpty
+                                ? 'Available'
                                 : 'No Data',
-                            service.framesProcessed.value > 0
+                            service.debugVisualizationFrame.value != null &&
+                                    service.debugVisualizationFrame.value!
+                                        .isNotEmpty
                                 ? Colors.green
                                 : Colors.grey),
                       ],
@@ -467,21 +477,20 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         _buildStatusItem(
-                            'Camera Stream',
-                            service.isEnabled.value ? 'Connected' : 'Disabled',
-                            service.isEnabled.value
+                            'Bounding Boxes',
+                            service.latestDetectionBoxes.isNotEmpty
+                                ? '${service.latestDetectionBoxes.length} found'
+                                : 'None',
+                            service.latestDetectionBoxes.isNotEmpty
                                 ? Colors.green
                                 : Colors.grey),
                         _buildStatusItem(
-                            'Real Frames',
-                            service.framesProcessed.value > 0
-                                ? 'Active'
-                                : 'Pending',
-                            service.framesProcessed.value > 0
+                            'Confidence',
+                            '${(service.confidence.value * 100).toInt()}%',
+                            service.confidence.value > 0.5
                                 ? Colors.green
-                                : Colors.grey),
-                        _buildStatusItem(
-                            'Production Ready', '100%', Colors.green),
+                                : Colors.orange),
+                        _buildStatusItem('Model Ready', 'Yes', Colors.green),
                       ],
                     ),
                   ),
@@ -491,12 +500,14 @@ class PersonDetectionDebugWidget extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(8),
                 decoration: BoxDecoration(
-                  color: service.framesProcessed.value > 0
+                  color: service.debugVisualizationFrame.value != null &&
+                          service.debugVisualizationFrame.value!.isNotEmpty
                       ? Colors.green.shade50
                       : Colors.orange.shade50,
                   borderRadius: BorderRadius.circular(6),
                   border: Border.all(
-                      color: service.framesProcessed.value > 0
+                      color: service.debugVisualizationFrame.value != null &&
+                              service.debugVisualizationFrame.value!.isNotEmpty
                           ? Colors.green.shade200
                           : Colors.orange.shade200),
                 ),
@@ -504,20 +515,27 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                   children: [
                     Icon(Icons.info_outline,
                         size: 16,
-                        color: service.framesProcessed.value > 0
+                        color: service.debugVisualizationFrame.value != null &&
+                                service
+                                    .debugVisualizationFrame.value!.isNotEmpty
                             ? Colors.green.shade700
                             : Colors.orange.shade700),
                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        service.framesProcessed.value > 0
-                            ? 'WebRTC camera integration is active and capturing real frames for person detection.'
-                            : 'WebRTC camera is connecting. Real frame capture will start automatically.',
+                        service.debugVisualizationFrame.value != null &&
+                                service
+                                    .debugVisualizationFrame.value!.isNotEmpty
+                            ? 'ML analysis is active and generating processed frames with detection results.'
+                            : 'Waiting for ML analysis output. The display will show processed frames with bounding boxes.',
                         style: TextStyle(
                           fontSize: 12,
-                          color: service.framesProcessed.value > 0
-                              ? Colors.green.shade700
-                              : Colors.orange.shade700,
+                          color:
+                              service.debugVisualizationFrame.value != null &&
+                                      service.debugVisualizationFrame.value!
+                                          .isNotEmpty
+                                  ? Colors.green.shade700
+                                  : Colors.orange.shade700,
                         ),
                       ),
                     ),
@@ -561,198 +579,234 @@ class PersonDetectionDebugWidget extends StatelessWidget {
       List<DetectionBox> detectionBoxes,
       PersonDetectionService service,
       BuildContext context) {
-    // Try to show real WebRTC video stream first
-    final videoRenderer = service.getVideoRenderer();
-    final isCameraActive = service.isCameraStreamActive();
-
-    if (isCameraActive && videoRenderer != null) {
-      // Show real WebRTC video stream with detection boxes overlay
-      return Stack(
-        children: [
-          // Real camera feed
-          Center(
-            child: AspectRatio(
-              aspectRatio: 1.0, // Square aspect ratio for 300x300 camera
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey.shade600
-                        : Colors.grey.shade300,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: webrtc.RTCVideoView(
-                    videoRenderer,
-                    objectFit:
-                        webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+    return Row(
+      children: [
+        // Left side: Raw captured frames (before TensorFlow processing)
+        Expanded(
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'Raw Captured Frame',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.blue.shade700,
                   ),
                 ),
               ),
-            ),
-          ),
-          // Bounding boxes overlay - positioned over the real video
-          Center(
-            child: AspectRatio(
-              aspectRatio: 1.0,
-              child: CustomPaint(
-                painter: BoundingBoxPainter(detectionBoxes, context),
-              ),
-            ),
-          ),
-          // Real camera indicator
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Container(
-              padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.9),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.videocam, color: Colors.white, size: 12),
-                  SizedBox(width: 4),
-                  Text(
-                    'LIVE',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      );
-    }
+              Expanded(
+                child: Obx(() {
+                  final rawFrame = service.rawCapturedFrame.value;
 
-    // Fallback to synthetic frame data if real camera is not available
+                  if (rawFrame != null && rawFrame.isNotEmpty) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.blue.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          base64Decode(rawFrame),
+                          fit: BoxFit.contain,
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.camera_alt,
+                                size: 48, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text(
+                              'No frame captured',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Waiting for WebRTC frame...',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                }),
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(width: 16),
+
+        // Right side: ML Analysis Results
+        Expanded(
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'ML Analysis Output',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.purple.shade700,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: _buildMLAnalysisDisplay(
+                    frameData, detectionBoxes, service, context),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildMLAnalysisDisplay(
+      String? frameData,
+      List<DetectionBox> detectionBoxes,
+      PersonDetectionService service,
+      BuildContext context) {
+    // Show the processed ML output frame with detection results
+    // This displays the analyzed frame from person detection, not the raw camera feed
+
     if (frameData == null || frameData.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text(
-              'Waiting for camera stream...',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            SizedBox(height: 8),
-            Text(
-              isCameraActive
-                  ? 'Camera is connected, starting video...'
-                  : 'Enable person detection to start camera',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
-              textAlign: TextAlign.center,
-            ),
-            SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: () {
-                if (!service.isEnabled.value) {
-                  // Enable person detection first
-                  service.toggleEnabled();
-                } else {
-                  // Generate test data if camera is not working
-                  service.enableDebugVisualization();
-                }
-              },
-              child: Text(service.isEnabled.value
-                  ? 'Generate Test Data'
-                  : 'Enable Detection'),
-            ),
-          ],
+      return Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text(
+                'Waiting for ML analysis output...',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              SizedBox(height: 8),
+              Text(
+                service.isEnabled.value
+                    ? 'Person detection is processing camera frames'
+                    : 'Enable person detection to start analysis',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+              SizedBox(height: 16),
+              ElevatedButton(
+                onPressed: () {
+                  if (!service.isEnabled.value) {
+                    // Enable person detection first
+                    service.toggleEnabled();
+                  } else {
+                    // Generate test data if detection is not working
+                    service.enableDebugVisualization();
+                  }
+                },
+                child: Text(service.isEnabled.value
+                    ? 'Generate Test Data'
+                    : 'Enable Detection'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
-    // Show synthetic frame data with synthetic indicator
+    // Show processed ML frame data with detection results
     try {
       final imageBytes = base64Decode(frameData);
       return Stack(
         children: [
-          // Synthetic image
-          Center(
-            child: AspectRatio(
-              aspectRatio: 1.0,
-              child: Container(
-                decoration: BoxDecoration(
-                  border: Border.all(
-                    color: Theme.of(context).brightness == Brightness.dark
-                        ? Colors.grey.shade600
-                        : Colors.grey.shade300,
-                  ),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
-                  child: Image.memory(
-                    imageBytes,
-                    fit: BoxFit.cover,
-                    errorBuilder: (context, error, stackTrace) {
-                      return Center(
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(Icons.error, color: Colors.red, size: 48),
-                            SizedBox(height: 16),
-                            Text(
-                              'Failed to load camera frame',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Colors.red,
-                              ),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Image decode error: ${error.toString()}',
-                              style:
-                                  TextStyle(fontSize: 12, color: Colors.grey),
-                              textAlign: TextAlign.center,
-                            ),
-                          ],
+          // Processed ML frame with analysis results
+          Container(
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: Theme.of(context).brightness == Brightness.dark
+                    ? Colors.grey.shade600
+                    : Colors.grey.shade300,
+              ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.memory(
+                imageBytes,
+                fit: BoxFit.contain,
+                width: double.infinity,
+                height: double.infinity,
+                errorBuilder: (context, error, stackTrace) {
+                  return Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.error, color: Colors.red, size: 48),
+                        SizedBox(height: 16),
+                        Text(
+                          'Failed to load ML analysis frame',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.red,
+                          ),
                         ),
-                      );
-                    },
-                  ),
-                ),
+                        SizedBox(height: 8),
+                        Text(
+                          'Analysis error: ${error.toString()}',
+                          style: TextStyle(fontSize: 12, color: Colors.grey),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ),
-          // Bounding boxes overlay
-          Center(
-            child: AspectRatio(
-              aspectRatio: 1.0,
-              child: CustomPaint(
-                painter: BoundingBoxPainter(detectionBoxes, context),
+          // Bounding boxes overlay showing detection results
+          Positioned.fill(
+            child: CustomPaint(
+              painter: BoundingBoxPainter(
+                detectionBoxes,
+                context,
+                imageSize:
+                    Size(300.0, 300.0), // ML analysis frame is always 300x300
               ),
             ),
           ),
-          // Synthetic data indicator
+          // ML Analysis indicator
           Positioned(
             top: 8,
             left: 8,
             child: Container(
               padding: EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: Colors.orange.withOpacity(0.9),
+                color: Colors.purple.withOpacity(0.9),
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(Icons.science, color: Colors.white, size: 12),
+                  Icon(Icons.psychology, color: Colors.white, size: 12),
                   SizedBox(width: 4),
                   Text(
-                    'TEST',
+                    'ML ANALYSIS',
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 10,
@@ -766,13 +820,33 @@ class PersonDetectionDebugWidget extends StatelessWidget {
         ],
       );
     } catch (e) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error, color: Colors.red),
-            Text('Error displaying frame: $e'),
-          ],
+      return Container(
+        decoration: BoxDecoration(
+          border: Border.all(color: Colors.grey),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.error, color: Colors.red, size: 48),
+              SizedBox(height: 16),
+              Text(
+                'Error displaying ML analysis',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.red,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                'Error: ${e.toString()}',
+                style: TextStyle(fontSize: 12, color: Colors.grey),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -782,8 +856,9 @@ class PersonDetectionDebugWidget extends StatelessWidget {
 class BoundingBoxPainter extends CustomPainter {
   final List<DetectionBox> detectionBoxes;
   final BuildContext context;
+  final Size? imageSize; // Add image size for proper scaling
 
-  BoundingBoxPainter(this.detectionBoxes, this.context);
+  BoundingBoxPainter(this.detectionBoxes, this.context, {this.imageSize});
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -793,11 +868,39 @@ class BoundingBoxPainter extends CustomPainter {
   }
 
   void _drawBoundingBox(Canvas canvas, Size size, DetectionBox box) {
-    // Convert normalized coordinates to screen coordinates
-    final left = box.x1 * size.width;
-    final top = box.y1 * size.height;
-    final right = box.x2 * size.width;
-    final bottom = box.y2 * size.height;
+    // Calculate the actual image display area within the widget
+    // The image is displayed with BoxFit.contain, so we need to account for aspect ratio
+    final imageWidth = imageSize?.width ?? 300.0;
+    final imageHeight = imageSize?.height ?? 300.0;
+    final imageAspectRatio = imageWidth / imageHeight;
+    final widgetAspectRatio = size.width / size.height;
+
+    double displayWidth, displayHeight;
+    double offsetX = 0, offsetY = 0;
+
+    if (imageAspectRatio > widgetAspectRatio) {
+      // Image is wider - fit to width
+      displayWidth = size.width;
+      displayHeight = size.width / imageAspectRatio;
+      offsetY = (size.height - displayHeight) / 2;
+    } else {
+      // Image is taller - fit to height
+      displayHeight = size.height;
+      displayWidth = size.height * imageAspectRatio;
+      offsetX = (size.width - displayWidth) / 2;
+    }
+
+    // Convert normalized coordinates to display coordinates
+    final left = offsetX + (box.x1 * displayWidth);
+    final top = offsetY + (box.y1 * displayHeight);
+    final right = offsetX + (box.x2 * displayWidth);
+    final bottom = offsetY + (box.y2 * displayHeight);
+
+    // Clamp coordinates to visible area
+    final clampedLeft = left.clamp(offsetX, offsetX + displayWidth);
+    final clampedTop = top.clamp(offsetY, offsetY + displayHeight);
+    final clampedRight = right.clamp(offsetX, offsetX + displayWidth);
+    final clampedBottom = bottom.clamp(offsetY, offsetY + displayHeight);
 
     // Choose color based on class and confidence
     Color boxColor;
@@ -820,8 +923,11 @@ class BoundingBoxPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
 
-    final rect = Rect.fromLTRB(left, top, right, bottom);
-    canvas.drawRect(rect, paint); // Prepare label text
+    final rect =
+        Rect.fromLTRB(clampedLeft, clampedTop, clampedRight, clampedBottom);
+    canvas.drawRect(rect, paint);
+
+    // Prepare label text
     final labelText =
         '${box.className ?? 'Class ${box.classId}'} ${(box.confidence * 100).toInt()}%';
 
@@ -859,13 +965,19 @@ class BoundingBoxPainter extends CustomPainter {
     textPainter.layout();
 
     // Calculate label position (above the box, or below if near top)
-    final labelTop = top > textPainter.height + 8
-        ? top - textPainter.height - 8
-        : bottom + 8;
+    final labelTop = clampedTop > textPainter.height + 8
+        ? clampedTop - textPainter.height - 8
+        : clampedBottom + 8;
+
+    // Ensure label stays within bounds
+    final labelLeft =
+        clampedLeft.clamp(0, size.width - textPainter.width - 12).toDouble();
+    final adjustedLabelTop =
+        labelTop.clamp(0, size.height - textPainter.height - 6).toDouble();
 
     final labelRect = Rect.fromLTWH(
-      left,
-      labelTop,
+      labelLeft,
+      adjustedLabelTop,
       textPainter.width + 12,
       textPainter.height + 6,
     );
@@ -888,7 +1000,7 @@ class BoundingBoxPainter extends CustomPainter {
     );
 
     // Draw label text
-    textPainter.paint(canvas, Offset(left + 6, labelTop + 3));
+    textPainter.paint(canvas, Offset(labelLeft + 6, adjustedLabelTop + 3));
   }
 
   @override

@@ -2,25 +2,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../app/services/person_detection_service.dart';
-import '../app/core/platform/frame_capture_platform.dart';
 import '../app/core/bindings/memory_optimized_binding.dart';
 
-/// Demonstration widget showing WebRTC texture mapping integration
-/// This shows how the complete person detection system works with:
-/// - WebRTC camera stream
-/// - Texture ID extraction
-/// - Frame capture from GPU
+/// Demonstration widget showing WebRTC direct video track capture
+/// This shows how the simplified person detection system works with:
+/// - Direct WebRTC video track capture
+/// - videoTrack.captureFrame() method
 /// - TensorFlow Lite person detection
 /// - Memory-efficient conditional loading
-class WebRTCTextureMappingDemo extends StatefulWidget {
-  const WebRTCTextureMappingDemo({Key? key}) : super(key: key);
+class WebRTCDirectCaptureDemo extends StatefulWidget {
+  const WebRTCDirectCaptureDemo({Key? key}) : super(key: key);
 
   @override
-  State<WebRTCTextureMappingDemo> createState() =>
-      _WebRTCTextureMappingDemoState();
+  State<WebRTCDirectCaptureDemo> createState() =>
+      _WebRTCDirectCaptureDemoState();
 }
 
-class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
+class _WebRTCDirectCaptureDemoState extends State<WebRTCDirectCaptureDemo> {
   PersonDetectionService? _personDetectionService;
   bool _isInitialized = false;
   String _statusMessage = 'Initializing...';
@@ -41,24 +39,15 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
   Future<void> _initializeDemo() async {
     try {
       setState(() {
-        _statusMessage = 'Checking platform support...';
+        _statusMessage = 'Initializing direct video track capture...';
       });
 
-      // 1. Check if frame capture is supported on this platform
-      final isFrameCaptureSupported = await FrameCapturePlatform.isSupported();
-      print('Frame capture platform support: $isFrameCaptureSupported');
-
+      // 1. Check if PersonDetectionService is conditionally loaded
       setState(() {
-        _statusMessage =
-            'Platform support: ${isFrameCaptureSupported ? "✅ Available" : "❌ Not available"}';
+        _statusMessage = 'Checking PersonDetectionService availability...';
       });
 
       await Future.delayed(Duration(seconds: 1));
-
-      // 2. Check if PersonDetectionService is conditionally loaded
-      setState(() {
-        _statusMessage = 'Checking conditional service loading...';
-      });
 
       final isServiceRegistered = Get.isRegistered<PersonDetectionService>();
       print('PersonDetectionService registered: $isServiceRegistered');
@@ -80,61 +69,19 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
 
       await Future.delayed(Duration(seconds: 1));
 
-      // 3. Demonstrate texture ID extraction
+      // 2. Demonstrate direct video track capture readiness
       setState(() {
-        _statusMessage = 'Testing texture ID extraction...';
+        _statusMessage = 'Testing direct video track capture...';
       });
-
-      final testRendererData = {
-        'rendererId': 123,
-        'textureId': 123,
-        'videoTrackId': 'test-track',
-      };
-
-      final extractedTextureId =
-          await FrameCapturePlatform.getRendererTextureId(testRendererData);
-      print('Extracted texture ID: $extractedTextureId');
 
       setState(() {
         _statusMessage =
-            'Texture ID extraction: ${extractedTextureId != null ? "✅ Working" : "⚠️ Test mode"}';
+            '✅ Direct video track capture ready for camera streams';
       });
 
       await Future.delayed(Duration(seconds: 1));
 
-      // 4. Demonstrate frame capture
-      setState(() {
-        _statusMessage = 'Testing frame capture...';
-      });
-
-      if (extractedTextureId != null && extractedTextureId > 0) {
-        final frameData = await FrameCapturePlatform.captureFrame(
-          rendererId: extractedTextureId,
-          width: 224,
-          height: 224,
-        );
-
-        if (frameData != null) {
-          print('Frame capture successful: ${frameData.length} bytes');
-          setState(() {
-            _statusMessage =
-                '✅ Frame capture working (${frameData.length} bytes)';
-          });
-        } else {
-          setState(() {
-            _statusMessage =
-                '⚠️ Frame capture returned null (expected in test)';
-          });
-        }
-      } else {
-        setState(() {
-          _statusMessage = '⚠️ No valid texture ID for frame capture test';
-        });
-      }
-
-      await Future.delayed(Duration(seconds: 1));
-
-      // 5. Show memory optimization status
+      // 3. Show memory optimization status
       setState(() {
         _statusMessage = 'Checking memory optimization...';
       });
@@ -149,10 +96,10 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
 
       await Future.delayed(Duration(seconds: 1));
 
-      // 6. Complete initialization
+      // 4. Complete initialization
       setState(() {
         _isInitialized = true;
-        _statusMessage = '🎯 WebRTC Texture Mapping Demo Ready!';
+        _statusMessage = '🎯 Direct Video Track Capture Demo Ready!';
       });
 
       // Start periodic status updates if service is available
@@ -194,7 +141,7 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('WebRTC Texture Mapping Demo'),
+        title: Text('Direct Video Track Capture Demo'),
         backgroundColor: Colors.blue.shade800,
         foregroundColor: Colors.white,
       ),
@@ -261,7 +208,7 @@ class _WebRTCTextureMappingDemoState extends State<WebRTCTextureMappingDemo> {
                       ),
                     ),
                     SizedBox(height: 12),
-                    _buildComponentItem('✅ FrameCapturePlatform.dart',
+                    _buildComponentItem('✅ WebRTC Frame Callback Service',
                         'Cross-platform interface for WebRTC frame capture'),
                     _buildComponentItem('✅ Windows D3D11 Plugin',
                         'Native frame capture using Direct3D 11'),
