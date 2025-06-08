@@ -578,8 +578,8 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                       ? 'Person detection is active'
                       : 'Person detection is disabled'),
                   value: controller.personDetectionEnabled.value,
-                  onChanged: (_) {
-                    controller.togglePersonDetection();
+                  onChanged: (_) async {
+                    await controller.togglePersonDetection();
                   },
                   secondary: Icon(
                     controller.personDetectionEnabled.value

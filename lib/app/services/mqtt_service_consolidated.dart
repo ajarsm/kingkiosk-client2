@@ -612,12 +612,23 @@ class MqttService extends GetxService {
             otherCommands.add(cmd);
           }
         }
-      }
-
-      // Process TTS commands as a batch if any exist
+      } // Process TTS commands as a batch if any exist
       if (ttsCommands.isNotEmpty) {
         try {
+          // Check if TTS service is available and initialized before using it
+          if (!Get.isRegistered<TtsService>()) {
+            print(
+                '⚠️ [MQTT] TTS service not yet registered, skipping TTS commands');
+            return;
+          }
+
           final ttsService = Get.find<TtsService>();
+          if (!ttsService.isInitialized.value) {
+            print(
+                '⚠️ [MQTT] TTS service not yet initialized, skipping TTS commands');
+            return;
+          }
+
           print(
               '🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
           final results = await ttsService.handleBatchMqttCommands(ttsCommands);
@@ -1300,7 +1311,39 @@ class MqttService extends GetxService {
         cmdObj['command']?.toString().toLowerCase() == 'speak' ||
         cmdObj['command']?.toString().toLowerCase() == 'say') {
       try {
+        // Check if TTS service is available and initialized before using it
+        if (!Get.isRegistered<TtsService>()) {
+          print(
+              '⚠️ [MQTT] TTS service not yet registered, cannot process TTS command');
+          if (cmdObj['response_topic'] != null) {
+            publishJsonToTopic(
+                cmdObj['response_topic'],
+                {
+                  'error': 'TTS service not available',
+                  'command': cmdObj['command'],
+                  'timestamp': DateTime.now().toIso8601String(),
+                },
+                retain: false);
+          }
+          return;
+        }
+
         final ttsService = Get.find<TtsService>();
+        if (!ttsService.isInitialized.value) {
+          print(
+              '⚠️ [MQTT] TTS service not yet initialized, cannot process TTS command');
+          if (cmdObj['response_topic'] != null) {
+            publishJsonToTopic(
+                cmdObj['response_topic'],
+                {
+                  'error': 'TTS service not initialized',
+                  'command': cmdObj['command'],
+                  'timestamp': DateTime.now().toIso8601String(),
+                },
+                retain: false);
+          }
+          return;
+        }
         // Cast to proper type for TTS service
         final ttsCommand = Map<String, dynamic>.from(cmdObj);
         final result = await ttsService.handleMqttCommand(ttsCommand);

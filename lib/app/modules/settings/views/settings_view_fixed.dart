@@ -45,28 +45,6 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               _buildThemeToggle(),
               _buildKioskModeToggle(),
               _buildSystemInfoToggle(),
-              Card(
-                elevation: 8,
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(20)),
-                margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-                child: ListTile(
-                  leading: ShaderMask(
-                    shaderCallback: (rect) => LinearGradient(
-                      colors: [Colors.blueAccent, Colors.cyanAccent],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                    ).createShader(rect),
-                    child: Icon(Icons.settings_rounded, color: Colors.white),
-                  ),
-                  title: Text('App Settings',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
-                  subtitle: Text('General application settings'),
-                  trailing: Icon(Icons.arrow_forward_ios_rounded,
-                      color: Colors.blueGrey.shade300),
-                  onTap: () => controller.saveAppSettings(),
-                ),
-              ),
             ],
           ), // Web URLs
           _buildSection(

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io'; // Add platform detection
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:get/get.dart';
@@ -61,23 +62,30 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 
   Future<void> _initRenderers() async {
-    // Request camera permission before initializing renderer (mobile only)
-    final hasPermission =
-        await PermissionsManager.requestCameraAndMicPermissions();
-    if (!hasPermission) {
-      if (mounted) {
-        setState(() {
-          _isInitialized = false;
-          _permissionDenied = true;
-          _errorMessage =
-              'Camera and microphone permissions are required to use this feature.';
-        });
+    // For iOS, skip permission handler and let getUserMedia handle permissions naturally
+    // For Android, use permission handler as it's more reliable
+    if (Platform.isAndroid) {
+      final hasPermission =
+          await PermissionsManager.requestCameraAndMicPermissions();
+      if (!hasPermission) {
+        if (mounted) {
+          setState(() {
+            _isInitialized = false;
+            _permissionDenied = true;
+            _errorMessage =
+                'Camera and microphone permissions are required to use this feature.';
+          });
+        }
+        print(
+            'Camera/mic permission not granted. Cannot start camera preview.');
+        return;
       }
-      print('Camera/mic permission not granted. Cannot start camera preview.');
-      return;
+    } else if (Platform.isIOS) {
+      print(
+          '[CameraPreviewWidget] iOS detected - using direct getUserMedia for permissions');
     }
 
-    // Reset permission state if permission was granted
+    // Reset permission state if we got here
     _permissionDenied = false;
     _errorMessage = '';
 
@@ -106,8 +114,10 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
         print(
             '[CameraPreviewWidget] Acquiring new camera stream (service not active).');
         final Map<String, dynamic> mediaConstraints = {
-          'audio': false,
-          'video': true,
+          'audio': false, // Only request video for preview
+          'video': {
+            'deviceId': widget.deviceId.isNotEmpty ? widget.deviceId : null,
+          },
         };
         _localStream =
             await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
@@ -119,16 +129,32 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       if (mounted) {
         setState(() {
           _isInitialized = true;
+          _permissionDenied = false;
+          _errorMessage = '';
         });
       }
     } catch (e) {
       print('Error initializing camera preview: $e');
+
+      // Handle permission-related errors specifically
+      final errorStr = e.toString().toLowerCase();
+      bool isPermissionError = errorStr.contains('permission') ||
+          errorStr.contains('notallowed') ||
+          errorStr.contains('denied');
+
       if (mounted) {
         setState(() {
-          _errorMessage = 'Failed to access camera: ${e.toString()}';
+          _permissionDenied = isPermissionError;
+          _errorMessage = isPermissionError
+              ? 'Camera access denied. Please allow camera permissions and try again.'
+              : 'Failed to access camera: ${e.toString()}';
         });
       }
-      _scheduleRetry();
+
+      // Only retry for non-permission errors
+      if (!isPermissionError) {
+        _scheduleRetry();
+      }
     }
   }
 

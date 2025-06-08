@@ -23,6 +23,7 @@ import '../../services/media_hardware_detection.dart';
 import '../../services/service_initializer.dart';
 import '../../services/person_detection_service.dart';
 import '../../services/media_device_service.dart';
+import '../../services/tts_service.dart';
 import '../../core/utils/app_constants.dart';
 
 /// Memory-optimized binding that loads only essential services at startup
@@ -61,7 +62,14 @@ class MemoryOptimizedBinding extends Bindings {
     print('🪟 Loading Window Manager service...');
     Get.put<WindowManagerService>(WindowManagerService(), permanent: true);
 
-    // 5. MQTT Service - Core communication service (if enabled)
+    // 5. TTS Service - Text-to-speech functionality (register before MQTT)
+    print('🟢 [Init] Registering TTS service (memory-optimized)...');
+    final ttsService = TtsService();
+    Get.put<TtsService>(ttsService, permanent: true);
+    await ttsService.onInit();
+    print('🟢 [Init] TTS service initialized and ready');
+
+    // 6. MQTT Service - Core communication service (if enabled)
     final mqttEnabled =
         storageService.read<bool>(AppConstants.keyMqttEnabled) ?? false;
 

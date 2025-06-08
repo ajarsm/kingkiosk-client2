@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 import 'package:tflite_flutter/tflite_flutter.dart';
 import 'package:image/image.dart' as img;
 import '../core/utils/app_constants.dart';
+import '../core/utils/permissions_manager.dart';
 import 'storage_service.dart';
 import 'mqtt_service_consolidated.dart';
 import 'media_device_service.dart';
@@ -567,70 +568,6 @@ Object _preprocessFrameInBackground(
   }
 }
 
-/// Generate preprocessed frame visualization for debug purposes
-Uint8List? _generatePreprocessedFrameVisualization(
-  Uint8List frameData,
-  int width,
-  int height,
-) {
-  try {
-    final image = img.decodeImage(frameData);
-    if (image == null) return null;
-
-    // Use center crop and resize instead of stretching
-    final resized = _centerCropAndResize(image, width, height);
-    return Uint8List.fromList(img.encodePng(resized));
-  } catch (e) {
-    print('Failed to generate preprocessed frame visualization: $e');
-    return null;
-  }
-}
-
-/// Generate debug frame with bounding boxes drawn
-Uint8List? _generateDebugFrameWithBoxes(
-  Uint8List frameData,
-  List<DetectionBox> boxes,
-  int width,
-  int height,
-  int personClassId,
-) {
-  try {
-    final image = img.decodeImage(frameData);
-    if (image == null) return null;
-
-    // Use center crop and resize instead of stretching
-    final resized = _centerCropAndResize(image, width, height);
-
-    // Draw bounding boxes on the image
-    for (final box in boxes) {
-      final x1 = (box.x1 * width).round().clamp(0, width - 1);
-      final y1 = (box.y1 * height).round().clamp(0, height - 1);
-      final x2 = (box.x2 * width).round().clamp(0, width - 1);
-      final y2 = (box.y2 * height).round().clamp(
-            0,
-            height - 1,
-          ); // Draw rectangle (simple implementation)
-      img.drawRect(
-        resized,
-        x1: x1,
-        y1: y1,
-        x2: x2,
-        y2: y2,
-        color: box.classId ==
-                personClassId // Person class ID (0 for MobileNet SSD)
-            ? img.ColorRgb8(0, 255, 0) // Green for person
-            : img.ColorRgb8(255, 0, 0), // Red for other objects
-        thickness: 2,
-      );
-    }
-
-    return Uint8List.fromList(img.encodePng(resized));
-  } catch (e) {
-    print('Failed to generate debug frame with boxes: $e');
-    return null;
-  }
-}
-
 /// Service for person presence detection using TensorFlow Lite
 class PersonDetectionService extends GetxService {
   // Dependencies
@@ -647,6 +584,7 @@ class PersonDetectionService extends GetxService {
   final RxBool isPersonPresent = false.obs;
   final RxBool isProcessing = false.obs;
   final RxString lastError = ''.obs;
+
   final RxDouble confidence = 0.0.obs;
   final RxInt framesProcessed = 0.obs;
 
@@ -772,6 +710,24 @@ class PersonDetectionService extends GetxService {
 
     print('📹 Upgrading camera to 720p for SIP call...');
 
+    // Platform-specific permission handling
+    // For iOS, skip permission handler completely - let getUserMedia handle permissions natively
+    // For Android, use permission handler as it's more reliable for Android WebRTC
+    if (Platform.isAndroid) {
+      final hasPermissions =
+          await PermissionsManager.requestCameraAndMicPermissions();
+      if (!hasPermissions) {
+        lastError.value =
+            'Camera and microphone permissions are required for 720p upgrade';
+        print(
+            '❌ Camera/microphone permissions denied. Cannot upgrade to 720p.');
+        return false;
+      }
+    } else if (Platform.isIOS) {
+      print(
+          '🍎 iOS detected - skipping permission_handler, using native getUserMedia permission flow');
+    }
+
     try {
       // Stop current stream
       _stopDetection();
@@ -819,7 +775,21 @@ class PersonDetectionService extends GetxService {
       return true;
     } catch (e) {
       print('❌ Failed to upgrade camera to 720p: $e');
-      lastError.value = 'Failed to upgrade to 720p: $e';
+
+      // Handle permission-related errors specifically for iOS
+      final errorStr = e.toString().toLowerCase();
+      bool isPermissionError = errorStr.contains('permission') ||
+          errorStr.contains('notallowed') ||
+          errorStr.contains('denied');
+
+      if (isPermissionError && Platform.isIOS) {
+        lastError.value =
+            'Camera access denied. Please allow camera permissions in iOS Settings > Privacy & Security > Camera';
+        print(
+            '🍎 iOS camera permission denied. User needs to enable in Settings.');
+      } else {
+        lastError.value = 'Failed to upgrade to 720p: $e';
+      }
       return false;
     }
   }
@@ -1157,6 +1127,24 @@ class PersonDetectionService extends GetxService {
       return false;
     }
 
+    // Platform-specific permission handling
+    // For iOS, skip permission handler completely - let getUserMedia handle permissions natively
+    // For Android, use permission handler as it's more reliable for Android WebRTC
+    if (Platform.isAndroid) {
+      final hasPermissions =
+          await PermissionsManager.requestCameraAndMicPermissions();
+      if (!hasPermissions) {
+        lastError.value =
+            'Camera and microphone permissions are required for person detection';
+        print(
+            '❌ Camera/microphone permissions denied. Cannot start person detection.');
+        return false;
+      }
+    } else if (Platform.isIOS) {
+      print(
+          '🍎 iOS detected - skipping permission_handler, using native getUserMedia permission flow');
+    }
+
     // Initialize model if not already done
     if (_interpreter == null) {
       final initialized = await _initializeModel();
@@ -1236,8 +1224,26 @@ class PersonDetectionService extends GetxService {
       );
       return true;
     } catch (e) {
-      lastError.value = 'Failed to start camera: $e';
       print('Error starting person detection: $e');
+
+      // Handle permission-related errors specifically for iOS
+      final errorStr = e.toString().toLowerCase();
+      bool isPermissionError = errorStr.contains('permission') ||
+          errorStr.contains('notallowed') ||
+          errorStr.contains('denied') ||
+          errorStr.contains('failed to acquire camera stream');
+
+      if (isPermissionError && Platform.isIOS) {
+        lastError.value =
+            'Camera access denied. Please allow camera permissions in iOS Settings > Privacy & Security > Camera';
+        print(
+            '🍎 iOS camera permission denied. User needs to enable in Settings.');
+      } else if (isPermissionError) {
+        lastError.value =
+            'Camera and microphone permissions are required for person detection';
+      } else {
+        lastError.value = 'Failed to start camera: $e';
+      }
       return false;
     }
   }
@@ -1997,6 +2003,11 @@ class PersonDetectionService extends GetxService {
     // Show ALL objects above threshold (not just persons)
     print("🔍 Total raw detections: ${detectionBoxes.length}");
 
+    // Filter by confidence threshold
+    final aboveThreshold = detectionBoxes
+        .where((box) => box.confidence >= objectDetectionThreshold)
+        .toList();
+
     // Print all detections for debugging
     for (int i = 0; i < detectionBoxes.length && i < 10; i++) {
       final box = detectionBoxes[i];
@@ -2005,14 +2016,8 @@ class PersonDetectionService extends GetxService {
       );
     }
 
-    // Filter objects above the general detection threshold (show ALL objects, not just persons)
-    final aboveThreshold = detectionBoxes
-        .where((box) => box.confidence > objectDetectionThreshold)
-        .toList();
-
     print(
-      "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}",
-    );
+        "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}");
 
     // Sort by confidence descending
     aboveThreshold.sort((a, b) => b.confidence.compareTo(a.confidence));
@@ -2672,5 +2677,68 @@ class PersonDetectionService extends GetxService {
       'uniqueColors': uniqueColors.length,
       'isSynthetic': isSynthetic,
     };
+  }
+}
+
+/// Generate preprocessed frame visualization for debug purposes (top-level function for isolate)
+Uint8List? _generatePreprocessedFrameVisualization(
+  Uint8List frameData,
+  int width,
+  int height,
+) {
+  try {
+    final image = img.decodeImage(frameData);
+    if (image == null) return null;
+
+    // Use center crop and resize instead of stretching
+    final resized = _centerCropAndResize(image, width, height);
+    return Uint8List.fromList(img.encodePng(resized));
+  } catch (e) {
+    print('Failed to generate preprocessed frame visualization: $e');
+    return null;
+  }
+}
+
+/// Generate debug frame with bounding boxes drawn (top-level function for isolate)
+Uint8List? _generateDebugFrameWithBoxes(
+  Uint8List frameData,
+  List<DetectionBox> boxes,
+  int width,
+  int height,
+  int personClassId,
+) {
+  try {
+    final image = img.decodeImage(frameData);
+    if (image == null) return null;
+
+    // Use center crop and resize instead of stretching
+    final resized = _centerCropAndResize(image, width, height);
+
+    // Draw bounding boxes on the image
+    for (final box in boxes) {
+      final x1 = (box.x1 * width).round().clamp(0, width - 1);
+      final y1 = (box.y1 * height).round().clamp(0, height - 1);
+      final x2 = (box.x2 * width).round().clamp(0, width - 1);
+      final y2 = (box.y2 * height).round().clamp(0, height - 1);
+
+      // Draw rectangle (simple implementation)
+      img.drawRect(
+        resized,
+        x1: x1,
+        y1: y1,
+        x2: x2,
+        y2: y2,
+        color: box.classId ==
+                personClassId // Person class ID (0 for MobileNet SSD)
+            ? img.ColorRgb8(0, 255, 0) // Green for person
+            : img.ColorRgb8(255, 0, 0), // Red for other objects
+        thickness: 2,
+      );
+    }
+
+    return Uint8List.fromList(img.encodePng(resized));
+  } catch (e) {
+    print('Failed to generate debug frame with boxes: $e');
+    return null;
   }
 }

@@ -446,9 +446,13 @@ class TtsService extends GetxService {
   Future<Map<String, dynamic>> handleMqttCommand(
       Map<String, dynamic> command) async {
     try {
-      final action = command['action'] ?? command['command'] ?? 'speak';
+      // Debug: log and normalize the action parsed
+      final dynamic raw = command['action'] ?? command['command'] ?? 'speak';
+      final action = raw.toString().toLowerCase().trim();
+      print('🔊 [TTS] handleMqttCommand normalized action: "$action"');
 
-      switch (action.toString().toLowerCase()) {
+      switch (action) {
+        case 'tts':
         case 'speak':
         case 'say':
           final text = command['text'] ?? command['message'] ?? '';

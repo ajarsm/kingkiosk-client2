@@ -66,9 +66,7 @@ class InitialBinding extends Bindings {
           '📝 Registering new HaloEffectControllerGetx instance in InitialBinding');
       Get.put<HaloEffectControllerGetx>(HaloEffectControllerGetx(),
           permanent: true);
-    }
-
-    // Register window halo controller for window-specific halo effects
+    } // Register window halo controller for window-specific halo effects
     if (Get.isRegistered<WindowHaloController>()) {
       print('✅ WindowHaloController already registered, skipping registration');
     } else {
@@ -77,25 +75,29 @@ class InitialBinding extends Bindings {
       Get.put<WindowHaloController>(WindowHaloController(), permanent: true);
     }
 
+    // Register TTS service BEFORE MQTT service to ensure it's available for MQTT commands
+    print('🟢 [Init] Registering TTS service...');
+    final ttsService = TtsService();
+    Get.put<TtsService>(ttsService, permanent: true);
+    await ttsService.onInit();
+    print('🟢 [Init] TTS service initialized and ready');
+
+    // Register Alert service for center-screen alerts
+    Get.put<AlertService>(AlertService(), permanent: true);
+    print('Alert service initialized successfully');
+
     // Eagerly register MQTT service after dependencies are ready
+    print('🟢 [Init] Registering MQTT service...');
     final storageService = Get.find<StorageService>();
     final sensorService = Get.find<PlatformSensorService>();
     final mqttService = MqttService(storageService, sensorService);
-    final initializedMqttService = await mqttService
-        .init(); // Initialize SIP UA service for communications
+    final initializedMqttService = await mqttService.init();
+
+    // Initialize SIP UA service for communications
     final sipService = SipService(storageService);
     Get.putAsync<SipService>(() => sipService.init(), permanent: true);
-    Get.put<MqttService>(initializedMqttService,
-        permanent: true); // Register Alert service for center-screen alerts
-    Get.put<AlertService>(AlertService(), permanent: true);
-    print('Alert service initialized successfully');
-    // Register TTS service for text-to-speech functionality
-    Get.putAsync<TtsService>(() async {
-      final ttsService = TtsService();
-      await ttsService.onInit();
-      return ttsService;
-    }, permanent: true);
-    print('TTS service initialized successfully');
+    Get.put<MqttService>(initializedMqttService, permanent: true);
+    print('🟢 [Init] MQTT service registered and ready');
 
     // Register Android Kiosk Service (Android only)
     if (Platform.isAndroid) {

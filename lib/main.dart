@@ -16,6 +16,7 @@ import 'app/widgets/halo_effect/app_halo_wrapper.dart';
 import 'package:king_kiosk/notification_system/services/notification_service.dart';
 import 'package:king_kiosk/notification_system/services/getx_notification_service.dart';
 import 'package:king_kiosk/notification_system/services/alert_service.dart';
+import 'app/services/tts_service.dart';
 import 'package:king_kiosk/notification_system/models/notification_models.dart';
 
 void main() async {
@@ -44,6 +45,13 @@ void main() async {
 
   // Initialize notification system
   await GetXNotificationService.init();
+
+  // Register and initialize TTS service at app startup to ensure it's ready before MQTT
+  print('🟢 [Main] Registering and initializing TTS service...');
+  final ttsService = TtsService();
+  await ttsService.onInit();
+  Get.put<TtsService>(ttsService, permanent: true);
+  print('🟢 [Main] TTS service registered and ready');
 
   // Auto-test notification if enabled
   if (const bool.fromEnvironment('SHOW_TEST_NOTIFICATION',

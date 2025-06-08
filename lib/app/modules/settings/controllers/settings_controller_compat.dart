@@ -7,6 +7,7 @@ import '../../../services/storage_service.dart';
 import '../../../services/person_detection_service.dart';
 import '../../../services/media_device_service.dart';
 import '../../../core/utils/app_constants.dart';
+import '../../../core/utils/permissions_manager.dart';
 import 'settings_controller.dart';
 
 export 'settings_controller.dart' show SettingsController;
@@ -18,11 +19,12 @@ class SettingsControllerFixed extends SettingsController {
   @override
   void onInit() {
     super.onInit();
-    
+
     // Load person detection setting from storage
     personDetectionEnabled.value = Get.find<StorageService>()
-        .read<bool>(AppConstants.keyPersonDetectionEnabled) ?? false;
-    
+            .read<bool>(AppConstants.keyPersonDetectionEnabled) ??
+        false;
+
     // Listen for changes and sync with PersonDetectionService
     ever(personDetectionEnabled, (bool enabled) {
       try {
@@ -40,54 +42,62 @@ class SettingsControllerFixed extends SettingsController {
     if (!value && mqttConnected.value) {
       disconnectMqtt();
     }
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttEnabled, value);
-  }void saveMqttBrokerUrl(String url) {
+  }
+
+  void saveMqttBrokerUrl(String url) {
     print('🔧 SettingsControllerFixed.saveMqttBrokerUrl called with: $url');
     mqttBrokerUrl.value = url;
     mqttBrokerUrlController.text = url;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttBrokerUrl, url);
   }
+
   void saveMqttBrokerPort(int port) {
     print('🔧 SettingsControllerFixed.saveMqttBrokerPort called with: $port');
     mqttBrokerPort.value = port;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttBrokerPort, port);
   }
+
   void saveMqttUsername(String username) {
     print('🔧 SettingsControllerFixed.saveMqttUsername called with: $username');
     mqttUsername.value = username;
     mqttUsernameController.text = username;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttUsername, username);
   }
+
   void saveMqttPassword(String password) {
-    print('🔧 SettingsControllerFixed.saveMqttPassword called with: ${password.isEmpty ? "empty" : "[REDACTED]"}');
+    print(
+        '🔧 SettingsControllerFixed.saveMqttPassword called with: ${password.isEmpty ? "empty" : "[REDACTED]"}');
     mqttPassword.value = password;
     mqttPasswordController.text = password;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttPassword, password);
   }
+
   void saveDeviceName(String name) {
     print('🔧 SettingsControllerFixed.saveDeviceName called with: $name');
     deviceName.value = name;
     deviceNameController.text = name;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyDeviceName, name);
   }
+
   void toggleMqttHaDiscovery(bool value) {
     mqttHaDiscovery.value = value;
 
@@ -98,16 +108,17 @@ class SettingsControllerFixed extends SettingsController {
         connectMqtt();
       });
     }
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyMqttHaDiscovery, value);
   }
+
   void saveKioskStartUrl(String url) {
     print('🔧 SettingsControllerFixed.saveKioskStartUrl called with: $url');
     kioskStartUrl.value = url;
     kioskStartUrlController.text = url;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keyKioskStartUrl, url);
@@ -139,7 +150,7 @@ class SettingsControllerFixed extends SettingsController {
     mqttPasswordController.text = '';
     deviceName.value = '';
     deviceNameController.text = '';
-    mqttHaDiscovery.value = false;    // Reset SIP settings
+    mqttHaDiscovery.value = false; // Reset SIP settings
     sipEnabled.value = false;
     sipServerHost.value = '';
     sipServerHostController.text = '';
@@ -155,12 +166,13 @@ class SettingsControllerFixed extends SettingsController {
     // Unregister from SIP if registered
     if (sipRegistered.value) {
       await unregisterSip();
-    }    // Save the updated settings to storage
+    } // Save the updated settings to storage
     final storageService = Get.find<StorageService>();
     storageService.write('isDarkMode', isDarkMode.value);
     storageService.write('kioskMode', kioskMode.value);
     storageService.write('showSystemInfo', showSystemInfo.value);
-    storageService.write(AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
+    storageService.write(
+        AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
     // Add other settings to be saved here
 
     Get.snackbar(
@@ -268,13 +280,14 @@ class SettingsControllerFixed extends SettingsController {
       'Force republishing all sensors to Home Assistant',
       snackPosition: SnackPosition.BOTTOM,
       duration: Duration(seconds: 3),
-    );  }
+    );
+  }
 
   void saveSipServerHost(String host) {
     print('🔧 SettingsControllerFixed.saveSipServerHost called with: $host');
     sipServerHost.value = host;
     sipServerHostController.text = host;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keySipServerHost, host);
@@ -285,28 +298,30 @@ class SettingsControllerFixed extends SettingsController {
   void toggleSipEnabled(bool value) {
     print('🔧 SettingsControllerFixed.toggleSipEnabled called with: $value');
     sipEnabled.value = value;
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keySipEnabled, value);
     storageService.flush(); // Force flush for Windows persistence
-    
+
     if (!value && sipRegistered.value) {
       unregisterSip();
     }
-  }  // Add person detection toggle method
-  void togglePersonDetection() {
+  } // Add person detection toggle method
+
+  Future<void> togglePersonDetection() async {
     print('🔧 SettingsControllerFixed.togglePersonDetection called');
     personDetectionEnabled.value = !personDetectionEnabled.value;
-    
+
     // Save the setting
     final storageService = Get.find<StorageService>();
-    storageService.write(AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
+    storageService.write(
+        AppConstants.keyPersonDetectionEnabled, personDetectionEnabled.value);
     storageService.flush(); // Force flush for Windows persistence
-      
+
     // Handle PersonDetectionService registration and management
     PersonDetectionService? personDetectionService;
-    
+
     try {
       // Try to find existing service
       personDetectionService = Get.find<PersonDetectionService>();
@@ -315,12 +330,13 @@ class SettingsControllerFixed extends SettingsController {
       // Service not registered yet
       if (personDetectionEnabled.value) {
         // If we're enabling person detection, register the service
-        print('👤 PersonDetectionService not found, registering new service...');
+        print(
+            '👤 PersonDetectionService not found, registering new service...');
         Get.lazyPut<PersonDetectionService>(() {
           final service = PersonDetectionService();
           return service;
         }, fenix: true);
-        
+
         // Get the newly registered service
         try {
           personDetectionService = Get.find<PersonDetectionService>();
@@ -338,29 +354,60 @@ class SettingsControllerFixed extends SettingsController {
           return;
         }
       } else {
-        print('👤 PersonDetectionService not found, but that\'s OK since we\'re disabling');
+        print(
+            '👤 PersonDetectionService not found, but that\'s OK since we\'re disabling');
       }
     }
-    
+
     // Update the service if available
     if (personDetectionService != null) {
       personDetectionService.isEnabled.value = personDetectionEnabled.value;
-        
-      // If enabling, start detection with the selected camera from MediaDeviceService
+      // If enabling, check permissions first, then start detection with the selected camera from MediaDeviceService
       if (personDetectionEnabled.value) {
+        // Request camera and microphone permissions before starting person detection
+        final hasPermissions =
+            await PermissionsManager.requestCameraAndMicPermissions();
+        if (!hasPermissions) {
+          // Revert the toggle if permissions are denied
+          personDetectionEnabled.value = false;
+          storageService.write(AppConstants.keyPersonDetectionEnabled, false);
+          storageService.flush();
+
+          Get.snackbar(
+            'Permission Required',
+            'Camera and microphone permissions are required for person detection. Please enable them in Settings.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange.withOpacity(0.8),
+            colorText: Colors.white,
+            duration: Duration(seconds: 4),
+            mainButton: TextButton(
+              onPressed: () {
+                PermissionsManager.openAppSettings();
+              },
+              child:
+                  Text('Open Settings', style: TextStyle(color: Colors.white)),
+            ),
+          );
+          return;
+        }
+
         String? selectedCameraId;
         try {
           final mediaDeviceService = Get.find<MediaDeviceService>();
           if (mediaDeviceService.selectedVideoInput.value != null) {
-            selectedCameraId = mediaDeviceService.selectedVideoInput.value!.deviceId;
-            print('👤 Using camera from MediaDeviceService: ${mediaDeviceService.selectedVideoInput.value!.label}');
+            selectedCameraId =
+                mediaDeviceService.selectedVideoInput.value!.deviceId;
+            print(
+                '👤 Using camera from MediaDeviceService: ${mediaDeviceService.selectedVideoInput.value!.label}');
           }
         } catch (e) {
           print('⚠️ Could not get selected camera from MediaDeviceService: $e');
         }
-        
+
         // Start detection with selected camera
-        personDetectionService.startDetection(deviceId: selectedCameraId).then((success) {
+        personDetectionService
+            .startDetection(deviceId: selectedCameraId)
+            .then((success) {
           if (success) {
             print('✅ Person detection started successfully');
           } else {
@@ -377,11 +424,13 @@ class SettingsControllerFixed extends SettingsController {
         });
       }
     }
-    
+
     // Show feedback to user
     Get.snackbar(
       'Person Detection',
-      personDetectionEnabled.value ? 'Person detection enabled' : 'Person detection disabled',
+      personDetectionEnabled.value
+          ? 'Person detection enabled'
+          : 'Person detection disabled',
       snackPosition: SnackPosition.BOTTOM,
       duration: Duration(seconds: 2),
     );
@@ -401,7 +450,7 @@ class SettingsControllerFixed extends SettingsController {
     if (sipService != null) {
       sipService!.setProtocol(protocol);
     }
-    
+
     // Add the missing storage write operation
     final storageService = Get.find<StorageService>();
     storageService.write(AppConstants.keySipProtocol, protocol);
@@ -431,6 +480,7 @@ class SettingsControllerFixed extends SettingsController {
       }
     }
   }
+
   // Hardware acceleration compatibility methods
   void loadHardwareAccelerationSettings() {
     super.loadHardwareAccelerationSettings();
@@ -445,7 +495,8 @@ class SettingsControllerFixed extends SettingsController {
     if (mqttService != null) {
       final actualStatus = mqttService!.isConnected.value;
       if (actualStatus != mqttConnected.value) {
-        print('🔄 Force refreshing MQTT status: was ${mqttConnected.value}, now $actualStatus');
+        print(
+            '🔄 Force refreshing MQTT status: was ${mqttConnected.value}, now $actualStatus');
         mqttConnected.value = actualStatus;
       }
     }
