@@ -22,6 +22,7 @@ import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
 import '../../services/android_kiosk_service.dart';
 import '../../services/platform_kiosk_service.dart';
+import '../../services/tts_service.dart';
 import 'package:king_kiosk/notification_system/services/alert_service.dart';
 
 class InitialBinding extends Bindings {
@@ -84,12 +85,19 @@ class InitialBinding extends Bindings {
         .init(); // Initialize SIP UA service for communications
     final sipService = SipService(storageService);
     Get.putAsync<SipService>(() => sipService.init(), permanent: true);
-    Get.put<MqttService>(initializedMqttService, permanent: true);
-    print(
-        'MQTT service initialized successfully'); // Register Alert service for center-screen alerts
+    Get.put<MqttService>(initializedMqttService,
+        permanent: true); // Register Alert service for center-screen alerts
     Get.put<AlertService>(AlertService(), permanent: true);
-    print(
-        'Alert service initialized successfully'); // Register Android Kiosk Service (Android only)
+    print('Alert service initialized successfully');
+    // Register TTS service for text-to-speech functionality
+    Get.putAsync<TtsService>(() async {
+      final ttsService = TtsService();
+      await ttsService.onInit();
+      return ttsService;
+    }, permanent: true);
+    print('TTS service initialized successfully');
+
+    // Register Android Kiosk Service (Android only)
     if (Platform.isAndroid) {
       Get.put<AndroidKioskService>(AndroidKioskService(), permanent: true);
       print('Android Kiosk service initialized successfully');

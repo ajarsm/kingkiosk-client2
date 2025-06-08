@@ -18,6 +18,7 @@ import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
+import 'tts_service.dart';
 import 'media_control_service.dart'; // Import the MediaControlService
 import 'screenshot_service.dart';
 import 'audio_service.dart'; // Import the AudioService
@@ -589,7 +590,7 @@ class MqttService extends GetxService {
     print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
     if (cmdObj is Map) {
       print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
-    } // --- Handle batch commands array first ---
+    }    // --- Handle batch commands array first ---
     if (cmdObj is Map &&
         (cmdObj['commands'] is List ||
             cmdObj['command']?.toString().toLowerCase() == 'batch')) {
@@ -598,7 +599,55 @@ class MqttService extends GetxService {
       final List commandList = cmdObj['commands'] as List;
       print('🎯 Processing batch of ${commandList.length} commands');
 
+      // Separate TTS commands for optimized batch processing
+      final List<Map<String, dynamic>> ttsCommands = [];
+      final List<dynamic> otherCommands = [];
+      
       for (final cmd in commandList) {
+        if (cmd is Map) {
+          final command = cmd['command']?.toString().toLowerCase();
+          if (command == 'tts' || command == 'speak' || command == 'say') {
+            ttsCommands.add(Map<String, dynamic>.from(cmd));
+          } else {
+            otherCommands.add(cmd);
+          }
+        }
+      }
+
+      // Process TTS commands as a batch if any exist
+      if (ttsCommands.isNotEmpty) {
+        try {
+          final ttsService = Get.find<TtsService>();
+          print('🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
+          final results = await ttsService.handleBatchMqttCommands(ttsCommands);
+          
+          // Publish individual results to response topics if specified
+          for (int i = 0; i < results.length && i < ttsCommands.length; i++) {
+            final result = results[i];
+            final cmd = ttsCommands[i];
+            
+            print('🔊 [MQTT] Batch TTS command result: $result');
+            
+            if (cmd['response_topic'] != null) {
+              publishJsonToTopic(cmd['response_topic'], result, retain: false);
+            }
+          }
+        } catch (e) {
+          print('❌ [MQTT] Error processing TTS batch: $e');
+          // Publish error to response topics if specified
+          for (final cmd in ttsCommands) {
+            if (cmd['response_topic'] != null) {
+              publishJsonToTopic(cmd['response_topic'], {
+                'success': false,
+                'error': 'TTS batch processing failed: $e'
+              }, retain: false);
+            }
+          }
+        }
+      }
+
+      // Process other commands individually
+      for (final cmd in otherCommands) {
         if (cmd is Map) {
           try {
             // Check specifically for notify command to use optimized path
@@ -1241,6 +1290,31 @@ class MqttService extends GetxService {
     } // --- provision command for remote settings configuration ---
     if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
       _processProvisionCommand(cmdObj);
+      return;
+    } // --- TTS (Text-to-Speech) command handling ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'tts' ||
+        cmdObj['command']?.toString().toLowerCase() == 'speak' ||
+        cmdObj['command']?.toString().toLowerCase() == 'say') {
+      try {
+        final ttsService = Get.find<TtsService>();
+        // Cast to proper type for TTS service
+        final ttsCommand = Map<String, dynamic>.from(cmdObj);
+        final result = await ttsService.handleMqttCommand(ttsCommand);
+        print('🔊 [MQTT] TTS command result: $result');
+
+        // Optionally publish result to response topic if specified
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(cmdObj['response_topic'], result, retain: false);
+        }
+      } catch (e) {
+        print('❌ [MQTT] Error processing TTS command: $e');
+        // Optionally publish error to response topic
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(cmdObj['response_topic'],
+              {'success': false, 'error': 'TTS service not available: $e'},
+              retain: false);
+        }
+      }
       return;
     }
 
