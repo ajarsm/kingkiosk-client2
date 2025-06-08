@@ -123,9 +123,6 @@ class PersonDetectionDebugWidget extends StatelessWidget {
       PersonDetectionService service, BuildContext context) {
     return Column(
       children: [
-        // Camera Resolution Controls
-        _buildCameraResolutionControls(service, context),
-
         // Status bar
         Container(
           width: double.infinity,
@@ -249,167 +246,13 @@ class PersonDetectionDebugWidget extends StatelessWidget {
         Expanded(
           child: Obx(() => _buildCameraWithBoxes(
               service.debugVisualizationFrame.value,
-              List<DetectionBox>.from(service.latestDetectionBoxes),
+              List<DetectionBox>.from(service.latestDetectionBoxes)
+                  .where((box) => box.confidence >= service.objectDetectionThreshold)
+                  .toList(),
               service,
               context)),
         ),
       ],
-    );
-  }
-
-  Widget _buildCameraResolutionControls(
-      PersonDetectionService service, BuildContext context) {
-    return Container(
-      margin: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      child: Card(
-        elevation: 2,
-        child: Padding(
-          padding: EdgeInsets.all(12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    Icons.camera_alt,
-                    color: Colors.green,
-                    size: 20,
-                  ),
-                  SizedBox(width: 8),
-                  Text(
-                    'Camera Resolution Control',
-                    style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.green.shade800,
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: 12),
-              Obx(() => Column(
-                    children: [
-                      Row(
-                        children: [
-                          Icon(
-                            Icons.aspect_ratio,
-                            size: 16,
-                            color: service.isUpgradedTo720p.value
-                                ? Colors.blue
-                                : Colors.orange,
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Current Resolution: ${service.isUpgradedTo720p.value ? "720p (SIP Call)" : "300x300 (Person Detection)"}',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              color: service.isUpgradedTo720p.value
-                                  ? Colors.blue
-                                  : Colors.orange,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: 12),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: service.isUpgradedTo720p.value
-                                  ? null
-                                  : () async {
-                                      final result =
-                                          await service.upgradeTo720p();
-                                      final message = result
-                                          ? 'Camera upgraded to 720p'
-                                          : 'Failed to upgrade to 720p';
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(message),
-                                          backgroundColor: result
-                                              ? Colors.green
-                                              : Colors.red,
-                                        ),
-                                      );
-                                    },
-                              icon: Icon(
-                                Icons.upgrade,
-                                size: 16,
-                              ),
-                              label: Text('720p (SIP)'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Expanded(
-                            child: ElevatedButton.icon(
-                              onPressed: !service.isUpgradedTo720p.value
-                                  ? null
-                                  : () async {
-                                      final result =
-                                          await service.downgradeTo300x300();
-                                      final message = result
-                                          ? 'Camera downgraded to 300x300'
-                                          : 'Failed to downgrade to 300x300';
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(
-                                          content: Text(message),
-                                          backgroundColor: result
-                                              ? Colors.green
-                                              : Colors.red,
-                                        ),
-                                      );
-                                    },
-                              icon: Icon(
-                                Icons.compress,
-                                size: 16,
-                              ),
-                              label: Text('300x300 (ML)'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.orange,
-                                foregroundColor: Colors.white,
-                                padding: EdgeInsets.symmetric(horizontal: 12),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  )),
-              SizedBox(height: 8),
-              Container(
-                padding: EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(6),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline,
-                        size: 16, color: Colors.blue.shade700),
-                    SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'Use 300x300 for efficient person detection. Switch to 720p during SIP video calls.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: Colors.blue.shade700,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 

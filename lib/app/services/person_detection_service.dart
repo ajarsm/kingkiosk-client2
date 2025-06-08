@@ -631,9 +631,9 @@ class PersonDetectionService extends GetxService {
   final double confidenceThreshold =
       0.6; // Higher threshold for more reliable person detection
   final double objectDetectionThreshold =
-      0.4; // Reasonable threshold for all object detection
+      0.6; // Use same 60% threshold for all object detection as configured by user
   final int personClassId =
-      0; // Person class ID in MobileNet SSD (0 for person, not COCO's 1)
+      0; // Person class ID in MobileNet SSD (0 for person, correct for MobileNet)
 
   // Frame processing timer and stream
   Timer? _processingTimer;
@@ -945,16 +945,15 @@ class PersonDetectionService extends GetxService {
       {
         'audio': false,
         'video': createVideoConstraints({
-          'width': 1280,
-          'height': 720,
-        })
-      },
-      // 2. Try lower resolution
-      {
-        'audio': false,
-        'video': createVideoConstraints({
           'width': 640,
           'height': 360,
+        })
+      },
+       {
+        'audio': false,
+        'video': createVideoConstraints({
+          'width': 1280,
+          'height': 720,
         })
       },
       // 3. Default (no size constraints, just deviceId if available)
@@ -1905,6 +1904,14 @@ class PersonDetectionService extends GetxService {
     try {
       if (Get.isRegistered<MqttService>()) {
         final mqttService = Get.find<MqttService>();
+        
+        // Check MQTT connection status
+        if (!mqttService.isConnected.value) {
+          print('❌ MQTT not connected - skipping publish');
+          return;
+        }
+        print('📡 MQTT connected - publishing detection data');
+        
         // Publish comprehensive detection data
         final detectionData = {
           'timestamp': DateTime.now().toIso8601String(),
@@ -1930,10 +1937,13 @@ class PersonDetectionService extends GetxService {
               .toList(),
         };
 
+        print('📡 Full MQTT object detection payload: ${jsonEncode(detectionData)}');
+
         // Publish to general object detection topic
         mqttService.publishJsonToTopic(
             'kingkiosk/${mqttService.deviceName.value}/object_detection',
             detectionData);
+        print('✅ Successfully published object detection data');
 
         // Also publish to legacy person presence topic for backward compatibility
         final presenceData = {
@@ -1943,15 +1953,20 @@ class PersonDetectionService extends GetxService {
           'frames_processed': framesProcessed.value,
         };
 
+        print('📡 Full MQTT person presence payload: ${jsonEncode(presenceData)}');
+
         mqttService.publishJsonToTopic(
             'kingkiosk/${mqttService.deviceName.value}/person_presence',
             presenceData);
+        print('✅ Successfully published person presence data');
 
         print(
-            '📡 Published object detection data: ${objectCounts.length} object types detected');
+            '📡 Published object detection data: ${objectCounts.length} object types detected (above ${(objectDetectionThreshold * 100).toInt()}% threshold)');
+      } else {
+        print('❌ MQTT service not registered');
       }
     } catch (e) {
-      print('Error publishing detection data to MQTT: $e');
+      print('❌ Error publishing detection data to MQTT: $e');
     }
   }
 
