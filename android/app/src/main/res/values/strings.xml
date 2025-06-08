@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">King Kiosk</string>
+    <string name="device_admin_description">King Kiosk requires device administrator privileges to enable secure kiosk mode, prevent unauthorized access, and maintain system lockdown for business and enterprise environments.</string>
+</resources>

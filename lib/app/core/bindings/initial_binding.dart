@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 import 'package:get_storage/get_storage.dart';
+import 'dart:io';
 import '../../services/storage_service.dart';
 import '../../services/platform_sensor_service.dart';
 import '../../services/theme_service.dart';
@@ -12,7 +13,6 @@ import '../../services/background_media_service.dart';
 import '../../modules/settings/controllers/settings_controller_compat.dart';
 import '../../services/window_manager_service.dart';
 import '../../services/screenshot_service.dart';
-import '../../services/media_recovery_service.dart';
 import '../../services/audio_service.dart';
 import '../../services/window_close_handler.dart';
 import '../../services/media_control_service.dart';
@@ -20,15 +20,17 @@ import '../../services/ai_assistant_service.dart';
 import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
+import '../../services/android_kiosk_service.dart';
 import 'package:king_kiosk/notification_system/services/alert_service.dart';
 
-class InitialBinding extends Bindings {  @override
+class InitialBinding extends Bindings {
+  @override
   Future<void> dependencies() async {
     // Core services first - order matters!
     Get.put<StorageService>(await StorageService().init(), permanent: true);
     Get.put<ThemeService>(await ThemeService().init(), permanent: true);
     Get.put<PlatformSensorService>(await PlatformSensorService().init(),
-        permanent: true);    // Core controllers
+        permanent: true); // Core controllers
     Get.put(AppStateController(), permanent: true);
     Get.put(SettingsControllerFixed(), permanent: true);
 
@@ -80,12 +82,18 @@ class InitialBinding extends Bindings {  @override
     final initializedMqttService = await mqttService
         .init(); // Initialize SIP UA service for communications
     final sipService = SipService(storageService);
-    Get.putAsync<SipService>(() => sipService.init(), permanent: true);    Get.put<MqttService>(initializedMqttService, permanent: true);
-    print('MQTT service initialized successfully');
-
-    // Register Alert service for center-screen alerts
+    Get.putAsync<SipService>(() => sipService.init(), permanent: true);
+    Get.put<MqttService>(initializedMqttService, permanent: true);
+    print(
+        'MQTT service initialized successfully'); // Register Alert service for center-screen alerts
     Get.put<AlertService>(AlertService(), permanent: true);
     print('Alert service initialized successfully');
+
+    // Register Android Kiosk Service (Android only)
+    if (Platform.isAndroid) {
+      Get.put<AndroidKioskService>(AndroidKioskService(), permanent: true);
+      print('Android Kiosk service initialized successfully');
+    }
 
     // Initialize AI Assistant service
     Future.delayed(Duration(seconds: 2), () {

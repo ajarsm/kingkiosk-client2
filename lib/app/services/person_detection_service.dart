@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
@@ -216,23 +217,26 @@ String _getClassNameForId(int classId) {
 
 /// Enhanced background inference function that handles complete frame processing in isolate
 Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
-    EnhancedInferenceData data) async {
+  EnhancedInferenceData data,
+) async {
   try {
     final Stopwatch processingStopwatch = Stopwatch()..start();
 
     // Debug logging for input parameters
     print(
-        'DEBUG: Running enhanced inference with personClassId: ${data.personClassId}, '
-        'confidenceThreshold: ${data.confidenceThreshold}, frame: ${data.frameNumber}');
+      'DEBUG: Running enhanced inference with personClassId: ${data.personClassId}, '
+      'confidenceThreshold: ${data.confidenceThreshold}, frame: ${data.frameNumber}',
+    );
 
     // Step 1: Preprocess frame in background isolate
     final preprocessStopwatch = Stopwatch()..start();
     final Object inputData = _preprocessFrameInBackground(
-        data.rawFrameData,
-        data.inputWidth,
-        data.inputHeight,
-        data.numChannels,
-        data.isQuantizedModel);
+      data.rawFrameData,
+      data.inputWidth,
+      data.inputHeight,
+      data.numChannels,
+      data.isQuantizedModel,
+    );
     preprocessStopwatch.stop();
 
     // Step 2: Load the interpreter from model bytes in the background isolate
@@ -257,13 +261,17 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
           outputShapes[0][1]; // Get num_detections from boxes shape
 
       outputTensors[0] = List.generate(
-          1,
-          (_) => List.generate(
-              numDetections, (_) => List.filled(4, 0.0))); // boxes
-      outputTensors[1] =
-          List.generate(1, (_) => List.filled(numDetections, 0.0)); // classes
-      outputTensors[2] =
-          List.generate(1, (_) => List.filled(numDetections, 0.0)); // scores
+        1,
+        (_) => List.generate(numDetections, (_) => List.filled(4, 0.0)),
+      ); // boxes
+      outputTensors[1] = List.generate(
+        1,
+        (_) => List.filled(numDetections, 0.0),
+      ); // classes
+      outputTensors[2] = List.generate(
+        1,
+        (_) => List.filled(numDetections, 0.0),
+      ); // scores
       outputTensors[3] = [0.0]; // num_detections
     } else {
       // Fallback for simpler models - use actual output shapes
@@ -271,12 +279,14 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
         final shape = outputShapes[i];
         if (shape.length == 3 && shape[2] == 4) {
           outputTensors[i] = List.generate(
-              shape[0],
-              (_) =>
-                  List.generate(shape[1], (_) => List.filled(shape[2], 0.0)));
+            shape[0],
+            (_) => List.generate(shape[1], (_) => List.filled(shape[2], 0.0)),
+          );
         } else if (shape.length == 2) {
-          outputTensors[i] =
-              List.generate(shape[0], (_) => List.filled(shape[1], 0.0));
+          outputTensors[i] = List.generate(
+            shape[0],
+            (_) => List.filled(shape[1], 0.0),
+          );
         } else if (shape.length == 1) {
           outputTensors[i] = List.filled(shape[0], 0.0);
         }
@@ -321,32 +331,37 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
           final className = _getClassNameForId(classId);
           final isPersonDetection = classId == data.personClassId;
 
-          print('${isPersonDetection ? "🚶" : "🔍"} MobileNet detection $i - '
-              'ClassID: $classId (${className}), '
-              'Confidence: ${(score * 100).toStringAsFixed(1)}%, '
-              'BBox: [${y1.toStringAsFixed(3)}, ${x1.toStringAsFixed(3)}, '
-              '${y2.toStringAsFixed(3)}, ${x2.toStringAsFixed(3)}]'
-              '${isPersonDetection ? " ⭐ PERSON DETECTED!" : ""}');
+          print(
+            '${isPersonDetection ? "🚶" : "🔍"} MobileNet detection $i - '
+            'ClassID: $classId (${className}), '
+            'Confidence: ${(score * 100).toStringAsFixed(1)}%, '
+            'BBox: [${y1.toStringAsFixed(3)}, ${x1.toStringAsFixed(3)}, '
+            '${y2.toStringAsFixed(3)}, ${x2.toStringAsFixed(3)}]'
+            '${isPersonDetection ? " ⭐ PERSON DETECTED!" : ""}',
+          );
         }
 
         // Create detection boxes for all significant detections
         if (score > data.objectDetectionThreshold) {
-          detectionBoxes.add(DetectionBox(
-            x1: x1,
-            y1: y1,
-            x2: x2,
-            y2: y2,
-            confidence: score,
-            classId: classId,
-            className: _getClassNameForId(classId),
-          ));
+          detectionBoxes.add(
+            DetectionBox(
+              x1: x1,
+              y1: y1,
+              x2: x2,
+              y2: y2,
+              confidence: score,
+              classId: classId,
+              className: _getClassNameForId(classId),
+            ),
+          );
         }
 
         // Track the highest person confidence (MobileNet SSD: person = class 0)
         if (classId == data.personClassId && score > maxPersonConfidence) {
           maxPersonConfidence = score;
           print(
-              '🎯 New highest person confidence: ${(score * 100).toStringAsFixed(1)}%');
+            '🎯 New highest person confidence: ${(score * 100).toStringAsFixed(1)}%',
+          );
         }
       }
     } else if (outputTensors.containsKey(0)) {
@@ -368,15 +383,17 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
       try {
         // Create preprocessed frame visualization
         preprocessedFrameData = _generatePreprocessedFrameVisualization(
-            data.rawFrameData,
-            data.inputWidth,
-            data.inputHeight); // Create debug frame with bounding boxes
+          data.rawFrameData,
+          data.inputWidth,
+          data.inputHeight,
+        ); // Create debug frame with bounding boxes
         debugFrameWithBoxes = _generateDebugFrameWithBoxes(
-            data.rawFrameData,
-            detectionBoxes,
-            data.inputWidth,
-            data.inputHeight,
-            data.personClassId);
+          data.rawFrameData,
+          detectionBoxes,
+          data.inputWidth,
+          data.inputHeight,
+          data.personClassId,
+        );
       } catch (e) {
         print('Warning: Debug frame generation failed: $e');
       }
@@ -425,7 +442,10 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
 
 /// Helper function to center crop and resize an image
 img.Image _centerCropAndResize(
-    img.Image image, int targetWidth, int targetHeight) {
+  img.Image image,
+  int targetWidth,
+  int targetHeight,
+) {
   // Calculate the aspect ratios
   final sourceAspect = image.width / image.height;
   final targetAspect = targetWidth / targetHeight;
@@ -436,14 +456,24 @@ img.Image _centerCropAndResize(
     // Source is wider - crop the width
     final newWidth = (image.height * targetAspect).round();
     final cropX = ((image.width - newWidth) / 2).round();
-    cropped = img.copyCrop(image,
-        x: cropX, y: 0, width: newWidth, height: image.height);
+    cropped = img.copyCrop(
+      image,
+      x: cropX,
+      y: 0,
+      width: newWidth,
+      height: image.height,
+    );
   } else {
     // Source is taller - crop the height
     final newHeight = (image.width / targetAspect).round();
     final cropY = ((image.height - newHeight) / 2).round();
-    cropped = img.copyCrop(image,
-        x: 0, y: cropY, width: image.width, height: newHeight);
+    cropped = img.copyCrop(
+      image,
+      x: 0,
+      y: cropY,
+      width: image.width,
+      height: newHeight,
+    );
   }
 
   // Now resize to exact target dimensions
@@ -451,8 +481,13 @@ img.Image _centerCropAndResize(
 }
 
 /// Preprocess frame data for MobileNet SSD model input in background isolate (OPTIMIZED)
-Object _preprocessFrameInBackground(Uint8List frameData, int inputWidth,
-    int inputHeight, int numChannels, bool isQuantizedModel) {
+Object _preprocessFrameInBackground(
+  Uint8List frameData,
+  int inputWidth,
+  int inputHeight,
+  int numChannels,
+  bool isQuantizedModel,
+) {
   try {
     img.Image? image;
 
@@ -534,7 +569,10 @@ Object _preprocessFrameInBackground(Uint8List frameData, int inputWidth,
 
 /// Generate preprocessed frame visualization for debug purposes
 Uint8List? _generatePreprocessedFrameVisualization(
-    Uint8List frameData, int width, int height) {
+  Uint8List frameData,
+  int width,
+  int height,
+) {
   try {
     final image = img.decodeImage(frameData);
     if (image == null) return null;
@@ -549,8 +587,13 @@ Uint8List? _generatePreprocessedFrameVisualization(
 }
 
 /// Generate debug frame with bounding boxes drawn
-Uint8List? _generateDebugFrameWithBoxes(Uint8List frameData,
-    List<DetectionBox> boxes, int width, int height, int personClassId) {
+Uint8List? _generateDebugFrameWithBoxes(
+  Uint8List frameData,
+  List<DetectionBox> boxes,
+  int width,
+  int height,
+  int personClassId,
+) {
   try {
     final image = img.decodeImage(frameData);
     if (image == null) return null;
@@ -563,19 +606,22 @@ Uint8List? _generateDebugFrameWithBoxes(Uint8List frameData,
       final x1 = (box.x1 * width).round().clamp(0, width - 1);
       final y1 = (box.y1 * height).round().clamp(0, height - 1);
       final x2 = (box.x2 * width).round().clamp(0, width - 1);
-      final y2 = (box.y2 * height)
-          .round()
-          .clamp(0, height - 1); // Draw rectangle (simple implementation)
-      img.drawRect(resized,
-          x1: x1,
-          y1: y1,
-          x2: x2,
-          y2: y2,
-          color: box.classId ==
-                  personClassId // Person class ID (0 for MobileNet SSD)
-              ? img.ColorRgb8(0, 255, 0) // Green for person
-              : img.ColorRgb8(255, 0, 0), // Red for other objects
-          thickness: 2);
+      final y2 = (box.y2 * height).round().clamp(
+            0,
+            height - 1,
+          ); // Draw rectangle (simple implementation)
+      img.drawRect(
+        resized,
+        x1: x1,
+        y1: y1,
+        x2: x2,
+        y2: y2,
+        color: box.classId ==
+                personClassId // Person class ID (0 for MobileNet SSD)
+            ? img.ColorRgb8(0, 255, 0) // Green for person
+            : img.ColorRgb8(255, 0, 0), // Red for other objects
+        thickness: 2,
+      );
     }
 
     return Uint8List.fromList(img.encodePng(resized));
@@ -645,8 +691,9 @@ class PersonDetectionService extends GetxService {
   // Removed _rendererTextureId - using direct video track capture
 
   // ML Analysis configuration - configurable and optimized for performance
-  static const Duration defaultAnalysisInterval =
-      Duration(milliseconds: 2000); // Analyze every 2 seconds
+  static const Duration defaultAnalysisInterval = Duration(
+    milliseconds: 2000,
+  ); // Analyze every 2 seconds
   late Duration analysisInterval;
 
   // Last analysis timestamp for rate limiting
@@ -664,7 +711,8 @@ class PersonDetectionService extends GetxService {
     // Initialize ML analysis interval (configurable)
     analysisInterval = defaultAnalysisInterval;
     print(
-        '📊 ML Analysis interval set to: ${analysisInterval.inMilliseconds}ms');
+      '📊 ML Analysis interval set to: ${analysisInterval.inMilliseconds}ms',
+    );
 
     // Load settings
     isEnabled.value =
@@ -681,7 +729,8 @@ class PersonDetectionService extends GetxService {
           print('✅ Person detection started successfully at startup');
         } else {
           print(
-              '⚠️ Person detection model initialized but failed to start camera');
+            '⚠️ Person detection model initialized but failed to start camera',
+          );
         }
       }
     }
@@ -697,7 +746,8 @@ class PersonDetectionService extends GetxService {
             print('✅ Person detection restarted via settings');
           } else {
             print(
-                '⚠️ Person detection model initialized but failed to start camera via settings');
+              '⚠️ Person detection model initialized but failed to start camera via settings',
+            );
           }
         }
       } else {
@@ -745,7 +795,7 @@ class PersonDetectionService extends GetxService {
       // Set up 720p constraints
       final Map<String, dynamic> mediaConstraints = {
         'audio': false,
-        'video': true
+        'video': true,
       };
 
       if (actualDeviceId != null && actualDeviceId.isNotEmpty) {
@@ -759,8 +809,9 @@ class PersonDetectionService extends GetxService {
       }
 
       // Get 720p camera stream
-      _cameraStream =
-          await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
+      _cameraStream = await webrtc.navigator.mediaDevices.getUserMedia(
+        mediaConstraints,
+      );
       _videoRenderer!.srcObject = _cameraStream;
 
       isUpgradedTo720p.value = true;
@@ -820,17 +871,20 @@ class PersonDetectionService extends GetxService {
   void setAnalysisInterval(Duration interval) {
     if (interval.inMilliseconds < 500) {
       print(
-          '⚠️ Warning: Analysis interval too short (${interval.inMilliseconds}ms), minimum is 500ms');
+        '⚠️ Warning: Analysis interval too short (${interval.inMilliseconds}ms), minimum is 500ms',
+      );
       analysisInterval = Duration(milliseconds: 500);
     } else if (interval.inMilliseconds > 30000) {
       print(
-          '⚠️ Warning: Analysis interval too long (${interval.inMilliseconds}ms), maximum is 30s');
+        '⚠️ Warning: Analysis interval too long (${interval.inMilliseconds}ms), maximum is 30s',
+      );
       analysisInterval = Duration(milliseconds: 30000);
     } else {
       analysisInterval = interval;
     }
     print(
-        '📊 ML Analysis interval updated to: ${analysisInterval.inMilliseconds}ms');
+      '📊 ML Analysis interval updated to: ${analysisInterval.inMilliseconds}ms',
+    );
 
     // Restart processing timer with new interval if currently running
     if (_processingTimer != null) {
@@ -863,12 +917,47 @@ class PersonDetectionService extends GetxService {
       // Try to load the TensorFlow Lite model from assets
       try {
         // Load the optimized MobileNet SSD model for better person detection
-        final modelData =
-            await rootBundle.load('assets/models/ssd_mobilenet_v1.tflite');
+        final modelData = await rootBundle.load(
+          'assets/models/ssd_mobilenet_v1.tflite',
+        );
         _modelBytes = modelData.buffer.asUint8List();
 
-        _interpreter = await Interpreter.fromAsset(
-            'assets/models/ssd_mobilenet_v1.tflite');
+        // Create interpreter with GPU delegate on Android for better performance
+        if (Platform.isAndroid) {
+          try {
+            // Try to create interpreter with GPU delegate first
+            final options = InterpreterOptions();
+            final gpuDelegate = GpuDelegateV2(
+              options: GpuDelegateOptionsV2(isPrecisionLossAllowed: false),
+            );
+            options.addDelegate(gpuDelegate);
+            _interpreter = await Interpreter.fromAsset(
+              'assets/models/ssd_mobilenet_v1.tflite',
+              options: options,
+            );
+            print(
+              'Person detection model loaded with GPU acceleration on Android',
+            );
+          } catch (gpuError) {
+            print('Failed to load model with GPU delegate: $gpuError');
+            print('Falling back to CPU interpreter');
+            // Fallback to CPU interpreter
+            _interpreter = await Interpreter.fromAsset(
+              'assets/models/ssd_mobilenet_v1.tflite',
+            );
+            print(
+              'Person detection model loaded with CPU on Android (fallback)',
+            );
+          }
+        } else {
+          // Use default CPU interpreter on other platforms
+          _interpreter = await Interpreter.fromAsset(
+            'assets/models/ssd_mobilenet_v1.tflite',
+          );
+          print(
+            'Person detection model loaded with CPU on ${Platform.operatingSystem}',
+          );
+        }
 
         // Verify model input/output shape
         final inputShape = _interpreter!.getInputTensor(0).shape;
@@ -884,7 +973,8 @@ class PersonDetectionService extends GetxService {
         print('Input shape: $inputShape');
         print('Output shape: $outputShape');
         print(
-            'Model type: ${_isQuantizedModel ? "quantized (uint8)" : "float"}');
+          'Model type: ${_isQuantizedModel ? "quantized (uint8)" : "float"}',
+        );
         print('Output shape: $outputShape');
 
         return true;
@@ -897,9 +987,11 @@ class PersonDetectionService extends GetxService {
           lastError.value =
               'TensorFlow Lite native libraries not available. Person detection will use fallback mode.';
           print(
-              'TensorFlow Lite native libraries missing. This is common on Windows.');
+            'TensorFlow Lite native libraries missing. This is common on Windows.',
+          );
           print(
-              'Person detection will continue with simulated detection for development.');
+            'Person detection will continue with simulated detection for development.',
+          );
 
           // Enable fallback mode - simulate model for development/testing
           _interpreter = null; // Mark as unavailable but don't fail
@@ -920,10 +1012,12 @@ class PersonDetectionService extends GetxService {
 
   /// Get camera stream with progressive fallback on constraint failures
   Future<webrtc.MediaStream?> _getCameraStreamWithFallback(
-      String? deviceId) async {
+    String? deviceId,
+  ) async {
     // Create base video constraints with deviceId if available
     Map<String, dynamic> createVideoConstraints(
-        Map<String, dynamic>? sizeConstraints) {
+      Map<String, dynamic>? sizeConstraints,
+    ) {
       final videoConstraints = <String, dynamic>{};
 
       // Add device ID constraint if available (use simple string format for better compatibility)
@@ -941,23 +1035,23 @@ class PersonDetectionService extends GetxService {
 
     // Try multiple constraint configurations in order of preference
     final constraintConfigurations = [
-      // 1. Try simple resolution constraints (most compatible with macOS)
+      // 1. Try low resolution for optimal performance (320x240 - widely supported)
       {
         'audio': false,
-        'video': createVideoConstraints({
-          'width': 640,
-          'height': 360,
-        })
+        'video': createVideoConstraints({'width': 320, 'height': 240}),
       },
-       {
+      // 2. Fallback to medium resolution
+      {
         'audio': false,
-        'video': createVideoConstraints({
-          'width': 1280,
-          'height': 720,
-        })
+        'video': createVideoConstraints({'width': 640, 'height': 360}),
       },
-      // 3. Default (no size constraints, just deviceId if available)
-      {'audio': false, 'video': createVideoConstraints(null)}
+      // 3. Fallback to higher resolution
+      {
+        'audio': false,
+        'video': createVideoConstraints({'width': 1280, 'height': 720}),
+      },
+      // 4. Default (no size constraints, just deviceId if available)
+      {'audio': false, 'video': createVideoConstraints(null)},
     ];
 
     for (int i = 0; i < constraintConfigurations.length; i++) {
@@ -965,49 +1059,55 @@ class PersonDetectionService extends GetxService {
         final constraints = constraintConfigurations[i];
 
         print(
-            '📹 Attempting camera constraints (attempt [1m${i + 1}/${constraintConfigurations.length}[0m):');
+          '📹 Attempting camera constraints (attempt [1m${i + 1}/${constraintConfigurations.length}[0m):',
+        );
         print(
-            '   Width: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['width'] : 'no constraint'}[0m');
+          '   Width: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['width'] : 'no constraint'}[0m',
+        );
         print(
-            '   Height: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['height'] : 'no constraint'}[0m');
+          '   Height: [1m${constraints['video'] is Map ? (constraints['video'] as Map)['height'] : 'no constraint'}[0m',
+        );
 
-        final stream =
-            await webrtc.navigator.mediaDevices.getUserMedia(constraints);
+        final stream = await webrtc.navigator.mediaDevices.getUserMedia(
+          constraints,
+        );
 
-        // Validate the resulting resolution
+        // Validate the resulting resolution and report what we actually got
         final videoTracks = stream.getVideoTracks();
         if (videoTracks.isNotEmpty) {
           try {
             final settings = await videoTracks.first.getSettings();
             final width = settings['width'] as int?;
             final height = settings['height'] as int?;
+            final frameRate = settings['frameRate'];
 
-            print('📹 Camera stream acquired successfully:');
+            print('✅ Camera stream acquired successfully:');
             print(
-                '   Actual resolution: [1m${width ?? 'unknown'}x${height ?? 'unknown'}[0m');
-            print('   Frame rate: ${settings['frameRate'] ?? 'unknown'}');
+              '   Actual resolution: [1m${width ?? 'unknown'}x${height ?? 'unknown'}[0m',
+            );
+            print('   Frame rate: ${frameRate ?? 'unknown'} fps');
 
-            // Accept only if at least 640x360
-            if (width != null &&
-                height != null &&
-                width >= 640 &&
-                height >= 360) {
-              print('✅ Camera resolution is acceptable for frame capture');
-              return stream;
-            } else if (i == constraintConfigurations.length - 1) {
-              // Last attempt - accept whatever we get
-              print('📹 Accepting low resolution as last resort');
-              return stream;
-            } else {
-              print(
-                  '⚠️ Camera resolution is below required minimum (got ${width}x${height}, need at least 640x360)');
-              // Only stop/dispose the stream if we are NOT returning it
-              stream.getTracks().forEach((track) => track.stop());
-              await stream.dispose();
-              continue;
+            // Check if we got what we requested
+            final videoConstraints = constraints['video'] as Map?;
+            final requestedWidth = videoConstraints?['width'];
+            final requestedHeight = videoConstraints?['height'];
+
+            if (requestedWidth != null && requestedHeight != null) {
+              if (width == requestedWidth && height == requestedHeight) {
+                print('✅ Got exact requested resolution');
+              } else {
+                print('📹 Camera provided different resolution than requested');
+                print('   Requested: ${requestedWidth}x${requestedHeight}');
+                print('   Provided: ${width}x${height}');
+              }
             }
+
+            // Accept any resolution we get - let the ML model handle scaling
+            print('✅ Camera resolution accepted for person detection');
+            return stream;
           } catch (e) {
             print('⚠️ Could not get camera settings: $e');
+            print('✅ Continuing with stream anyway');
             return stream; // Return it anyway
           }
         } else {
@@ -1016,11 +1116,33 @@ class PersonDetectionService extends GetxService {
           continue;
         }
       } catch (e) {
+        final errorString = e.toString();
+        final currentConstraints = constraintConfigurations[i];
         print('❌ Camera constraint attempt ${i + 1} failed: $e');
+
+        // Provide specific feedback for common constraint errors
+        if (errorString.contains('NotSupportedError') ||
+            errorString.contains('OverconstrainedError')) {
+          print(
+              '📹 Camera does not support the requested resolution constraints');
+          final videoConstraints = currentConstraints['video'] as Map?;
+          if (videoConstraints != null) {
+            print(
+                '   Requested: ${videoConstraints['width']}x${videoConstraints['height']}');
+          }
+        } else if (errorString.contains('NotAllowedError')) {
+          print('🔒 Camera access was denied by user or system');
+        } else if (errorString.contains('NotFoundError')) {
+          print('📷 No camera device found or device unavailable');
+        } else {
+          print('🔧 Unknown camera error - may be a hardware or driver issue');
+        }
+
         if (i == constraintConfigurations.length - 1) {
           print('❌ All camera constraint attempts failed');
           return null;
         }
+        print('🔄 Trying next constraint configuration...');
         // Continue to next attempt
       }
     }
@@ -1051,15 +1173,18 @@ class PersonDetectionService extends GetxService {
             actualDeviceId =
                 mediaDeviceService.selectedVideoInput.value!.deviceId;
             print(
-                '👤 Using camera from MediaDeviceService: ${mediaDeviceService.selectedVideoInput.value!.label}');
+              '👤 Using camera from MediaDeviceService: ${mediaDeviceService.selectedVideoInput.value!.label}',
+            );
           } else if (mediaDeviceService.videoInputs.isNotEmpty) {
             actualDeviceId = mediaDeviceService.videoInputs.first.deviceId;
             print(
-                '👤 Using first available camera: ${mediaDeviceService.videoInputs.first.label}');
+              '👤 Using first available camera: ${mediaDeviceService.videoInputs.first.label}',
+            );
           }
         } catch (e) {
           print(
-              '⚠️ MediaDeviceService not available, will use default camera: $e');
+            '⚠️ MediaDeviceService not available, will use default camera: $e',
+          );
         }
       }
 
@@ -1093,7 +1218,8 @@ class PersonDetectionService extends GetxService {
         if (width != null && height != null) {
           if (width < 200 || height < 200) {
             print(
-                '⚠️ WARNING: Camera resolution is very small (${width}x${height}). This may cause poor detection performance.');
+              '⚠️ WARNING: Camera resolution is very small (${width}x${height}). This may cause poor detection performance.',
+            );
           }
         }
       }
@@ -1106,7 +1232,8 @@ class PersonDetectionService extends GetxService {
       _startFrameProcessing();
 
       print(
-          '✅ Person detection started successfully using direct video track capture');
+        '✅ Person detection started successfully using direct video track capture',
+      );
       return true;
     } catch (e) {
       lastError.value = 'Failed to start camera: $e';
@@ -1153,7 +1280,8 @@ class PersonDetectionService extends GetxService {
     });
 
     print(
-        '📊 Frame processing timer started: check every ${checkInterval.inMilliseconds}ms, analyze every ${analysisInterval.inMilliseconds}ms');
+      '📊 Frame processing timer started: check every ${checkInterval.inMilliseconds}ms, analyze every ${analysisInterval.inMilliseconds}ms',
+    );
   }
 
   /// Wait for the video stream to be ready for frame capture
@@ -1187,7 +1315,8 @@ class PersonDetectionService extends GetxService {
                     width > 0 &&
                     height > 0) {
                   print(
-                      '✅ Video stream is ready for capture (${width}x${height})');
+                    '✅ Video stream is ready for capture (${width}x${height})',
+                  );
                   return;
                 }
               } catch (e) {
@@ -1208,7 +1337,8 @@ class PersonDetectionService extends GetxService {
                     width > 0 &&
                     height > 0) {
                   print(
-                      '✅ Video stream is ready for capture (${width}x${height})');
+                    '✅ Video stream is ready for capture (${width}x${height})',
+                  );
                   return;
                 }
               } catch (e) {
@@ -1222,7 +1352,8 @@ class PersonDetectionService extends GetxService {
               _videoRenderer!.value.width > 0 &&
               _videoRenderer!.value.height > 0) {
             print(
-                '✅ Video renderer has valid texture and dimensions (${_videoRenderer!.value.width.toInt()}x${_videoRenderer!.value.height.toInt()})');
+              '✅ Video renderer has valid texture and dimensions (${_videoRenderer!.value.width.toInt()}x${_videoRenderer!.value.height.toInt()})',
+            );
             return;
           }
         }
@@ -1242,9 +1373,11 @@ class PersonDetectionService extends GetxService {
 
     // If we reach here, we've exceeded max attempts
     print(
-        '⚠️ Warning: Video stream readiness check timed out after ${maxAttempts * checkInterval.inMilliseconds}ms');
+      '⚠️ Warning: Video stream readiness check timed out after ${maxAttempts * checkInterval.inMilliseconds}ms',
+    );
     print(
-        '   Proceeding with frame capture setup, but there may be timing issues');
+      '   Proceeding with frame capture setup, but there may be timing issues',
+    );
   }
 
   /// Process the current camera frame for person detection
@@ -1263,14 +1396,16 @@ class PersonDetectionService extends GetxService {
         if (frameData == null) {
           if (framesProcessed.value % 20 == 0) {
             print(
-                '⚠️  Frame capture failed - no frame data available (frame ${framesProcessed.value})');
+              '⚠️  Frame capture failed - no frame data available (frame ${framesProcessed.value})',
+            );
           }
 
           // In debug mode, don't generate synthetic data - let the debug widget show "No frame available"
           if (isDebugVisualizationEnabled.value) {
             if (framesProcessed.value % 20 == 0) {
               print(
-                  '🔍 Debug mode: No real WebRTC frames available - debug widget will show status');
+                '🔍 Debug mode: No real WebRTC frames available - debug widget will show status',
+              );
             }
           }
           framesProcessed.value++; // Still count the frame
@@ -1292,20 +1427,23 @@ class PersonDetectionService extends GetxService {
             final base64Raw = base64Encode(frameData);
             rawCapturedFrame.value = base64Raw;
             print(
-                '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}');
+              '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}',
+            );
           } else {
             // Fallback: try to convert to PNG
             Uint8List? rawPngData = _convertRawFrameToPng(frameData);
             if (rawPngData == null) {
               print(
-                  '⚠️ _convertRawFrameToPng returned null, using fallback image');
+                '⚠️ _convertRawFrameToPng returned null, using fallback image',
+              );
               rawPngData = _generateFallbackPngImage();
             }
             if (rawPngData != null) {
               final base64Raw = base64Encode(rawPngData);
               rawCapturedFrame.value = base64Raw;
               print(
-                  '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}');
+                '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}',
+              );
             } else {
               print('❌ Failed to generate any PNG for rawCapturedFrame');
               rawCapturedFrame.value = null;
@@ -1322,7 +1460,8 @@ class PersonDetectionService extends GetxService {
         if (framesProcessed.value % 50 == 0) {
           final frameType = isRealFrame ? "real WebRTC" : "test";
           print(
-              '📷 Frame captured successfully ($frameType): ${frameData.length} bytes (${inputWidth}x${inputHeight})');
+            '📷 Frame captured successfully ($frameType): ${frameData.length} bytes (${inputWidth}x${inputHeight})',
+          );
         }
 
         // Check if model bytes are available for background processing
@@ -1348,11 +1487,14 @@ class PersonDetectionService extends GetxService {
           );
 
           final enhancedResult = await compute(
-              _runEnhancedInferenceInBackground, enhancedInferenceData);
+            _runEnhancedInferenceInBackground,
+            enhancedInferenceData,
+          );
 
           if (enhancedResult.error != null) {
             throw Exception(
-                'Enhanced background inference error: ${enhancedResult.error}');
+              'Enhanced background inference error: ${enhancedResult.error}',
+            );
           }
 
           confidence.value = enhancedResult.maxPersonConfidence;
@@ -1366,20 +1508,24 @@ class PersonDetectionService extends GetxService {
 
             // Use preprocessed frame visualization from background processing
             if (enhancedResult.preprocessedFrameData != null) {
-              final base64Preprocessed =
-                  base64Encode(enhancedResult.preprocessedFrameData!);
+              final base64Preprocessed = base64Encode(
+                enhancedResult.preprocessedFrameData!,
+              );
               preprocessedTensorFlowFrame.value = base64Preprocessed;
               print(
-                  '🐞 preprocessedTensorFlowFrame.value set from background, length: ${base64Preprocessed.length}');
+                '🐞 preprocessedTensorFlowFrame.value set from background, length: ${base64Preprocessed.length}',
+              );
             }
 
             // Use debug frame with boxes from background processing
             if (enhancedResult.debugFrameWithBoxes != null) {
-              final base64Debug =
-                  base64Encode(enhancedResult.debugFrameWithBoxes!);
+              final base64Debug = base64Encode(
+                enhancedResult.debugFrameWithBoxes!,
+              );
               debugVisualizationFrame.value = base64Debug;
               print(
-                  '🐞 debugVisualizationFrame.value set from background, length: ${base64Debug.length}');
+                '🐞 debugVisualizationFrame.value set from background, length: ${base64Debug.length}',
+              );
             }
 
             // Store raw captured frame (before processing)
@@ -1392,20 +1538,23 @@ class PersonDetectionService extends GetxService {
               final base64Raw = base64Encode(frameData);
               rawCapturedFrame.value = base64Raw;
               print(
-                  '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}');
+                '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}',
+              );
             } else {
               // Fallback: try to convert to PNG
               Uint8List? rawPngData = _convertRawFrameToPng(frameData);
               if (rawPngData == null) {
                 print(
-                    '⚠️ _convertRawFrameToPng returned null, using fallback image');
+                  '⚠️ _convertRawFrameToPng returned null, using fallback image',
+                );
                 rawPngData = _generateFallbackPngImage();
               }
               if (rawPngData != null) {
                 final base64Raw = base64Encode(rawPngData);
                 rawCapturedFrame.value = base64Raw;
                 print(
-                    '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}');
+                  '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}',
+                );
               } else {
                 print('❌ Failed to generate any PNG for rawCapturedFrame');
                 rawCapturedFrame.value = null;
@@ -1417,12 +1566,15 @@ class PersonDetectionService extends GetxService {
           if (framesProcessed.value % 10 == 0) {
             // Log every 10th frame
             print(
-                '🤖 Enhanced Person Detection Frame ${framesProcessed.value}:');
+              '🤖 Enhanced Person Detection Frame ${framesProcessed.value}:',
+            );
             print('   📊 Detections found: ${enhancedResult.numDetections}');
             print(
-                '   🎯 Max person confidence: ${enhancedResult.maxPersonConfidence.toStringAsFixed(3)}');
+              '   🎯 Max person confidence: ${enhancedResult.maxPersonConfidence.toStringAsFixed(3)}',
+            );
             print(
-                '   👤 Person present: ${enhancedResult.maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)');
+              '   👤 Person present: ${enhancedResult.maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)',
+            );
             print('   ⚡ Processed completely in background isolate');
 
             // Log performance metrics
@@ -1430,17 +1582,20 @@ class PersonDetectionService extends GetxService {
             if (metrics.isNotEmpty) {
               print('   🔧 Performance metrics:');
               print(
-                  '      - Total processing: ${metrics['totalProcessingTime']}ms');
+                '      - Total processing: ${metrics['totalProcessingTime']}ms',
+              );
               print('      - Preprocessing: ${metrics['preprocessingTime']}ms');
               print('      - Model load: ${metrics['modelLoadTime']}ms');
               print('      - Inference: ${metrics['inferenceTime']}ms');
               print(
-                  '      - Results parsing: ${metrics['resultsParsingTime']}ms');
+                '      - Results parsing: ${metrics['resultsParsingTime']}ms',
+              );
             }
 
             if (isDebugVisualizationEnabled.value) {
               print(
-                  '   🐛 Debug boxes stored: ${enhancedResult.detectionBoxes.length}');
+                '   🐛 Debug boxes stored: ${enhancedResult.detectionBoxes.length}',
+              );
             }
           }
 
@@ -1462,14 +1617,19 @@ class PersonDetectionService extends GetxService {
             final numDetections = outputShape[1];
             final boxSize = outputShape[2];
             outputTensors[0] = List.generate(
-                1,
-                (_) => List.generate(
-                    numDetections, (_) => List.filled(boxSize, 0.0)));
+              1,
+              (_) => List.generate(
+                numDetections,
+                (_) => List.filled(boxSize, 0.0),
+              ),
+            );
           } else {
             // Simple output format
             final outputSize = outputShape.isNotEmpty ? outputShape.last : 1;
-            outputTensors[0] =
-                List.generate(1, (_) => List.filled(outputSize, 0.0));
+            outputTensors[0] = List.generate(
+              1,
+              (_) => List.filled(outputSize, 0.0),
+            );
           }
 
           _interpreter!.runForMultipleInputs([inputData], outputTensors);
@@ -1508,7 +1668,8 @@ class PersonDetectionService extends GetxService {
           _publishAllDetections();
           if (wasPersonPresent != isPersonPresent.value) {
             print(
-                '🚨 Person presence changed: ${isPersonPresent.value ? "DETECTED" : "NOT DETECTED"} (confidence: ${confidence.value.toStringAsFixed(3)})');
+              '🚨 Person presence changed: ${isPersonPresent.value ? "DETECTED" : "NOT DETECTED"} (confidence: ${confidence.value.toStringAsFixed(3)})',
+            );
           }
         }
 
@@ -1552,7 +1713,8 @@ class PersonDetectionService extends GetxService {
     // This ensures the debug widget displays real information about WebRTC frame availability
     if (isDebugVisualizationEnabled.value && framesProcessed.value % 20 == 0) {
       print(
-          'Debug mode active: Frame source real=${isFrameSourceReal.value}, status="${frameSourceStatus.value}"');
+        'Debug mode active: Frame source real=${isFrameSourceReal.value}, status="${frameSourceStatus.value}"',
+      );
     }
 
     // Log simulation mode periodically (only when actually in simulation and not in debug mode)
@@ -1560,7 +1722,8 @@ class PersonDetectionService extends GetxService {
         !isDebugVisualizationEnabled.value &&
         framesProcessed.value % 20 == 0) {
       print(
-          'Person detection running in simulation mode (frame ${framesProcessed.value}) - real WebRTC frames not available');
+        'Person detection running in simulation mode (frame ${framesProcessed.value}) - real WebRTC frames not available',
+      );
     }
   }
 
@@ -1573,11 +1736,13 @@ class PersonDetectionService extends GetxService {
         print('🟦 _captureFrame: _cameraStream is not null');
         final videoTracks = _cameraStream!.getVideoTracks();
         print(
-            '🟦 _captureFrame: videoTracks.length = [1m${videoTracks.length}[0m');
+          '🟦 _captureFrame: videoTracks.length = [1m${videoTracks.length}[0m',
+        );
         if (videoTracks.isNotEmpty) {
           final videoTrack = videoTracks.first;
           print(
-              '🟦 _captureFrame: videoTrack found, attempting captureFrame()');
+            '🟦 _captureFrame: videoTrack found, attempting captureFrame()',
+          );
           try {
             final ByteBuffer frameBuffer = await videoTrack.captureFrame();
             print('🟦 _captureFrame: captureFrame() completed');
@@ -1587,13 +1752,15 @@ class PersonDetectionService extends GetxService {
                 .map((b) => b.toRadixString(16).padLeft(2, '0'))
                 .join(' ');
             print(
-                '🟦 _captureFrame: length=[1m${frameBytes.length}[0m, first 16 bytes: $hexSample');
+              '🟦 _captureFrame: length=[1m${frameBytes.length}[0m, first 16 bytes: $hexSample',
+            );
             isFrameSourceReal.value = true;
             frameSourceStatus.value =
                 'Real frame captured from video track ([1m${frameBytes.length}[0m bytes)';
             if (framesProcessed.value % 100 == 0) {
               print(
-                  '✅ Direct video track capture: [1m${frameBytes.length}[0m bytes');
+                '✅ Direct video track capture: [1m${frameBytes.length}[0m bytes',
+              );
             }
             return frameBytes;
           } catch (e, st) {
@@ -1646,7 +1813,8 @@ class PersonDetectionService extends GetxService {
 
       if (image == null) {
         print(
-            '❌ _preprocessFrame: Failed to decode image. Data length: ${frameData.length}');
+          '❌ _preprocessFrame: Failed to decode image. Data length: ${frameData.length}',
+        );
         throw Exception('Failed to decode image');
       }
 
@@ -1733,7 +1901,8 @@ class PersonDetectionService extends GetxService {
 
       if (rawRgbaData.length != expectedSize) {
         print(
-            '⚠️ Frame data size mismatch: ${rawRgbaData.length} bytes (expected $expectedSize for ${width}x${height} RGBA)');
+          '⚠️ Frame data size mismatch: ${rawRgbaData.length} bytes (expected $expectedSize for ${width}x${height} RGBA)',
+        );
 
         // Try to handle different sizes
         if (rawRgbaData.length == width * height * 3) {
@@ -1749,7 +1918,8 @@ class PersonDetectionService extends GetxService {
             rgbaData[rgbaIndex + 3] = 255; // A (full opacity)
           }
           return _convertRawFrameToPng(
-              rgbaData); // Recursive call with corrected data
+            rgbaData,
+          ); // Recursive call with corrected data
         }
 
         // If size is completely wrong, return null
@@ -1768,7 +1938,8 @@ class PersonDetectionService extends GetxService {
 
       if (!hasNonZeroData) {
         print(
-            '⚠️ Warning: Frame data is all zeros - this will create a black image');
+          '⚠️ Warning: Frame data is all zeros - this will create a black image',
+        );
         // Continue processing anyway as this might be expected for test data
       }
 
@@ -1784,7 +1955,8 @@ class PersonDetectionService extends GetxService {
       // Encode as PNG and return bytes
       final pngBytes = img.encodePng(image);
       print(
-          '✅ Successfully converted ${rawRgbaData.length} bytes to PNG (${pngBytes.length} bytes)');
+        '✅ Successfully converted ${rawRgbaData.length} bytes to PNG (${pngBytes.length} bytes)',
+      );
       return Uint8List.fromList(pngBytes);
     } catch (e) {
       print('⚠️ Error converting raw frame to PNG: $e');
@@ -1829,7 +2001,8 @@ class PersonDetectionService extends GetxService {
     for (int i = 0; i < detectionBoxes.length && i < 10; i++) {
       final box = detectionBoxes[i];
       print(
-          "Detection $i: class='${box.className}', classId=${box.classId}, confidence=${box.confidence.toStringAsFixed(3)}, bbox=[${box.x1.toStringAsFixed(2)}, ${box.y1.toStringAsFixed(2)}, ${box.x2.toStringAsFixed(2)}, ${box.y2.toStringAsFixed(2)}]");
+        "Detection $i: class='${box.className}', classId=${box.classId}, confidence=${box.confidence.toStringAsFixed(3)}, bbox=[${box.x1.toStringAsFixed(2)}, ${box.y1.toStringAsFixed(2)}, ${box.x2.toStringAsFixed(2)}, ${box.y2.toStringAsFixed(2)}]",
+      );
     }
 
     // Filter objects above the general detection threshold (show ALL objects, not just persons)
@@ -1838,7 +2011,8 @@ class PersonDetectionService extends GetxService {
         .toList();
 
     print(
-        "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}");
+      "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}",
+    );
 
     // Sort by confidence descending
     aboveThreshold.sort((a, b) => b.confidence.compareTo(a.confidence));
@@ -1853,7 +2027,8 @@ class PersonDetectionService extends GetxService {
       print("📋 Detected object types:");
       for (final box in validDetections) {
         print(
-            "   - ${box.className} (ID: ${box.classId}, confidence: ${box.confidence.toStringAsFixed(3)})");
+          "   - ${box.className} (ID: ${box.classId}, confidence: ${box.confidence.toStringAsFixed(3)})",
+        );
       }
     }
 
@@ -1879,10 +2054,12 @@ class PersonDetectionService extends GetxService {
     anyObjectDetected.value = validDetections
         .isNotEmpty; // Update person-specific detection status for backward compatibility
     final personDetections = validDetections
-        .where((box) =>
-            box.classId == personClassId &&
-            box.className != null &&
-            box.className!.toLowerCase() == 'person')
+        .where(
+          (box) =>
+              box.classId == personClassId &&
+              box.className != null &&
+              box.className!.toLowerCase() == 'person',
+        )
         .toList();
 
     isPersonPresent.value = personDetections.isNotEmpty;
@@ -1904,14 +2081,14 @@ class PersonDetectionService extends GetxService {
     try {
       if (Get.isRegistered<MqttService>()) {
         final mqttService = Get.find<MqttService>();
-        
+
         // Check MQTT connection status
         if (!mqttService.isConnected.value) {
           print('❌ MQTT not connected - skipping publish');
           return;
         }
         print('📡 MQTT connected - publishing detection data');
-        
+
         // Publish comprehensive detection data
         final detectionData = {
           'timestamp': DateTime.now().toIso8601String(),
@@ -1923,26 +2100,31 @@ class PersonDetectionService extends GetxService {
           'object_counts': Map<String, int>.from(objectCounts),
           'object_confidences': Map<String, double>.from(objectConfidences),
           'detected_objects': detectedObjects
-              .map((box) => {
-                    'class_name': box.className,
-                    'class_id': box.classId,
-                    'confidence': box.confidence,
-                    'bounding_box': {
-                      'x1': box.x1,
-                      'y1': box.y1,
-                      'x2': box.x2,
-                      'y2': box.y2,
-                    },
-                  })
+              .map(
+                (box) => {
+                  'class_name': box.className,
+                  'class_id': box.classId,
+                  'confidence': box.confidence,
+                  'bounding_box': {
+                    'x1': box.x1,
+                    'y1': box.y1,
+                    'x2': box.x2,
+                    'y2': box.y2,
+                  },
+                },
+              )
               .toList(),
         };
 
-        print('📡 Full MQTT object detection payload: ${jsonEncode(detectionData)}');
+        print(
+          '📡 Full MQTT object detection payload: ${jsonEncode(detectionData)}',
+        );
 
         // Publish to general object detection topic
         mqttService.publishJsonToTopic(
-            'kingkiosk/${mqttService.deviceName.value}/object_detection',
-            detectionData);
+          'kingkiosk/${mqttService.deviceName.value}/object_detection',
+          detectionData,
+        );
         print('✅ Successfully published object detection data');
 
         // Also publish to legacy person presence topic for backward compatibility
@@ -1953,15 +2135,19 @@ class PersonDetectionService extends GetxService {
           'frames_processed': framesProcessed.value,
         };
 
-        print('📡 Full MQTT person presence payload: ${jsonEncode(presenceData)}');
+        print(
+          '📡 Full MQTT person presence payload: ${jsonEncode(presenceData)}',
+        );
 
         mqttService.publishJsonToTopic(
-            'kingkiosk/${mqttService.deviceName.value}/person_presence',
-            presenceData);
+          'kingkiosk/${mqttService.deviceName.value}/person_presence',
+          presenceData,
+        );
         print('✅ Successfully published person presence data');
 
         print(
-            '📡 Published object detection data: ${objectCounts.length} object types detected (above ${(objectDetectionThreshold * 100).toInt()}% threshold)');
+          '📡 Published object detection data: ${objectCounts.length} object types detected (above ${(objectDetectionThreshold * 100).toInt()}% threshold)',
+        );
       } else {
         print('❌ MQTT service not registered');
       }
@@ -1990,11 +2176,13 @@ class PersonDetectionService extends GetxService {
       'object_counts': Map<String, int>.from(objectCounts),
       'object_confidences': Map<String, double>.from(objectConfidences),
       'detected_objects': detectedObjects
-          .map((box) => {
-                'class_name': box.className,
-                'class_id': box.classId,
-                'confidence': box.confidence,
-              })
+          .map(
+            (box) => {
+              'class_name': box.className,
+              'class_id': box.classId,
+              'confidence': box.confidence,
+            },
+          )
           .toList(),
     };
   }
@@ -2084,8 +2272,10 @@ class PersonDetectionService extends GetxService {
   List<DetectionBox> getObjectsByCategory(ObjectCategory category) {
     final categoryObjects = _getObjectNamesForCategory(category);
     return detectedObjects
-        .where((box) =>
-            box.className != null && categoryObjects.contains(box.className!))
+        .where(
+          (box) =>
+              box.className != null && categoryObjects.contains(box.className!),
+        )
         .toList();
   }
 
@@ -2130,7 +2320,7 @@ class PersonDetectionService extends GetxService {
           'elephant',
           'bear',
           'zebra',
-          'giraffe'
+          'giraffe',
         ];
       case ObjectCategory.vehicles:
         return [
@@ -2141,7 +2331,7 @@ class PersonDetectionService extends GetxService {
           'bus',
           'train',
           'truck',
-          'boat'
+          'boat',
         ];
       case ObjectCategory.furniture:
         return ['chair', 'couch', 'bed', 'dining table', 'toilet'];
@@ -2156,7 +2346,7 @@ class PersonDetectionService extends GetxService {
           'microwave',
           'oven',
           'toaster',
-          'refrigerator'
+          'refrigerator',
         ];
       case ObjectCategory.food:
         return [
@@ -2169,7 +2359,7 @@ class PersonDetectionService extends GetxService {
           'hot dog',
           'pizza',
           'donut',
-          'cake'
+          'cake',
         ];
       case ObjectCategory.sports:
         return [
@@ -2182,7 +2372,7 @@ class PersonDetectionService extends GetxService {
           'baseball glove',
           'skateboard',
           'surfboard',
-          'tennis racket'
+          'tennis racket',
         ];
       case ObjectCategory.kitchenware:
         return [
@@ -2192,7 +2382,7 @@ class PersonDetectionService extends GetxService {
           'fork',
           'knife',
           'spoon',
-          'bowl'
+          'bowl',
         ];
       case ObjectCategory.accessories:
         return ['backpack', 'umbrella', 'handbag', 'tie', 'suitcase'];
@@ -2210,7 +2400,7 @@ class PersonDetectionService extends GetxService {
           'scissors',
           'teddy bear',
           'hair drier',
-          'toothbrush'
+          'toothbrush',
         ];
     }
   }
@@ -2221,14 +2411,17 @@ class PersonDetectionService extends GetxService {
   void enableDebugVisualization() {
     isDebugVisualizationEnabled.value = true;
     print(
-        '🐛 Debug visualization enabled - will capture real WebRTC frames when available');
+      '🐛 Debug visualization enabled - will capture real WebRTC frames when available',
+    );
 
     // Don't immediately generate synthetic data - let real frame capture take priority
     // In debug mode, only show real WebRTC frames - no synthetic data generation
     print(
-        '🎯 Debug mode enabled: Will only show real WebRTC frames (no synthetic data)');
+      '🎯 Debug mode enabled: Will only show real WebRTC frames (no synthetic data)',
+    );
     print(
-        '📺 Debug widget will display "No frame available" when real WebRTC frames are not accessible');
+      '📺 Debug widget will display "No frame available" when real WebRTC frames are not accessible',
+    );
   }
 
   /// Disable debug visualization
@@ -2306,18 +2499,24 @@ class PersonDetectionService extends GetxService {
       if (framesProcessed.value % 30 == 0) {
         print('🔍 FRAME DEBUG ANALYSIS [\u001b[1m$source\u001b[0m]:');
         print(
-            '   📊 Size: \u001b[1m${pixelData.length}\u001b[0m bytes (${inputWidth}x${inputHeight})');
+          '   📊 Size: \u001b[1m${pixelData.length}\u001b[0m bytes (${inputWidth}x${inputHeight})',
+        );
         print(
-            '   🎨 RGB Averages: R=${stats['avgR']}, G=${stats['avgG']}, B=${stats['avgB']}');
+          '   🎨 RGB Averages: R=${stats['avgR']}, G=${stats['avgG']}, B=${stats['avgB']}',
+        );
         print(
-            '   📈 Variance: R=${stats['varR']}, G=${stats['varG']}, B=${stats['varB']}');
+          '   📈 Variance: R=${stats['varR']}, G=${stats['varG']}, B=${stats['varB']}',
+        );
         print(
-            '   ⚫ All black pixels: ${stats['allBlack']}/${stats['totalPixels']} (${(stats['allBlack'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)');
+          '   ⚫ All black pixels: ${stats['allBlack']}/${stats['totalPixels']} (${(stats['allBlack'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)',
+        );
         print(
-            '   ⚪ All white pixels: ${stats['allWhite']}/${stats['totalPixels']} (${(stats['allWhite'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)');
+          '   ⚪ All white pixels: ${stats['allWhite']}/${stats['totalPixels']} (${(stats['allWhite'] / stats['totalPixels'] * 100).toStringAsFixed(1)}%)',
+        );
         print('   🌈 Unique colors: ${stats['uniqueColors']}');
         print(
-            '   📊 Is synthetic pattern: ${stats['isSynthetic'] ? "YES (test data)" : "NO (possibly real camera)"}');
+          '   📊 Is synthetic pattern: ${stats['isSynthetic'] ? "YES (test data)" : "NO (possibly real camera)"}',
+        );
 
         // Convert to PNG and store for debug visualization
         final pngData = _convertRawFrameToPng(pixelData);
@@ -2357,7 +2556,7 @@ class PersonDetectionService extends GetxService {
         'allWhite': 0,
         'totalPixels': 0,
         'uniqueColors': 0,
-        'isSynthetic': true
+        'isSynthetic': true,
       };
     }
 
@@ -2471,7 +2670,7 @@ class PersonDetectionService extends GetxService {
       'allWhite': allWhite,
       'totalPixels': totalPixels,
       'uniqueColors': uniqueColors.length,
-      'isSynthetic': isSynthetic
+      'isSynthetic': isSynthetic,
     };
   }
 }

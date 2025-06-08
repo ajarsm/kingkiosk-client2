@@ -2,6 +2,10 @@ allprojects {
     repositories {
         google()
         mavenCentral()
+        // Add local repository for AAR files
+        flatDir {
+            dirs("libs")
+        }
     }
 }
 

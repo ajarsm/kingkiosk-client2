@@ -28,6 +28,11 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        
+        // Enable native libraries for TensorFlow Lite
+        ndk {
+            abiFilters += listOf("armeabi-v7a", "arm64-v8a", "x86_64")
+        }
     }
 
     buildTypes {
@@ -35,10 +40,25 @@ android {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
+            isMinifyEnabled = false
+            isShrinkResources = false
+            // proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
 }
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // Exclude conflicting TensorFlow Lite dependencies from tflite_flutter
+    configurations.all {
+        exclude(group = "org.tensorflow", module = "tensorflow-lite-gpu")
+        exclude(group = "org.tensorflow", module = "tensorflow-lite")
+    }
+    
+    // Use our updated local TensorFlow Lite AAR files
+    implementation(files("libs/tensorflow-lite.aar"))
+    implementation(files("libs/tensorflow-lite-gpu.aar"))
 }

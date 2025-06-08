@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<device-admin xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-policies>
+        <!-- Allow the app to force lock the device -->
+        <force-lock />
+        
+        <!-- Allow the app to wipe data -->
+        <wipe-data />
+        
+        <!-- Allow the app to reset password -->
+        <reset-password />
+        
+        <!-- Allow the app to set password quality -->
+        <limit-password />
+        
+        <!-- Allow the app to monitor password attempts -->
+        <watch-login />
+        
+        <!-- Allow the app to set storage encryption -->
+        <encrypted-storage />
+        
+        <!-- Allow the app to disable camera -->
+        <disable-camera />
+        
+        <!-- Allow the app to disable keyguard -->
+        <disable-keyguard-features />
+    </uses-policies>
+</device-admin>
