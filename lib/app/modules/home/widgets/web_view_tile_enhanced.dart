@@ -544,23 +544,229 @@ class _WebViewTileState extends State<WebViewTile>
       _isLoading = false;
       // Reset retry counter on successful load
       _retryAttempts = 0;
-    });
-
-    // Enable touch events on WebView content
+    }); // Enable ultra-enhanced touch events and focus handling for Home Assistant login
     try {
       await controller.evaluateJavascript(source: """
-        // Add enhanced touch handling for elements
-        document.addEventListener('touchstart', function(e) {
-          console.log('Touch event intercepted and passed through');
-        }, {passive: true});
-        
-        // Make all interactive elements clearly tappable
-        const interactiveElements = document.querySelectorAll('a, button, input, select, [role="button"]');
-        interactiveElements.forEach(el => {
-          if (!el.style.cursor) el.style.cursor = 'pointer';
-        });
+        (function() {
+          'use strict';
+          console.log('🚀 Ultra-Enhanced HA Touch Handler - Windows Edition');
+          
+          let touchStartTarget = null;
+          let focusDebounce = new Map();
+          
+          // Optimized debounce function
+          function debounce(func, wait) {
+            let timeout;
+            return function executedFunction(...args) {
+              clearTimeout(timeout);
+              timeout = setTimeout(() => func(...args), wait);
+            };
+          }
+          
+          // Ultimate Windows keyboard trigger with retry mechanism
+          function triggerWindowsVirtualKeyboard(input) {
+            if (!input || input.readOnly || input.disabled) return false;
+            
+            const elementId = input.id || input.name || input.placeholder || 'input';
+            const now = Date.now();
+            
+            // Debounce per element (500ms)
+            if (focusDebounce.has(elementId) && now - focusDebounce.get(elementId) < 500) {
+              return false;
+            }
+            focusDebounce.set(elementId, now);
+            
+            console.log('⌨️ Activating Windows keyboard for:', elementId, input.type);
+            
+            // Clear existing focus
+            if (document.activeElement && document.activeElement !== input) {
+              document.activeElement.blur();
+            }
+            
+            // Multi-stage activation
+            try {
+              input.focus();
+              input.click();
+              
+              // Delayed retry for stubborn fields
+              setTimeout(() => {
+                input.focus();
+                input.dispatchEvent(new FocusEvent('focus', {bubbles: true}));
+                input.dispatchEvent(new FocusEvent('focusin', {bubbles: true}));
+                
+                // MDC component activation
+                if (input.classList.contains('mdc-text-field__input')) {
+                  const mdcField = input.closest('.mdc-text-field');
+                  if (mdcField) {
+                    mdcField.classList.add('mdc-text-field--focused');
+                    input.dispatchEvent(new Event('input', {bubbles: true}));
+                  }
+                }
+                
+                // Home Assistant component events
+                const haComponent = input.closest('ha-textfield, paper-input, mwc-textfield');
+                if (haComponent) {
+                  input.dispatchEvent(new CustomEvent('value-changed', {
+                    bubbles: true,
+                    detail: {value: input.value}
+                  }));
+                }
+              }, 50);
+              
+              return true;
+            } catch (e) {
+              console.warn('Keyboard trigger failed:', e);
+              return false;
+            }
+          }
+          
+          // Enhanced touch event handlers
+          function handleTouchStart(e) {
+            touchStartTarget = e.target;
+          }
+          
+          function handleTouchEnd(e) {
+            if (!touchStartTarget) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            const touch = e.changedTouches[0];
+            const target = document.elementFromPoint(touch.clientX, touch.clientY) || touchStartTarget;
+            
+            // Direct input handling
+            if (target.matches('input, textarea, select')) {
+              console.log('📱 Direct touch on input:', target.type, target.name);
+              triggerWindowsVirtualKeyboard(target);
+            }
+            
+            // Home Assistant components (shadow DOM support)
+            else if (target.closest('ha-textfield, paper-input, mwc-textfield')) {
+              const component = target.closest('ha-textfield, paper-input, mwc-textfield');
+              let input = component.querySelector('input');
+              if (!input && component.shadowRoot) {
+                input = component.shadowRoot.querySelector('input');
+              }
+              if (input) {
+                console.log('🏠 HA component touch:', input.type, input.name);
+                triggerWindowsVirtualKeyboard(input);
+              }
+            }
+            
+            // MDC text fields
+            else if (target.closest('.mdc-text-field')) {
+              const mdcField = target.closest('.mdc-text-field');
+              const input = mdcField.querySelector('input, textarea');
+              if (input) {
+                console.log('🎯 MDC field touch:', input.type, input.name);
+                triggerWindowsVirtualKeyboard(input);
+              }
+            }
+            
+            touchStartTarget = null;
+          }
+          
+          // Apply touch event listeners
+          document.removeEventListener('touchstart', handleTouchStart);
+          document.removeEventListener('touchend', handleTouchEnd);
+          document.addEventListener('touchstart', handleTouchStart, {passive: true});
+          document.addEventListener('touchend', handleTouchEnd, {passive: false});
+          
+          // Enhanced click handling for mouse/trackpad users
+          document.addEventListener('click', function(e) {
+            const target = e.target;
+            if (target.matches('input, textarea, select') && 
+                ['email', 'password', 'text', 'search', 'url'].includes(target.type)) {
+              console.log('🖱️ Click on input:', target.type, target.name);
+              setTimeout(() => triggerWindowsVirtualKeyboard(target), 30);
+            }
+          });
+          
+          // Ultimate login form detector and enhancer
+          const enhanceLoginForm = debounce(function() {
+            const selectors = [
+              'input[type="email"]', 'input[type="password"]', 'input[type="text"]',
+              'input[name*="username"]', 'input[name*="email"]', 'input[name*="password"]',
+              'ha-textfield input', 'paper-input input', 'mwc-textfield input',
+              '.mdc-text-field__input',
+              '[placeholder*="username" i]', '[placeholder*="email" i]', '[placeholder*="password" i]'
+            ];
+            
+            const loginInputs = document.querySelectorAll(selectors.join(', '));
+            
+            if (loginInputs.length > 0) {
+              console.log('🔐 Enhancing', loginInputs.length, 'login inputs');
+              
+              loginInputs.forEach(input => {
+                if (!input.hasAttribute('data-ha-enhanced')) {
+                  input.setAttribute('data-ha-enhanced', 'true');
+                  
+                  // Ultra-aggressive touch enhancement for login fields
+                  input.addEventListener('touchstart', function(e) {
+                    e.stopPropagation();
+                    setTimeout(() => triggerWindowsVirtualKeyboard(this), 10);
+                  }, {passive: false});
+                  
+                  input.addEventListener('click', function(e) {
+                    setTimeout(() => triggerWindowsVirtualKeyboard(this), 10);
+                  });
+                  
+                  // Focus event enhancement
+                  input.addEventListener('focus', function() {
+                    console.log('✅ Login field focused:', this.type, this.name);
+                    
+                    // Extra MDC activation for stubborn fields
+                    if (this.classList.contains('mdc-text-field__input')) {
+                      const field = this.closest('.mdc-text-field');
+                      if (field) {
+                        field.classList.add('mdc-text-field--focused');
+                        field.classList.add('mdc-text-field--activated');
+                      }
+                    }
+                  });
+                }
+              });
+            }
+          }, 300);
+          
+          // Apply enhancements immediately and on dynamic content
+          enhanceLoginForm();
+          setTimeout(enhanceLoginForm, 1000);
+          setTimeout(enhanceLoginForm, 3000);
+          
+          // Watch for dynamic content changes
+          if (window.MutationObserver) {
+            const observer = new MutationObserver(enhanceLoginForm);
+            observer.observe(document.body, {
+              childList: true,
+              subtree: true,
+              attributes: false
+            });
+          }
+          
+          // Focus override for Windows compatibility
+          const originalFocus = HTMLElement.prototype.focus;
+          HTMLElement.prototype.focus = function(options) {
+            try {
+              originalFocus.call(this, options);
+              
+              // Ensure input fields get keyboard
+              if (this.matches('input, textarea, select')) {
+                setTimeout(() => {
+                  if (document.activeElement === this) {
+                    this.dispatchEvent(new Event('input', {bubbles: true}));
+                  }
+                }, 100);
+              }
+            } catch (e) {
+              console.warn('Focus override failed:', e);
+            }
+          };
+          
+          console.log('✅ Ultra-Enhanced HA Touch Handler initialized successfully');
+        })();
       """);
-      print("🔧 WebViewTile - Enhanced touch handling script injected");
+      print("🔧 WebViewTile - Ultra-enhanced touch handling script injected");
     } catch (e) {
       print("⚠️ WebViewTile - Error injecting touch handling script: $e");
     }
