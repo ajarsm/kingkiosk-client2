@@ -13,7 +13,7 @@ dependencies:
     sdk: flutter
   get: ^4.6.1
   get_storage: ^2.1.1
-  flutter_inappwebview: ^6.1.5
+  flutter_inappwebview: ^6.2.0-beta.2
   media_kit: ^1.2.0               # Core media playback
   media_kit_video: ^1.2.5         # Video playback support
   media_kit_libs_video: ^1.0.5    # Native video dependencies for Linux/Windows

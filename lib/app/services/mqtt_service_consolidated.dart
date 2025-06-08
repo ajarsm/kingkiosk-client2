@@ -83,19 +83,35 @@ class MqttService extends GetxService {
       print('✅ [MQTT] NotificationService is ready for MQTT notifications');
     } catch (e) {
       print('⚠️ [MQTT] NotificationService not available: $e');
-    }
-
-    // Clean up old windows discovery config on startup
+    } // Clean up old windows discovery config on startup
     ever(isConnected, (connected) {
       if (connected == true) {
         final deviceNameStr = deviceName.value;
+
+        // Clean up old windows discovery config
         final discoveryTopic =
             'homeassistant/sensor/${deviceNameStr}_windows/config';
         // Publish empty payload to delete old config
         publishJsonToTopic(discoveryTopic, {}, retain: true);
         print('MQTT DEBUG: Deleted discovery config for windows');
-        // Republish config
+
+        // Clean up old object detection discovery configs
+        final objectDetectionTopics = [
+          'homeassistant/sensor/${deviceNameStr}_object_detection/config',
+          'homeassistant/binary_sensor/${deviceNameStr}_person_presence/config',
+          'homeassistant/sensor/${deviceNameStr}_object_count/config',
+          'homeassistant/sensor/${deviceNameStr}_person_confidence/config',
+        ];
+
+        for (final topic in objectDetectionTopics) {
+          publishJsonToTopic(topic, {}, retain: true);
+          print(
+              'MQTT DEBUG: Deleted old object detection discovery config: $topic');
+        }
+
+        // Republish configs
         publishWindowsDiscoveryConfig();
+        // Object detection discovery will be republished when _setupHomeAssistantDiscoveryWithDebug() is called
       }
     });
   }
@@ -505,7 +521,7 @@ class MqttService extends GetxService {
         platform = 'Windows';
       else if (Platform.isLinux)
         platform = 'Linux';
-      else if (kIsWeb) platform = 'Web';      // Publish platform info
+      else if (kIsWeb) platform = 'Web'; // Publish platform info
       _publishDirectValue('platform', platform);
 
       // Get location values
@@ -668,7 +684,8 @@ class MqttService extends GetxService {
           } catch (e) {
             print('⚠️ Error setting hardware acceleration preference: $e');
           }
-        }        if (type == 'audio') {
+        }
+        if (type == 'audio') {
           final title = cmdObj['title']?.toString() ?? 'Kiosk Audio';
           if (style == 'window') {
             print(
@@ -1221,7 +1238,7 @@ class MqttService extends GetxService {
       }
 
       return;
-    }    // --- provision command for remote settings configuration ---
+    } // --- provision command for remote settings configuration ---
     if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
       _processProvisionCommand(cmdObj);
       return;
@@ -1311,7 +1328,8 @@ class MqttService extends GetxService {
     if (!isConnected.value) return;
 
     try {
-      print('MQTT DEBUG: Deleting all existing discovery configs');      final sensors = [
+      print('MQTT DEBUG: Deleting all existing discovery configs');
+      final sensors = [
         'battery',
         'battery_status',
         'cpu_usage',
@@ -1347,9 +1365,10 @@ class MqttService extends GetxService {
       // Set up the key sensors one by one with debug logging
       print('MQTT DEBUG: Setting up battery level sensor');
       _setupDiscoverySensorWithDebug(
-          'battery', 'Battery Level', 'battery', '%', 'mdi:battery');      print('MQTT DEBUG: Setting up battery status sensor');
-      _setupDiscoverySensorWithDebug('battery_status', 'Battery Status',
-          'enum', '', 'mdi:battery-charging');
+          'battery', 'Battery Level', 'battery', '%', 'mdi:battery');
+      print('MQTT DEBUG: Setting up battery status sensor');
+      _setupDiscoverySensorWithDebug('battery_status', 'Battery Status', 'enum',
+          '', 'mdi:battery-charging');
 
       print('MQTT DEBUG: Setting up CPU usage sensor');
       _setupDiscoverySensorWithDebug(
@@ -1357,23 +1376,28 @@ class MqttService extends GetxService {
 
       print('MQTT DEBUG: Setting up memory usage sensor');
       _setupDiscoverySensorWithDebug(
-          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');      print('MQTT DEBUG: Setting up platform sensor');
+          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');
+      print('MQTT DEBUG: Setting up platform sensor');
       _setupDiscoverySensorWithDebug(
-          'platform', 'Platform', 'text', '', 'mdi:laptop');      print('MQTT DEBUG: Setting up location sensors');
+          'platform', 'Platform', 'text', '', 'mdi:laptop');
+      print('MQTT DEBUG: Setting up location sensors');
       _setupDiscoverySensorWithDebug(
           'latitude', 'Latitude', '', '°', 'mdi:crosshairs-gps');
-      
+
       _setupDiscoverySensorWithDebug(
           'longitude', 'Longitude', '', '°', 'mdi:crosshairs-gps');
-      
+
       _setupDiscoverySensorWithDebug(
           'altitude', 'Altitude', 'distance', 'm', 'mdi:elevation-rise');
-      
-      _setupDiscoverySensorWithDebug(
-          'location_accuracy', 'Location Accuracy', 'distance', 'm', 'mdi:target');
-      
+
+      _setupDiscoverySensorWithDebug('location_accuracy', 'Location Accuracy',
+          'distance', 'm', 'mdi:target');
       _setupDiscoverySensorWithDebug(
           'location_status', 'Location Status', 'text', '', 'mdi:map-marker');
+
+      // Object Detection sensors
+      print('MQTT DEBUG: Setting up object detection sensors');
+      _setupObjectDetectionDiscovery();
 
       print('MQTT DEBUG: Home Assistant discovery setup complete');
     } catch (e) {
@@ -1386,7 +1410,7 @@ class MqttService extends GetxService {
       String name, String displayName, String deviceClass, String unit,
       [String? icon]) {
     final discoveryTopic =
-        'homeassistant/sensor/${deviceName.value}_$name/config';    // Use valid Home Assistant device_class values
+        'homeassistant/sensor/${deviceName.value}_$name/config'; // Use valid Home Assistant device_class values
     // See https://www.home-assistant.io/integrations/sensor/#device-class
     String validDeviceClass = deviceClass;
     if (deviceClass == 'cpu') {
@@ -1445,8 +1469,143 @@ class MqttService extends GetxService {
       builder.payload!,
       retain: true,
     );
-
     print('MQTT DEBUG: Published discovery config for $name');
+  }
+
+  /// Set up object detection discovery sensors for Home Assistant
+  void _setupObjectDetectionDiscovery() {
+    if (!isConnected.value || !haDiscovery.value) return;
+
+    try {
+      final deviceNameStr = deviceName.value;
+
+      // 1. Object Detection Sensor (comprehensive detection data)
+      print('MQTT DEBUG: Setting up object detection sensor');
+      final objectDetectionTopic =
+          'homeassistant/sensor/${deviceNameStr}_object_detection/config';
+      final objectDetectionConfig = {
+        "name": "${deviceNameStr} Object Detection",
+        "unique_id": "${deviceNameStr}_object_detection",
+        "state_topic": "kingkiosk/${deviceNameStr}/object_detection",
+        "value_template": "{{ value_json.any_object_detected }}",
+        "icon": "mdi:eye",
+        "json_attributes_topic": "kingkiosk/${deviceNameStr}/object_detection",
+        "json_attributes_template": jsonEncode({
+          "person_present": "{{ value_json.person_present }}",
+          "person_confidence": "{{ value_json.person_confidence }}",
+          "total_objects": "{{ value_json.total_objects }}",
+          "object_counts": "{{ value_json.object_counts }}",
+          "object_confidences": "{{ value_json.object_confidences }}",
+          "frames_processed": "{{ value_json.frames_processed }}",
+          "timestamp": "{{ value_json.timestamp }}"
+        }),
+        "device": {
+          "identifiers": ["${deviceNameStr}"],
+          "name": deviceNameStr,
+          "model": "King Kiosk",
+          "manufacturer": "King Kiosk"
+        },
+        "availability_topic": "kingkiosk/${deviceNameStr}/status",
+        "payload_available": "online",
+        "payload_not_available": "offline"
+      };
+
+      publishJsonToTopic(objectDetectionTopic, objectDetectionConfig,
+          retain: true);
+      print('MQTT DEBUG: Published object detection discovery config');
+
+      // 2. Person Presence Binary Sensor
+      print('MQTT DEBUG: Setting up person presence binary sensor');
+      final personPresenceTopic =
+          'homeassistant/binary_sensor/${deviceNameStr}_person_presence/config';
+      final personPresenceConfig = {
+        "name": "${deviceNameStr} Person Presence",
+        "unique_id": "${deviceNameStr}_person_presence",
+        "state_topic": "kingkiosk/${deviceNameStr}/person_presence",
+        "value_template": "{{ 'ON' if value_json.person_present else 'OFF' }}",
+        "device_class": "motion",
+        "icon": "mdi:human",
+        "json_attributes_topic": "kingkiosk/${deviceNameStr}/person_presence",
+        "json_attributes_template": jsonEncode({
+          "confidence": "{{ value_json.confidence }}",
+          "frames_processed": "{{ value_json.frames_processed }}",
+          "timestamp": "{{ value_json.timestamp }}"
+        }),
+        "device": {
+          "identifiers": ["${deviceNameStr}"],
+          "name": deviceNameStr,
+          "model": "King Kiosk",
+          "manufacturer": "King Kiosk"
+        },
+        "availability_topic": "kingkiosk/${deviceNameStr}/status",
+        "payload_available": "online",
+        "payload_not_available": "offline"
+      };
+
+      publishJsonToTopic(personPresenceTopic, personPresenceConfig,
+          retain: true);
+      print('MQTT DEBUG: Published person presence discovery config');
+
+      // 3. Object Count Sensor
+      print('MQTT DEBUG: Setting up object count sensor');
+      final objectCountTopic =
+          'homeassistant/sensor/${deviceNameStr}_object_count/config';
+      final objectCountConfig = {
+        "name": "${deviceNameStr} Object Count",
+        "unique_id": "${deviceNameStr}_object_count",
+        "state_topic": "kingkiosk/${deviceNameStr}/object_detection",
+        "value_template": "{{ value_json.total_objects }}",
+        "icon": "mdi:counter",
+        "unit_of_measurement": "objects",
+        "json_attributes_topic": "kingkiosk/${deviceNameStr}/object_detection",
+        "json_attributes_template": jsonEncode({
+          "object_counts": "{{ value_json.object_counts }}",
+          "detected_objects": "{{ value_json.detected_objects }}"
+        }),
+        "device": {
+          "identifiers": ["${deviceNameStr}"],
+          "name": deviceNameStr,
+          "model": "King Kiosk",
+          "manufacturer": "King Kiosk"
+        },
+        "availability_topic": "kingkiosk/${deviceNameStr}/status",
+        "payload_available": "online",
+        "payload_not_available": "offline"
+      };
+
+      publishJsonToTopic(objectCountTopic, objectCountConfig, retain: true);
+      print('MQTT DEBUG: Published object count discovery config');
+
+      // 4. Person Confidence Sensor
+      print('MQTT DEBUG: Setting up person confidence sensor');
+      final personConfidenceTopic =
+          'homeassistant/sensor/${deviceNameStr}_person_confidence/config';
+      final personConfidenceConfig = {
+        "name": "${deviceNameStr} Person Confidence",
+        "unique_id": "${deviceNameStr}_person_confidence",
+        "state_topic": "kingkiosk/${deviceNameStr}/person_presence",
+        "value_template": "{{ (value_json.confidence * 100) | round(1) }}",
+        "icon": "mdi:percent",
+        "unit_of_measurement": "%",
+        "device": {
+          "identifiers": ["${deviceNameStr}"],
+          "name": deviceNameStr,
+          "model": "King Kiosk",
+          "manufacturer": "King Kiosk"
+        },
+        "availability_topic": "kingkiosk/${deviceNameStr}/status",
+        "payload_available": "online",
+        "payload_not_available": "offline"
+      };
+
+      publishJsonToTopic(personConfidenceTopic, personConfidenceConfig,
+          retain: true);
+      print('MQTT DEBUG: Published person confidence discovery config');
+
+      print('MQTT DEBUG: Object detection discovery setup complete');
+    } catch (e) {
+      print('MQTT DEBUG: Error setting up object detection discovery: $e');
+    }
   }
 
   /// Publish sensor values with detailed debug info
@@ -1495,7 +1654,7 @@ class MqttService extends GetxService {
         platform = 'Windows';
       else if (Platform.isLinux)
         platform = 'Linux';
-      else if (kIsWeb) platform = 'Web';      // Publish platform info
+      else if (kIsWeb) platform = 'Web'; // Publish platform info
       _publishDirectValueWithDebug('platform', platform);
 
       // Get location values
@@ -1516,7 +1675,8 @@ class MqttService extends GetxService {
       _publishDirectValueWithDebug('latitude', latitude.toStringAsFixed(6));
       _publishDirectValueWithDebug('longitude', longitude.toStringAsFixed(6));
       _publishDirectValueWithDebug('altitude', altitude.toStringAsFixed(2));
-      _publishDirectValueWithDebug('location_accuracy', accuracy.toStringAsFixed(2));
+      _publishDirectValueWithDebug(
+          'location_accuracy', accuracy.toStringAsFixed(2));
       _publishDirectValueWithDebug('location_status', locationStatus);
 
       print('MQTT DEBUG: Finished publishing all sensor values');
@@ -1552,11 +1712,11 @@ class MqttService extends GetxService {
     try {
       // Check if action is specified (enable/disable/toggle/status)
       final action = cmdObj['action']?.toString().toLowerCase() ?? 'toggle';
-      
+
       // Try to find the PersonDetectionService
       try {
         final personDetectionService = Get.find<PersonDetectionService>();
-        
+
         switch (action) {
           case 'enable':
             personDetectionService.isEnabled.value = true;
@@ -1578,14 +1738,15 @@ class MqttService extends GetxService {
             print('⚠️ [MQTT] Unknown person detection action: $action');
             return;
         }
-        
+
         // Get current status for response
         final status = personDetectionService.getStatus();
-        
+
         // Send confirmation message if requested
         if (cmdObj['confirm'] == true) {
           try {
-            final confirmTopic = 'kingkiosk/${deviceName.value}/person_detection/status';
+            final confirmTopic =
+                'kingkiosk/${deviceName.value}/person_detection/status';
             final builder = MqttClientPayloadBuilder();
             builder.addString(jsonEncode({
               'status': 'success',
@@ -1593,13 +1754,14 @@ class MqttService extends GetxService {
               'person_detection': status,
               'timestamp': DateTime.now().toIso8601String(),
             }));
-            _client?.publishMessage(confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+            _client?.publishMessage(
+                confirmTopic, MqttQos.atLeastOnce, builder.payload!);
             print('👤 [MQTT] Sent person detection confirmation message');
           } catch (e) {
             print('❌ Error sending person detection confirmation message: $e');
           }
         }
-        
+
         // Always publish current status to dedicated topic
         try {
           final statusTopic = 'kingkiosk/${deviceName.value}/person_presence';
@@ -1608,14 +1770,14 @@ class MqttService extends GetxService {
         } catch (e) {
           print('❌ Error publishing person detection status: $e');
         }
-        
       } catch (e) {
         print('❌ PersonDetectionService not available: $e');
-        
+
         // Send error response if confirmation was requested
         if (cmdObj['confirm'] == true) {
           try {
-            final confirmTopic = 'kingkiosk/${deviceName.value}/person_detection/status';
+            final confirmTopic =
+                'kingkiosk/${deviceName.value}/person_detection/status';
             final builder = MqttClientPayloadBuilder();
             builder.addString(jsonEncode({
               'status': 'error',
@@ -1623,7 +1785,8 @@ class MqttService extends GetxService {
               'error': 'PersonDetectionService not available',
               'timestamp': DateTime.now().toIso8601String(),
             }));
-            _client?.publishMessage(confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+            _client?.publishMessage(
+                confirmTopic, MqttQos.atLeastOnce, builder.payload!);
             print('👤 [MQTT] Sent person detection error message');
           } catch (e) {
             print('❌ Error sending person detection error message: $e');
@@ -1776,11 +1939,13 @@ class MqttService extends GetxService {
       print('✅ Setup Home Assistant discovery for screenshot sensor');
     } catch (e) {
       print('❌ Error setting up screenshot sensor discovery: $e');
-    }  }
+    }
+  }
+
   /// Process provision command for remote settings configuration
   void _processProvisionCommand(Map<dynamic, dynamic> cmdObj) async {
     print('🔧 [MQTT] Processing provision command: ${jsonEncode(cmdObj)}');
-    
+
     try {
       final Map<String, dynamic> response = {
         'command': 'provision',
@@ -1828,20 +1993,21 @@ class MqttService extends GetxService {
       for (final entry in settings.entries) {
         final key = entry.key;
         final value = entry.value;
-        
+
         try {
           bool applied = await _applySetting(key, value, settingsController);
-          
+
           if (applied) {
             (response['applied_settings'] as List<String>).add(key);
             print('✅ [MQTT] Applied setting: $key = $value');
           } else {
-            (response['failed_settings'] as Map<String, String>)[key] = 
+            (response['failed_settings'] as Map<String, String>)[key] =
                 'Setting not recognized or could not be applied';
             print('⚠️ [MQTT] Failed to apply setting: $key = $value');
           }
         } catch (e) {
-          (response['failed_settings'] as Map<String, String>)[key] = e.toString();
+          (response['failed_settings'] as Map<String, String>)[key] =
+              e.toString();
           print('❌ [MQTT] Error applying setting $key: $e');
         }
       }
@@ -1849,26 +2015,27 @@ class MqttService extends GetxService {
       // Determine overall status
       final appliedCount = (response['applied_settings'] as List).length;
       final failedCount = (response['failed_settings'] as Map).length;
-      
+
       if (appliedCount > 0 && failedCount == 0) {
         response['status'] = 'success';
         response['message'] = 'All $appliedCount settings applied successfully';
       } else if (appliedCount > 0 && failedCount > 0) {
         response['status'] = 'partial';
-        response['message'] = '$appliedCount settings applied, $failedCount failed';
+        response['message'] =
+            '$appliedCount settings applied, $failedCount failed';
       } else {
         response['status'] = 'error';
         response['message'] = 'No settings could be applied';
       }
 
-      print('🔧 [MQTT] Provision completed: ${response['status']} - ${response['message']}');
-      
+      print(
+          '🔧 [MQTT] Provision completed: ${response['status']} - ${response['message']}');
+
       // Send response
       _sendProvisionResponse(cmdObj, response);
-      
     } catch (e) {
       print('❌ [MQTT] Error processing provision command: $e');
-      
+
       final errorResponse = {
         'command': 'provision',
         'status': 'error',
@@ -1877,16 +2044,17 @@ class MqttService extends GetxService {
         'applied_settings': <String>[],
         'failed_settings': <String, String>{},
       };
-      
+
       _sendProvisionResponse(cmdObj, errorResponse);
     }
   }
 
   /// Apply a single setting during provisioning
-  Future<bool> _applySetting(String key, dynamic value, SettingsController? controller) async {
+  Future<bool> _applySetting(
+      String key, dynamic value, SettingsController? controller) async {
     try {
       final storageService = Get.find<StorageService>();
-      
+
       switch (key.toLowerCase()) {
         // Theme settings
         case 'isdarkmode':
@@ -1997,14 +2165,14 @@ class MqttService extends GetxService {
                 .replaceAll(RegExp(r'-+'), '-')
                 .replaceAll(RegExp(r'^-+|-+$'), '')
                 .toLowerCase();
-            
+
             storageService.write(AppConstants.keyDeviceName, sanitized);
             controller?.deviceName.value = sanitized;
             controller?.deviceNameController.text = sanitized;
-            
+
             // Update MQTT service device name
             deviceName.value = sanitized;
-            
+
             return true;
           }
           break;
@@ -2041,10 +2209,12 @@ class MqttService extends GetxService {
             controller?.sipServerHostController.text = stringValue;
             return true;
           }
-          break;        case 'sipprotocol':
+          break;
+        case 'sipprotocol':
         case 'sip_protocol':
           final stringValue = value?.toString();
-          if (stringValue != null && (stringValue == 'ws' || stringValue == 'wss')) {
+          if (stringValue != null &&
+              (stringValue == 'ws' || stringValue == 'wss')) {
             storageService.write(AppConstants.keySipProtocol, stringValue);
             controller?.sipProtocol.value = stringValue;
             return true;
@@ -2085,7 +2255,7 @@ class MqttService extends GetxService {
           print('⚠️ [MQTT] Unknown setting key: $key');
           return false;
       }
-      
+
       return false;
     } catch (e) {
       print('❌ [MQTT] Error applying setting $key: $e');
@@ -2094,27 +2264,28 @@ class MqttService extends GetxService {
   }
 
   /// Send provision command response
-  void _sendProvisionResponse(Map<dynamic, dynamic> cmdObj, Map<String, dynamic> response) {
+  void _sendProvisionResponse(
+      Map<dynamic, dynamic> cmdObj, Map<String, dynamic> response) {
     try {
       // Check if response topic is specified
       String? responseTopic = cmdObj['response_topic']?.toString();
-      
+
       // Use default response topic if none specified
       responseTopic ??= 'kingkiosk/${deviceName.value}/provision/response';
-      
+
       // Add device name to response
       response['device_name'] = deviceName.value;
-      
+
       // Publish response
       publishJsonToTopic(responseTopic, response, retain: false);
-      
+
       print('📤 [MQTT] Sent provision response to: $responseTopic');
-      
+
       // Also show snackbar if there's a UI
       if (Get.context != null) {
         final status = response['status'];
         final message = response['message'] ?? 'Provision command processed';
-        
+
         Color backgroundColor;
         switch (status) {
           case 'success':
@@ -2129,7 +2300,7 @@ class MqttService extends GetxService {
           default:
             backgroundColor = Colors.blue.withOpacity(0.8);
         }
-        
+
         Get.snackbar(
           'MQTT Provision',
           message,
@@ -2139,7 +2310,6 @@ class MqttService extends GetxService {
           duration: Duration(seconds: 4),
         );
       }
-      
     } catch (e) {
       print('❌ [MQTT] Error sending provision response: $e');
     }

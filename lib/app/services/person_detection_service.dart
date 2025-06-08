@@ -27,6 +27,35 @@ class InferenceData {
   });
 }
 
+/// Enhanced data structure for passing all processing data to background
+class EnhancedInferenceData {
+  final Uint8List rawFrameData;
+  final int inputWidth;
+  final int inputHeight;
+  final int numChannels;
+  final int personClassId;
+  final double confidenceThreshold;
+  final double objectDetectionThreshold;
+  final Uint8List modelBytes;
+  final bool isDebugMode;
+  final int frameNumber;
+  final bool isQuantizedModel; // Add this to detect model type
+
+  EnhancedInferenceData({
+    required this.rawFrameData,
+    required this.inputWidth,
+    required this.inputHeight,
+    required this.numChannels,
+    required this.personClassId,
+    required this.confidenceThreshold,
+    required this.objectDetectionThreshold,
+    required this.modelBytes,
+    required this.isDebugMode,
+    required this.frameNumber,
+    required this.isQuantizedModel,
+  });
+}
+
 /// Detection box structure for debug visualization
 class DetectionBox {
   final double x1, y1, x2, y2; // Normalized coordinates (0.0 - 1.0)
@@ -56,6 +85,29 @@ class InferenceResult {
     required this.numDetections,
     this.error,
     this.detectionBoxes = const [],
+  });
+}
+
+/// Enhanced result structure for comprehensive background processing
+class EnhancedInferenceResult {
+  final double maxPersonConfidence;
+  final int numDetections;
+  final String? error;
+  final List<DetectionBox> detectionBoxes;
+  final Uint8List?
+      preprocessedFrameData; // Debug: processed frame for visualization
+  final Uint8List?
+      debugFrameWithBoxes; // Debug: frame with bounding boxes drawn
+  final Map<String, dynamic> debugMetrics; // Debug: processing metrics
+
+  EnhancedInferenceResult({
+    required this.maxPersonConfidence,
+    required this.numDetections,
+    this.error,
+    this.detectionBoxes = const [],
+    this.preprocessedFrameData,
+    this.debugFrameWithBoxes,
+    this.debugMetrics = const {},
   });
 }
 
@@ -163,23 +215,40 @@ String _getClassNameForId(int classId) {
   return cocoClasses[classId] ?? 'unknown';
 }
 
-/// Background inference function that runs in a separate isolate
-Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
+/// Enhanced background inference function that handles complete frame processing in isolate
+Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
+    EnhancedInferenceData data) async {
   try {
-    // Load the interpreter from model bytes in the background isolate
+    final Stopwatch processingStopwatch = Stopwatch()..start();
+
+    // Debug logging for input parameters
+    print(
+        'DEBUG: Running enhanced inference with personClassId: ${data.personClassId}, '
+        'confidenceThreshold: ${data.confidenceThreshold}, frame: ${data.frameNumber}');
+
+    // Step 1: Preprocess frame in background isolate
+    final preprocessStopwatch = Stopwatch()..start();
+    final Object inputData = _preprocessFrameInBackground(
+        data.rawFrameData,
+        data.inputWidth,
+        data.inputHeight,
+        data.numChannels,
+        data.isQuantizedModel);
+    preprocessStopwatch.stop();
+
+    // Step 2: Load the interpreter from model bytes in the background isolate
+    final modelLoadStopwatch = Stopwatch()..start();
     final interpreter = Interpreter.fromBuffer(data.modelBytes);
+    modelLoadStopwatch.stop();
+
+    // Step 3: Run inference
+    final inferenceStopwatch = Stopwatch()..start();
 
     // Get output tensor shapes to determine the correct structure
     final outputShapes = <List<int>>[];
     for (int i = 0; i < interpreter.getOutputTensors().length; i++) {
       outputShapes.add(interpreter.getOutputTensor(i).shape);
     }
-
-    // For SSD MobileNet models, we typically have 4 outputs:
-    // 0: detection_boxes [1, num_detections, 4]
-    // 1: detection_classes [1, num_detections]
-    // 2: detection_scores [1, num_detections]
-    // 3: num_detections [1]
 
     final outputTensors = <int, Object>{};
 
@@ -202,25 +271,25 @@ Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
       for (int i = 0; i < outputShapes.length; i++) {
         final shape = outputShapes[i];
         if (shape.length == 3 && shape[2] == 4) {
-          // This looks like detection boxes [1, num_detections, 4]
           outputTensors[i] = List.generate(
               shape[0],
               (_) =>
                   List.generate(shape[1], (_) => List.filled(shape[2], 0.0)));
         } else if (shape.length == 2) {
-          // This looks like scores or classes [1, num_detections]
           outputTensors[i] =
               List.generate(shape[0], (_) => List.filled(shape[1], 0.0));
         } else if (shape.length == 1) {
-          // This looks like num_detections [1]
           outputTensors[i] = List.filled(shape[0], 0.0);
         }
       }
     }
-    // Run inference (this heavy computation is now in background)
-    interpreter.runForMultipleInputs([data.inputData], outputTensors);
 
-    // Parse results for person detection
+    // Run inference (this heavy computation is now in background)
+    interpreter.runForMultipleInputs([inputData], outputTensors);
+    inferenceStopwatch.stop();
+
+    // Step 4: Parse results for person detection
+    final resultsStopwatch = Stopwatch()..start();
     double maxPersonConfidence = 0.0;
     int totalDetections = 0;
     List<DetectionBox> detectionBoxes = [];
@@ -249,9 +318,18 @@ Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
         final y2 = boxes[0][i][2];
         final x2 = boxes[0][i][3];
 
-        // Create detection box for all valid detections
-        if (score > 0.1) {
-          // Low threshold for debug visualization
+        // Debug logging for model output (only for significant detections)
+        if (score > data.objectDetectionThreshold) {
+          print(
+              'DEBUG: Enhanced detection $i - ClassID: $classId, Score: ${score.toStringAsFixed(3)}, '
+              'ClassName: ${_getClassNameForId(classId)}, '
+              'Box: [${y1.toStringAsFixed(3)}, ${x1.toStringAsFixed(3)}, '
+              '${y2.toStringAsFixed(3)}, ${x2.toStringAsFixed(3)}]');
+        }
+
+        // Only create detection boxes for significant detections
+        // For efficiency, we could filter here, but keeping all for debug purposes
+        if (score > data.objectDetectionThreshold) {
           detectionBoxes.add(DetectionBox(
             x1: x1,
             y1: y1,
@@ -263,6 +341,7 @@ Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
           ));
         }
 
+        // Track the highest person confidence for the main detection result
         if (classId == data.personClassId && score > maxPersonConfidence) {
           maxPersonConfidence = score;
         }
@@ -271,25 +350,221 @@ Future<InferenceResult> _runInferenceInBackground(InferenceData data) async {
       // Simpler format - check if first output contains confidence scores
       final output = outputTensors[0];
       if (output is List<List<double>> && output.isNotEmpty) {
-        // Assume first output contains confidence scores
         maxPersonConfidence = output[0].isNotEmpty ? output[0][0] : 0.0;
         totalDetections = 1;
       }
     }
+    resultsStopwatch.stop();
+
+    // Step 5: Generate debug visualization if enabled
+    Uint8List? debugFrameWithBoxes;
+    Uint8List? preprocessedFrameData;
+
+    if (data.isDebugMode) {
+      final debugStopwatch = Stopwatch()..start();
+      try {
+        // Create preprocessed frame visualization
+        preprocessedFrameData = _generatePreprocessedFrameVisualization(
+            data.rawFrameData, data.inputWidth, data.inputHeight);
+
+        // Create debug frame with bounding boxes
+        debugFrameWithBoxes = _generateDebugFrameWithBoxes(data.rawFrameData,
+            detectionBoxes, data.inputWidth, data.inputHeight);
+      } catch (e) {
+        print('Warning: Debug frame generation failed: $e');
+      }
+      debugStopwatch.stop();
+    }
 
     interpreter.close();
+    processingStopwatch.stop();
 
-    return InferenceResult(
+    // Collect debug metrics
+    final debugMetrics = <String, dynamic>{
+      'frameNumber': data.frameNumber,
+      'totalProcessingTime': processingStopwatch.elapsedMilliseconds,
+      'preprocessingTime': preprocessStopwatch.elapsedMilliseconds,
+      'modelLoadTime': modelLoadStopwatch.elapsedMilliseconds,
+      'inferenceTime': inferenceStopwatch.elapsedMilliseconds,
+      'resultsParsingTime': resultsStopwatch.elapsedMilliseconds,
+      'inputDimensions':
+          '${data.inputWidth}x${data.inputHeight}x${data.numChannels}',
+      'rawFrameSize': data.rawFrameData.length,
+      'detectionCount': detectionBoxes.length,
+      'isBackgroundProcessing': true,
+    };
+
+    return EnhancedInferenceResult(
       maxPersonConfidence: maxPersonConfidence,
       numDetections: totalDetections,
       detectionBoxes: detectionBoxes,
+      preprocessedFrameData: preprocessedFrameData,
+      debugFrameWithBoxes: debugFrameWithBoxes,
+      debugMetrics: debugMetrics,
     );
   } catch (e) {
-    return InferenceResult(
+    return EnhancedInferenceResult(
       maxPersonConfidence: 0.0,
       numDetections: 0,
       error: e.toString(),
+      debugMetrics: {
+        'frameNumber': data.frameNumber,
+        'error': e.toString(),
+        'isBackgroundProcessing': true,
+      },
     );
+  }
+}
+
+/// Helper function to center crop and resize an image
+img.Image _centerCropAndResize(img.Image image, int targetWidth, int targetHeight) {
+  // Calculate the aspect ratios
+  final sourceAspect = image.width / image.height;
+  final targetAspect = targetWidth / targetHeight;
+  
+  img.Image cropped;
+  
+  if (sourceAspect > targetAspect) {
+    // Source is wider - crop the width
+    final newWidth = (image.height * targetAspect).round();
+    final cropX = ((image.width - newWidth) / 2).round();
+    cropped = img.copyCrop(image,
+        x: cropX, y: 0, width: newWidth, height: image.height);
+  } else {
+    // Source is taller - crop the height  
+    final newHeight = (image.width / targetAspect).round();
+    final cropY = ((image.height - newHeight) / 2).round();
+    cropped = img.copyCrop(image,
+        x: 0, y: cropY, width: image.width, height: newHeight);
+  }
+  
+  // Now resize to exact target dimensions
+  return img.copyResize(cropped, width: targetWidth, height: targetHeight);
+}
+
+/// Preprocess frame data for model input in background isolate
+Object _preprocessFrameInBackground(Uint8List frameData, int inputWidth,
+    int inputHeight, int numChannels, bool isQuantizedModel) {
+  try {
+    img.Image? image;
+
+    // Always try to decode as image first (handles JPEG/PNG and raw RGBA)
+    image = img.decodeImage(frameData);
+    if (image == null && frameData.length == inputWidth * inputHeight * 4) {
+      // Fallback: try raw RGBA if decodeImage failed
+      try {
+        image = img.Image.fromBytes(
+          width: inputWidth,
+          height: inputHeight,
+          bytes: frameData.buffer,
+          format: img.Format.uint8,
+          numChannels: 4,
+        );
+      } catch (e) {
+        print('Failed to create image from raw RGBA: $e');
+      }
+    }
+
+    if (image == null) {
+      throw Exception('Failed to decode frame data for preprocessing');
+    }
+
+    // Center crop and resize to model input dimensions (instead of stretching)
+    final resized = _centerCropAndResize(image, inputWidth, inputHeight);
+
+    if (isQuantizedModel) {
+      // For quantized models (uint8), use raw pixel values (0-255)
+      final totalSize = 1 * inputHeight * inputWidth * numChannels;
+      final input = Uint8List(totalSize);
+      int index = 0;
+      for (int y = 0; y < inputHeight; y++) {
+        for (int x = 0; x < inputWidth; x++) {
+          final pixel = resized.getPixel(x, y);
+          input[index++] = pixel.r.toInt().clamp(0, 255);
+          input[index++] = pixel.g.toInt().clamp(0, 255);
+          input[index++] = pixel.b.toInt().clamp(0, 255);
+        }
+      }
+      return input.reshape([1, inputHeight, inputWidth, numChannels]);
+    } else {
+      // For float models, use normalized values (0.0-1.0)
+      final totalSize = 1 * inputHeight * inputWidth * numChannels;
+      final input = Float32List(totalSize);
+      int index = 0;
+      for (int y = 0; y < inputHeight; y++) {
+        for (int x = 0; x < inputWidth; x++) {
+          final pixel = resized.getPixel(x, y);
+          input[index++] = (pixel.r / 255.0).clamp(0.0, 1.0);
+          input[index++] = (pixel.g / 255.0).clamp(0.0, 1.0);
+          input[index++] = (pixel.b / 255.0).clamp(0.0, 1.0);
+        }
+      }
+      return input.reshape([1, inputHeight, inputWidth, numChannels]);
+    }
+  } catch (e) {
+    print('Error in background frame preprocessing: $e');
+    // Return fallback data based on model type
+    if (isQuantizedModel) {
+      final totalSize = 1 * inputHeight * inputWidth * numChannels;
+      final input = Uint8List(totalSize);
+      return input.reshape([1, inputHeight, inputWidth, numChannels]);
+    } else {
+      final totalSize = 1 * inputHeight * inputWidth * numChannels;
+      final input = Float32List(totalSize);
+      return input.reshape([1, inputHeight, inputWidth, numChannels]);
+    }
+  }
+}
+
+/// Generate preprocessed frame visualization for debug purposes
+Uint8List? _generatePreprocessedFrameVisualization(
+    Uint8List frameData, int width, int height) {
+  try {
+    final image = img.decodeImage(frameData);
+    if (image == null) return null;
+
+    // Use center crop and resize instead of stretching
+    final resized = _centerCropAndResize(image, width, height);
+    return Uint8List.fromList(img.encodePng(resized));
+  } catch (e) {
+    print('Failed to generate preprocessed frame visualization: $e');
+    return null;
+  }
+}
+
+/// Generate debug frame with bounding boxes drawn
+Uint8List? _generateDebugFrameWithBoxes(
+    Uint8List frameData, List<DetectionBox> boxes, int width, int height) {
+  try {
+    final image = img.decodeImage(frameData);
+    if (image == null) return null;
+
+    // Use center crop and resize instead of stretching
+    final resized = _centerCropAndResize(image, width, height);
+
+    // Draw bounding boxes on the image
+    for (final box in boxes) {
+      final x1 = (box.x1 * width).round().clamp(0, width - 1);
+      final y1 = (box.y1 * height).round().clamp(0, height - 1);
+      final x2 = (box.x2 * width).round().clamp(0, width - 1);
+      final y2 = (box.y2 * height).round().clamp(0, height - 1);
+
+      // Draw rectangle (simple implementation)
+      img.drawRect(resized,
+          x1: x1,
+          y1: y1,
+          x2: x2,
+          y2: y2,
+          color: box.classId == 1  // Person class ID
+              ? img.ColorRgb8(0, 255, 0)  // Green for person
+              : img.ColorRgb8(255, 0, 0), // Red for other objects
+          thickness: 2);
+    }
+
+    return Uint8List.fromList(img.encodePng(resized));
+  } catch (e) {
+    print('Failed to generate debug frame with boxes: $e');
+    return null;
   }
 }
 
@@ -302,6 +577,8 @@ class PersonDetectionService extends GetxService {
   // TensorFlow Lite interpreter
   Interpreter? _interpreter;
   Uint8List? _modelBytes; // Store model bytes for background processing
+  bool _isQuantizedModel =
+      false; // Track if the model is quantized (uint8) or float
   // Observable properties
   final RxBool isEnabled = false.obs;
   final RxBool isPersonPresent = false.obs;
@@ -323,6 +600,8 @@ class PersonDetectionService extends GetxService {
       RxnString(); // Base64 encoded processed frame with bounding boxes
   final RxnString rawCapturedFrame =
       RxnString(); // Base64 encoded raw captured frame before processing
+  final RxnString preprocessedTensorFlowFrame =
+      RxnString(); // Base64 encoded preprocessed frame for TensorFlow
 
   // Frame source tracking for debug widget
   final RxBool isFrameSourceReal =
@@ -335,8 +614,9 @@ class PersonDetectionService extends GetxService {
   final double confidenceThreshold =
       0.5; // Higher threshold for person detection
   final double objectDetectionThreshold =
-      0.3; // Reasonable threshold for person detection only
-  final int personClassId = 1; // Person class ID in COCO dataset
+      0.3; // Reasonable threshold for all object detection
+  final int personClassId =
+      1; // Person class ID in COCO dataset (1, not 0 which is background)
 
   // Frame processing timer and stream
   Timer? _processingTimer;
@@ -577,8 +857,17 @@ class PersonDetectionService extends GetxService {
         final inputShape = _interpreter!.getInputTensor(0).shape;
         final outputShape = _interpreter!.getOutputTensor(0).shape;
 
+        // Detect model type (quantized vs float)
+        final inputTensor = _interpreter!.getInputTensor(0);
+        final inputType = inputTensor.type;
+        _isQuantizedModel = inputType.toString().contains('uint8') ||
+            inputType.toString().contains('UINT8');
+
         print('Person detection model loaded successfully');
         print('Input shape: $inputShape');
+        print('Output shape: $outputShape');
+        print(
+            'Model type: ${_isQuantizedModel ? "quantized (uint8)" : "float"}');
         print('Output shape: $outputShape');
 
         return true;
@@ -1019,8 +1308,6 @@ class PersonDetectionService extends GetxService {
           print(
               '📷 Frame captured successfully ($frameType): ${frameData.length} bytes (${inputWidth}x${inputHeight})');
         }
-        // Preprocess frame for model input
-        final inputData = _preprocessFrame(frameData);
 
         // Check if model bytes are available for background processing
         if (_modelBytes == null) {
@@ -1029,105 +1316,173 @@ class PersonDetectionService extends GetxService {
         }
 
         try {
-          // Run inference in background using compute to prevent UI blocking
-          final inferenceData = InferenceData(
-            inputData: inputData,
+          // Use enhanced background processing for complete frame processing in isolate
+          final enhancedInferenceData = EnhancedInferenceData(
+            rawFrameData: frameData,
+            inputWidth: inputWidth,
+            inputHeight: inputHeight,
+            numChannels: numChannels,
             personClassId: personClassId,
             confidenceThreshold: confidenceThreshold,
+            objectDetectionThreshold: objectDetectionThreshold,
             modelBytes: _modelBytes!,
+            isDebugMode: isDebugVisualizationEnabled.value,
+            frameNumber: framesProcessed.value,
+            isQuantizedModel: _isQuantizedModel,
           );
 
-          final result =
-              await compute(_runInferenceInBackground, inferenceData);
+          final enhancedResult = await compute(
+              _runEnhancedInferenceInBackground, enhancedInferenceData);
 
-          if (result.error != null) {
-            throw Exception('Background inference error: ${result.error}');
+          if (enhancedResult.error != null) {
+            throw Exception(
+                'Enhanced background inference error: ${enhancedResult.error}');
           }
-          confidence.value = result.maxPersonConfidence;
+
+          confidence.value = enhancedResult.maxPersonConfidence;
 
           // Process all detected objects
-          _processAllDetectedObjects(result.detectionBoxes);
+          _processAllDetectedObjects(enhancedResult.detectionBoxes);
 
-          // Store debug visualization data if enabled
+          // Store debug visualization data if enabled (now generated in background)
           if (isDebugVisualizationEnabled.value) {
-            latestDetectionBoxes.value = result.detectionBoxes;
-            // Store the frame data for debug visualization (convert to PNG if needed)
-            try {
-              Uint8List? debugFrame;
-              // If the frame is already a PNG, decode, annotate, and re-encode
-              if (frameData.length > 8 &&
-                  frameData[0] == 0x89 &&
-                  frameData[1] == 0x50 &&
-                  frameData[2] == 0x4E &&
-                  frameData[3] == 0x47) {
-                // PNG header detected
-                final img.Image? decoded = img.decodeImage(frameData);
-                if (decoded != null) {
-                  // Optionally, draw detection boxes here if needed
-                  debugFrame = Uint8List.fromList(img.encodePng(decoded));
-                } else {
-                  print('⚠️ Could not decode PNG for debugVisualizationFrame');
-                  debugFrame = _generateFallbackPngImage();
-                }
-              } else {
-                debugFrame = _convertRawFrameToPng(frameData);
-                if (debugFrame == null) {
-                  print(
-                      '⚠️ _convertRawFrameToPng (debug) returned null, using fallback image');
-                  debugFrame = _generateFallbackPngImage();
-                }
-              }
-              if (debugFrame != null) {
-                final base64Debug = base64Encode(debugFrame);
-                debugVisualizationFrame.value = base64Debug;
+            latestDetectionBoxes.value = enhancedResult.detectionBoxes;
+
+            // Use preprocessed frame visualization from background processing
+            if (enhancedResult.preprocessedFrameData != null) {
+              final base64Preprocessed =
+                  base64Encode(enhancedResult.preprocessedFrameData!);
+              preprocessedTensorFlowFrame.value = base64Preprocessed;
+              print(
+                  '🐞 preprocessedTensorFlowFrame.value set from background, length: ${base64Preprocessed.length}');
+            }
+
+            // Use debug frame with boxes from background processing
+            if (enhancedResult.debugFrameWithBoxes != null) {
+              final base64Debug =
+                  base64Encode(enhancedResult.debugFrameWithBoxes!);
+              debugVisualizationFrame.value = base64Debug;
+              print(
+                  '🐞 debugVisualizationFrame.value set from background, length: ${base64Debug.length}');
+            }
+
+            // Store raw captured frame (before processing)
+            if (frameData.length > 8 &&
+                frameData[0] == 0x89 &&
+                frameData[1] == 0x50 &&
+                frameData[2] == 0x4E &&
+                frameData[3] == 0x47) {
+              // PNG header detected
+              final base64Raw = base64Encode(frameData);
+              rawCapturedFrame.value = base64Raw;
+              print(
+                  '🐞 rawCapturedFrame.value set directly from PNG, length: ${base64Raw.length}');
+            } else {
+              // Fallback: try to convert to PNG
+              Uint8List? rawPngData = _convertRawFrameToPng(frameData);
+              if (rawPngData == null) {
                 print(
-                    '🐞 debugVisualizationFrame.value set, length: ${base64Debug.length}');
-              } else {
-                print(
-                    '❌ Failed to generate any PNG for debugVisualizationFrame');
-                debugVisualizationFrame.value = null;
+                    '⚠️ _convertRawFrameToPng returned null, using fallback image');
+                rawPngData = _generateFallbackPngImage();
               }
-            } catch (e) {
-              print('⚠️ Failed to encode frame for debug visualization: $e');
-              debugVisualizationFrame.value = null;
+              if (rawPngData != null) {
+                final base64Raw = base64Encode(rawPngData);
+                rawCapturedFrame.value = base64Raw;
+                print(
+                    '🐞 rawCapturedFrame.value set (converted to PNG), length: ${base64Raw.length}');
+              } else {
+                print('❌ Failed to generate any PNG for rawCapturedFrame');
+                rawCapturedFrame.value = null;
+              }
             }
           }
 
-          // Enhanced debugging output
+          // Enhanced debugging output with metrics from background processing
           if (framesProcessed.value % 10 == 0) {
             // Log every 10th frame
-            print('🤖 Person Detection Frame ${framesProcessed.value}:');
-            print('   📊 Detections found: ${result.numDetections}');
             print(
-                '   🎯 Max person confidence: ${result.maxPersonConfidence.toStringAsFixed(3)}');
+                '🤖 Enhanced Person Detection Frame ${framesProcessed.value}:');
+            print('   📊 Detections found: ${enhancedResult.numDetections}');
             print(
-                '   👤 Person present: ${result.maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)');
-            print('   ⚡ Processed in background isolate');
+                '   🎯 Max person confidence: ${enhancedResult.maxPersonConfidence.toStringAsFixed(3)}');
+            print(
+                '   👤 Person present: ${enhancedResult.maxPersonConfidence > confidenceThreshold} (threshold: $confidenceThreshold)');
+            print('   ⚡ Processed completely in background isolate');
+
+            // Log performance metrics
+            final metrics = enhancedResult.debugMetrics;
+            if (metrics.isNotEmpty) {
+              print('   🔧 Performance metrics:');
+              print(
+                  '      - Total processing: ${metrics['totalProcessingTime']}ms');
+              print('      - Preprocessing: ${metrics['preprocessingTime']}ms');
+              print('      - Model load: ${metrics['modelLoadTime']}ms');
+              print('      - Inference: ${metrics['inferenceTime']}ms');
+              print(
+                  '      - Results parsing: ${metrics['resultsParsingTime']}ms');
+            }
+
             if (isDebugVisualizationEnabled.value) {
               print(
-                  '   🐛 Debug boxes stored: ${result.detectionBoxes.length}');
+                  '   🐛 Debug boxes stored: ${enhancedResult.detectionBoxes.length}');
             }
           }
 
           // Mark that ML analysis was successfully performed
           _markAnalysisPerformed();
         } catch (e) {
-          print('Error running background inference: $e');
-          // Fallback to simple single output processing if multi-output fails
+          print('Error running enhanced background inference: $e');
+          // Fallback to simple single output processing if enhanced fails
           final outputShape = _interpreter!.getOutputTensor(0).shape;
 
-          // Create output tensor with proper shape [batch_size, output_size]
-          final outputSize = outputShape.isNotEmpty ? outputShape.last : 1;
-          final output = List.generate(1, (_) => List.filled(outputSize, 0.0));
+          // Preprocess frame for model input (fallback on main thread)
+          final inputData = _preprocessFrame(frameData);
 
-          _interpreter!.run(inputData, output);
+          // Handle multi-dimensional output tensor shapes properly
+          final Map<int, Object> outputTensors = <int, Object>{};
 
-          // For simple models, assume first output is confidence
-          confidence.value = output[0][0];
+          if (outputShape.length == 3 && outputShape[1] > 1) {
+            // Multi-detection output format like [1, 10, 4]
+            final numDetections = outputShape[1];
+            final boxSize = outputShape[2];
+            outputTensors[0] = List.generate(
+                1,
+                (_) => List.generate(
+                    numDetections, (_) => List.filled(boxSize, 0.0)));
+          } else {
+            // Simple output format
+            final outputSize = outputShape.isNotEmpty ? outputShape.last : 1;
+            outputTensors[0] =
+                List.generate(1, (_) => List.filled(outputSize, 0.0));
+          }
+
+          _interpreter!.runForMultipleInputs([inputData], outputTensors);
+
+          // Parse results based on output format
+          double maxPersonConfidence = 0.0;
+          if (outputShape.length == 3 && outputShape[1] > 1) {
+            // Multi-detection format - extract confidence scores
+            final output = outputTensors[0] as List<List<List<double>>>;
+            for (int i = 0; i < output[0].length; i++) {
+              // Assume last element in each detection is confidence
+              final confidence = output[0][i].last;
+              if (confidence > maxPersonConfidence) {
+                maxPersonConfidence = confidence;
+              }
+            }
+          } else {
+            // Simple format - first output is confidence
+            final output = outputTensors[0] as List<List<double>>;
+            maxPersonConfidence = output[0].isNotEmpty ? output[0][0] : 0.0;
+          }
+
+          confidence.value = maxPersonConfidence;
 
           // Mark that ML analysis was performed (even in fallback mode)
           _markAnalysisPerformed();
-        } // Update presence detection
+        }
+
+        // Update presence detection
         final wasPersonPresent = isPersonPresent.value;
         isPersonPresent.value = confidence.value > confidenceThreshold;
 
@@ -1281,7 +1636,7 @@ class PersonDetectionService extends GetxService {
 
       // Resize image to model input size if needed
       if (image.width != inputWidth || image.height != inputHeight) {
-        image = img.copyResize(image, width: inputWidth, height: inputHeight);
+        image = _centerCropAndResize(image, inputWidth, inputHeight);
       }
 
       // Check model input tensor type to determine preprocessing
@@ -1451,20 +1806,17 @@ class PersonDetectionService extends GetxService {
 
   /// Process all detected objects and update observable properties
   void _processAllDetectedObjects(List<DetectionBox> detectionBoxes) {
-    // Only process person detections - ignore all other objects
+    // Show ALL objects above threshold (not just persons)
     print("🔍 Total raw detections: ${detectionBoxes.length}");
 
     // Print all detections for debugging
     for (int i = 0; i < detectionBoxes.length && i < 10; i++) {
       final box = detectionBoxes[i];
       print(
-          "Detection $i: class='${box.className}', confidence=${box.confidence.toStringAsFixed(3)}, bbox=[${box.x1.toStringAsFixed(2)}, ${box.y1.toStringAsFixed(2)}, ${box.x2.toStringAsFixed(2)}, ${box.y2.toStringAsFixed(2)}]");
+          "Detection $i: class='${box.className}', classId=${box.classId}, confidence=${box.confidence.toStringAsFixed(3)}, bbox=[${box.x1.toStringAsFixed(2)}, ${box.y1.toStringAsFixed(2)}, ${box.x2.toStringAsFixed(2)}, ${box.y2.toStringAsFixed(2)}]");
     }
 
-    // ONLY allow person class - ignore everything else
-    const allowedClasses = ['person'];
-
-    // Filter objects above the general detection threshold
+    // Filter objects above the general detection threshold (show ALL objects, not just persons)
     final aboveThreshold = detectionBoxes
         .where((box) => box.confidence > objectDetectionThreshold)
         .toList();
@@ -1472,26 +1824,26 @@ class PersonDetectionService extends GetxService {
     print(
         "🎯 Above threshold (${objectDetectionThreshold}): ${aboveThreshold.length}");
 
-    // Filter for ONLY person class
-    final filtered = aboveThreshold
-        .where((box) =>
-            box.className != null && box.className!.toLowerCase() == 'person')
-        .toList();
-
-    print("✅ After person-only filtering: ${filtered.length}");
-
     // Sort by confidence descending
-    filtered.sort((a, b) => b.confidence.compareTo(a.confidence));
+    aboveThreshold.sort((a, b) => b.confidence.compareTo(a.confidence));
 
-    // Limit to top 3 person detections
-    final validDetections = filtered.take(3).toList();
+    // Limit to top 10 detections of any object type
+    final validDetections = aboveThreshold.take(10).toList();
 
-    print("🏆 Final person detections: ${validDetections.length}");
+    print("🏆 Final object detections (all types): ${validDetections.length}");
+    
+    // Log all detected object types
+    if (validDetections.isNotEmpty) {
+      print("📋 Detected object types:");
+      for (final box in validDetections) {
+        print("   - ${box.className} (ID: ${box.classId}, confidence: ${box.confidence.toStringAsFixed(3)})");
+      }
+    }
 
-    // Update detected objects list
+    // Update detected objects list (now contains all object types)
     detectedObjects.value = validDetections;
 
-    // Update object counts and confidences
+    // Update object counts and confidences for all detected objects
     final counts = <String, int>{};
     final confidences = <String, double>{};
 
@@ -1509,9 +1861,22 @@ class PersonDetectionService extends GetxService {
     objectConfidences.value = confidences;
     anyObjectDetected.value = validDetections.isNotEmpty;
 
+    // Update person-specific detection status for backward compatibility
+    final personDetections = validDetections
+        .where((box) => 
+            box.classId == 1 && 
+            box.className != null && 
+            box.className!.toLowerCase() == 'person')
+        .toList();
+        
+    isPersonPresent.value = personDetections.isNotEmpty;
+    confidence.value = personDetections.isNotEmpty 
+        ? personDetections.first.confidence 
+        : 0.0;
+
     // Log detected objects periodically
     if (framesProcessed.value % 10 == 0 && validDetections.isNotEmpty) {
-      print('🔍 Objects detected:');
+      print('🔍 All objects detected:');
       for (final entry in counts.entries) {
         final confidence = confidences[entry.key]?.toStringAsFixed(2) ?? '0.00';
         print('   ${entry.key}: ${entry.value} (max confidence: $confidence)');

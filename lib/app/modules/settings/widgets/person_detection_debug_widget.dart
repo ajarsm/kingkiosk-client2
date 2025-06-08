@@ -651,7 +651,78 @@ class PersonDetectionDebugWidget extends StatelessWidget {
           ),
         ),
 
-        SizedBox(width: 16),
+        SizedBox(width: 12),
+
+        // Middle: Preprocessed TensorFlow input (what TensorFlow actually sees)
+        Expanded(
+          child: Column(
+            children: [
+              Container(
+                padding: EdgeInsets.all(8),
+                child: Text(
+                  'TensorFlow Input (Center Cropped 300x300)',
+                  style: TextStyle(
+                    fontWeight: FontWeight.bold,
+                    color: Colors.orange.shade700,
+                  ),
+                ),
+              ),
+              Expanded(
+                child: Obx(() {
+                  final tensorFlowFrame =
+                      service.preprocessedTensorFlowFrame.value;
+
+                  if (tensorFlowFrame != null && tensorFlowFrame.isNotEmpty) {
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.orange.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.memory(
+                          base64Decode(tensorFlowFrame),
+                          fit: BoxFit.contain,
+                          width: double.infinity,
+                          height: double.infinity,
+                        ),
+                      ),
+                    );
+                  } else {
+                    return Container(
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Center(
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(Icons.psychology,
+                                size: 48, color: Colors.grey),
+                            SizedBox(height: 8),
+                            Text(
+                              'No preprocessed frame',
+                              style: TextStyle(color: Colors.grey),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              'Enable debug mode to see TensorFlow input',
+                              style:
+                                  TextStyle(color: Colors.grey, fontSize: 12),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                }),
+              ),
+            ],
+          ),
+        ),
+
+        SizedBox(width: 12),
 
         // Right side: ML Analysis Results
         Expanded(
@@ -660,7 +731,7 @@ class PersonDetectionDebugWidget extends StatelessWidget {
               Container(
                 padding: EdgeInsets.all(8),
                 child: Text(
-                  'ML Analysis Output',
+                  'ML Analysis (1:1 with Detections)',
                   style: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: Colors.purple.shade700,
@@ -668,8 +739,11 @@ class PersonDetectionDebugWidget extends StatelessWidget {
                 ),
               ),
               Expanded(
-                child: _buildMLAnalysisDisplay(
-                    frameData, detectionBoxes, service, context),
+                child: Obx(() => _buildMLAnalysisDisplay(
+                    service.preprocessedTensorFlowFrame.value,
+                    detectionBoxes,
+                    service,
+                    context)),
               ),
             ],
           ),
@@ -683,8 +757,8 @@ class PersonDetectionDebugWidget extends StatelessWidget {
       List<DetectionBox> detectionBoxes,
       PersonDetectionService service,
       BuildContext context) {
-    // Show the processed ML output frame with detection results
-    // This displays the analyzed frame from person detection, not the raw camera feed
+    // Show the 1:1 center-cropped frame (same as TensorFlow input) with bounding boxes overlaid
+    // This shows exactly what the ML model analyzed with detection results
 
     if (frameData == null || frameData.isEmpty) {
       return Container(
