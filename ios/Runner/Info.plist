@@ -5,7 +5,7 @@
 		<key>CFBundleDevelopmentRegion</key>
 		<string>$(DEVELOPMENT_LANGUAGE)</string>
 		<key>CFBundleDisplayName</key>
-		<string>Flutter Getx Kiosk</string>
+		<string>King Kiosk</string>
 		<key>CFBundleExecutable</key>
 		<string>$(EXECUTABLE_NAME)</string>
 		<key>CFBundleIdentifier</key>
@@ -55,6 +55,10 @@
 		<string>King Kiosk needs access to your camera for video calls and camera preview.</string>
 		<key>NSMicrophoneUsageDescription</key>
 		<string>King Kiosk needs access to your microphone for calls and audio recording.</string>
+		<key>NSLocationWhenInUseUsageDescription</key>
+		<string>King Kiosk needs access to your location for location-based features and services.</string>
+		<key>NSLocationAlwaysAndWhenInUseUsageDescription</key>
+		<string>King Kiosk needs access to your location for location-based features and services.</string>
 		<key>NSBonjourServices</key>
 		<array>
 			<string>_wyoming._tcp</string>

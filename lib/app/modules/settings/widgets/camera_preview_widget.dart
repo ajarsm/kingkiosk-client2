@@ -41,6 +41,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   int _retryCount = 0;
   final _maxRetryCount = 3;
   bool _usingSharedStream = false; // Track if using shared stream
+  bool _permissionDenied = false; // Track permission denial
+  String _errorMessage = '';
 
   @override
   void initState() {
@@ -66,11 +68,19 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       if (mounted) {
         setState(() {
           _isInitialized = false;
+          _permissionDenied = true;
+          _errorMessage =
+              'Camera and microphone permissions are required to use this feature.';
         });
       }
       print('Camera/mic permission not granted. Cannot start camera preview.');
       return;
     }
+
+    // Reset permission state if permission was granted
+    _permissionDenied = false;
+    _errorMessage = '';
+
     await _localRenderer.initialize();
     await _startCamera();
   }
@@ -113,6 +123,11 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       }
     } catch (e) {
       print('Error initializing camera preview: $e');
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to access camera: ${e.toString()}';
+        });
+      }
       _scheduleRetry();
     }
   }
@@ -165,29 +180,140 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
 
   @override
   Widget build(BuildContext context) {
-    if (!_isInitialized) {
-      return Container(
-        width: widget.width,
-        height: widget.height,
+    return Container(
+      width: widget.width,
+      height: widget.height,
+      decoration: BoxDecoration(
         color: Colors.black,
-        child: const Center(
-          child: CircularProgressIndicator(),
-        ),
-      );
+        borderRadius: BorderRadius.circular(8.0),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8.0),
+        child: _buildCameraContent(context),
+      ),
+    );
+  }
+
+  Widget _buildCameraContent(BuildContext context) {
+    if (_permissionDenied) {
+      return _buildPermissionDeniedWidget(context);
     }
 
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(8.0),
-      child: Container(
-        width: widget.width,
-        height: widget.height,
-        color: Colors.black,
-        child: webrtc.RTCVideoView(
-          _localRenderer,
-          objectFit: widget.fit == BoxFit.contain
-              ? webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
-              : webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
-          mirror: true, // Usually selfie cameras need mirroring
+    if (!_isInitialized) {
+      return _buildLoadingWidget();
+    }
+
+    if (_errorMessage.isNotEmpty) {
+      return _buildErrorWidget(context);
+    }
+
+    return webrtc.RTCVideoView(
+      _localRenderer,
+      objectFit: widget.fit == BoxFit.contain
+          ? webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitContain
+          : webrtc.RTCVideoViewObjectFit.RTCVideoViewObjectFitCover,
+      mirror: true, // Usually selfie cameras need mirroring
+    );
+  }
+
+  Widget _buildPermissionDeniedWidget(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.camera_alt_outlined,
+              size: 48,
+              color: Colors.white54,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () async {
+                final result = await PermissionsManager.openAppSettings();
+                if (result) {
+                  // Retry initialization after user returns from settings
+                  _retryCount = 0;
+                  _initRenderers();
+                }
+              },
+              icon: const Icon(Icons.settings),
+              label: const Text('Open Settings'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLoadingWidget() {
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(color: Colors.white),
+          SizedBox(height: 12),
+          Text(
+            'Initializing camera...',
+            style: TextStyle(color: Colors.white54),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.error_outline,
+              size: 48,
+              color: Colors.red,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _errorMessage,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                setState(() {
+                  _errorMessage = '';
+                  _retryCount = 0;
+                });
+                _initRenderers();
+              },
+              icon: const Icon(Icons.refresh),
+              label: const Text('Retry'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue,
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
         ),
       ),
     );

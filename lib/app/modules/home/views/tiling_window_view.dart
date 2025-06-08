@@ -137,48 +137,64 @@ class TilingWindowViewState extends State<TilingWindowView> {
               opacity: 0.4, // Slightly more visible
               size: 28.0,
               padding: EdgeInsets.only(top: 20, right: 20),
-            ),
-            // Floating AI button for call hangup
-            _buildFloatingAiButton(), // Unified grab button for toolbar/appbar reveal (both mobile and desktop)
-            Positioned(
-              top: 0,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: MouseRegion(
-                  cursor: SystemMouseCursors.click,
-                  child: GestureDetector(
-                    behavior: HitTestBehavior
-                        .opaque, // Only detect gestures on the visible handle
-                    onTap: () {
-                      _autoHidingToolbarKey.currentState?.showToolbar();
-                    },
+            ), // Floating AI button for call hangup
+            _buildFloatingAiButton(),
+            // Auto-hiding toolbar at the bottom
+            _AutoHidingToolbar(
+              key: _autoHidingToolbarKey,
+              child: _buildToolbar(context, locked),
+            ), // Unified grab button for toolbar/appbar reveal (now at bottom, appears when toolbar retracts)
+            Obx(() {
+              // Only show handle when toolbar is hidden
+              final toolbarVisible =
+                  _autoHidingToolbarKey.currentState?.isToolbarVisible.value ??
+                      false;
+              return AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: toolbarVisible ? 0.0 : 1.0,
+                child: IgnorePointer(
+                  ignoring:
+                      toolbarVisible, // Don't intercept touches when toolbar is visible
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
                     child: Container(
-                      width: 80, // Optimized size for both mobile and desktop
-                      height:
-                          32, // Good touch target for mobile, visible for desktop
-                      alignment: Alignment.topCenter,
-                      color: Colors.transparent,
-                      child: Container(
-                        width: 80,
-                        height:
-                            12, // Thick enough to be easily visible and tappable
-                        decoration: BoxDecoration(
-                          color: Get.isDarkMode
-                              ? Colors.white.withOpacity(0.8)
-                              : Colors.black.withOpacity(0.6),
-                          borderRadius: BorderRadius.circular(6),
+                      margin: EdgeInsets.only(bottom: 20),
+                      child: MouseRegion(
+                        cursor: SystemMouseCursors.click,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: () {
+                            print("DEBUG: Handle tapped!");
+                            _autoHidingToolbarKey.currentState?.showToolbar();
+                          },
+                          child: Container(
+                            // Add padding around the visible handle for larger touch target
+                            padding: EdgeInsets.symmetric(
+                                horizontal: 20, vertical: 10),
+                            child: Container(
+                              width: 80, // Handle width
+                              height: 12, // Made twice as thick (was 6px)
+                              decoration: BoxDecoration(
+                                color: Colors.white.withOpacity(
+                                    0.7), // Slightly more opaque for visibility
+                                borderRadius: BorderRadius.circular(6),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.2),
+                                    blurRadius: 4,
+                                    offset: Offset(0, 2),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
-              ),
-            ), // Auto-hiding toolbar at the bottom
-            _AutoHidingToolbar(
-              key: _autoHidingToolbarKey,
-              child: _buildToolbar(context, locked),
-            ), // Overlay Wyoming FAB in top right
+              );
+            }), // Overlay Wyoming FAB in top right
 
             // Notification Center positioned on the right side
             _buildNotificationCenter(),
@@ -1481,6 +1497,10 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   bool _isVisible = false;
   Timer? _hideTimer;
   late NotificationService _notificationService;
+
+  // Add a reactive stream for visibility state
+  final RxBool isToolbarVisible = false.obs;
+
   @override
   void initState() {
     super.initState();
@@ -1500,6 +1520,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   // Expose a method to show the toolbar from outside (e.g., from handle)
   void showToolbar() {
     setState(() => _isVisible = true);
+    isToolbarVisible.value = true;
     _startHideTimer();
   }
 
@@ -1512,6 +1533,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
           _notificationService.toggleNotificationCenter();
         }
         setState(() => _isVisible = false);
+        isToolbarVisible.value = false;
       }
     });
   }

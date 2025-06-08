@@ -590,7 +590,7 @@ class MqttService extends GetxService {
     print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
     if (cmdObj is Map) {
       print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
-    }    // --- Handle batch commands array first ---
+    } // --- Handle batch commands array first ---
     if (cmdObj is Map &&
         (cmdObj['commands'] is List ||
             cmdObj['command']?.toString().toLowerCase() == 'batch')) {
@@ -602,7 +602,7 @@ class MqttService extends GetxService {
       // Separate TTS commands for optimized batch processing
       final List<Map<String, dynamic>> ttsCommands = [];
       final List<dynamic> otherCommands = [];
-      
+
       for (final cmd in commandList) {
         if (cmd is Map) {
           final command = cmd['command']?.toString().toLowerCase();
@@ -618,16 +618,17 @@ class MqttService extends GetxService {
       if (ttsCommands.isNotEmpty) {
         try {
           final ttsService = Get.find<TtsService>();
-          print('🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
+          print(
+              '🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
           final results = await ttsService.handleBatchMqttCommands(ttsCommands);
-          
+
           // Publish individual results to response topics if specified
           for (int i = 0; i < results.length && i < ttsCommands.length; i++) {
             final result = results[i];
             final cmd = ttsCommands[i];
-            
+
             print('🔊 [MQTT] Batch TTS command result: $result');
-            
+
             if (cmd['response_topic'] != null) {
               publishJsonToTopic(cmd['response_topic'], result, retain: false);
             }
@@ -637,10 +638,13 @@ class MqttService extends GetxService {
           // Publish error to response topics if specified
           for (final cmd in ttsCommands) {
             if (cmd['response_topic'] != null) {
-              publishJsonToTopic(cmd['response_topic'], {
-                'success': false,
-                'error': 'TTS batch processing failed: $e'
-              }, retain: false);
+              publishJsonToTopic(
+                  cmd['response_topic'],
+                  {
+                    'success': false,
+                    'error': 'TTS batch processing failed: $e'
+                  },
+                  retain: false);
             }
           }
         }

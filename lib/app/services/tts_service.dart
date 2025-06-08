@@ -597,11 +597,13 @@ class TtsService extends GetxService {
       return results;
     } catch (e) {
       print('❌ [TTS] Batch processing error: $e');
-      return [{
-        'success': false,
-        'error': 'Batch processing failed: $e',
-        'totalCommands': commands.length
-      }];
+      return [
+        {
+          'success': false,
+          'error': 'Batch processing failed: $e',
+          'totalCommands': commands.length
+        }
+      ];
     }
   }
 }

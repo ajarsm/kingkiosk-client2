@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import 'package:battery_plus/battery_plus.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:geolocator/geolocator.dart';
+import '../core/utils/permissions_manager.dart';
 
 // These methods have been integrated directly into _getDeviceInfo
 // to simplify the code and avoid unused methods
@@ -69,7 +70,8 @@ class PlatformSensorService extends GetxService {
       Map<String, dynamic> detailedInfo = <String, dynamic>{};
 
       if (kIsWeb) {
-        WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;        detailedInfo = {
+        WebBrowserInfo webInfo = await deviceInfo.webBrowserInfo;
+        detailedInfo = {
           'browserName': webInfo.browserName.toString(),
           'appCodeName': webInfo.appCodeName,
           'appName': webInfo.appName,
@@ -225,6 +227,7 @@ class PlatformSensorService extends GetxService {
       developer.log('Error updating sensor data', error: e);
     }
   }
+
   Map<String, dynamic> getAllSensorData() {
     return {
       'battery': {
@@ -359,38 +362,22 @@ class PlatformSensorService extends GetxService {
 
   Future<void> _checkAndRequestLocationPermission() async {
     try {
-      // Check if location services are enabled
-      bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
-      if (!serviceEnabled) {
-        locationStatus.value = "Location Services Disabled";
+      // Use PermissionsManager for consistent permission handling
+      final hasPermission =
+          await PermissionsManager.requestLocationPermission();
+
+      if (hasPermission) {
+        locationEnabled.value = true;
+        locationStatus.value = "Permission Granted";
+        developer.log('Location permission granted');
+      } else {
         locationEnabled.value = false;
-        return;
+        locationStatus.value = "Location Permission Denied";
+        developer.log('Location permission denied');
       }
-
-      // Check permission status
-      LocationPermission permission = await Geolocator.checkPermission();
-      
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          locationStatus.value = "Location Permission Denied";
-          locationEnabled.value = false;
-          return;
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        locationStatus.value = "Location Permission Permanently Denied";
-        locationEnabled.value = false;
-        return;
-      }
-
-      // Permission granted
-      locationEnabled.value = true;
-      locationStatus.value = "Permission Granted";
     } catch (e) {
       developer.log('Error checking location permission', error: e);
-      locationStatus.value = "Permission Error";
+      locationStatus.value = "Permission Error: ${e.toString()}";
       locationEnabled.value = false;
     }
   }
@@ -406,20 +393,22 @@ class PlatformSensorService extends GetxService {
       // Start listening to location updates
       _locationSubscription = Geolocator.getPositionStream(
         locationSettings: locationSettings,
-      ).listen(        (Position position) {
+      ).listen(
+        (Position position) {
           latitude.value = position.latitude;
           longitude.value = position.longitude;
           altitude.value = position.altitude;
           accuracy.value = position.accuracy;
           locationStatus.value = "Active";
-          
-          developer.log('Location updated: ${position.latitude}, ${position.longitude}');
+
+          developer.log(
+              'Location updated: ${position.latitude}, ${position.longitude}');
         },
         onError: (error) {
           developer.log('Location stream error', error: error);
           locationStatus.value = "Error: ${error.toString()}";
         },
-      );      // Get initial position
+      ); // Get initial position
       Geolocator.getCurrentPosition().then((Position position) {
         latitude.value = position.latitude;
         longitude.value = position.longitude;
@@ -474,11 +463,23 @@ class PlatformSensorService extends GetxService {
     // For other platforms, use the normal API
     return battery.onBatteryStateChanged;
   }
+
   @override
   void onClose() {
     _resourceMonitorTimer?.cancel();
     _locationSubscription?.cancel();
     super.onClose();
+  }
+
+  /// Manually request location permission (useful for UI retry buttons)
+  Future<bool> requestLocationPermission() async {
+    await _checkAndRequestLocationPermission();
+    return locationEnabled.value;
+  }
+
+  /// Open app settings for location permissions
+  Future<bool> openLocationSettings() async {
+    return await PermissionsManager.openAppSettings();
   }
 }
 
