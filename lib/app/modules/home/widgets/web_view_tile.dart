@@ -38,7 +38,8 @@ class WebViewInstanceManager {
   /// Get platform-specific WebView settings
   static InAppWebViewSettings getPlatformWebViewSettings() {
     // Platform-specific settings for optimal compatibility
-    if (defaultTargetPlatform == TargetPlatform.windows) {      // Windows WebView2-specific settings for better Home Assistant compatibility
+    if (defaultTargetPlatform == TargetPlatform.windows) {
+      // Windows WebView2-specific settings for better Home Assistant compatibility
       return InAppWebViewSettings(
         javaScriptEnabled: true,
         mediaPlaybackRequiresUserGesture: false,
@@ -70,7 +71,8 @@ class WebViewInstanceManager {
         allowsAirPlayForMediaPlayback: false,
         allowsPictureInPictureMediaPlayback: false,
         isFraudulentWebsiteWarningEnabled: false,
-        selectionGranularity: SelectionGranularity.CHARACTER,        // Ensure proper touch and click handling
+        selectionGranularity: SelectionGranularity
+            .CHARACTER, // Ensure proper touch and click handling
         disallowOverScroll: false,
         enableViewportScale: true,
         suppressesIncrementalRendering: false,
@@ -550,7 +552,7 @@ class _WebViewTileState extends State<WebViewTile>
         '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
     setState(() {
       _isLoading = false;
-    });    // Enable touch events on WebView content with reduced logging
+    }); // Enable touch events on WebView content with reduced logging
     try {
       await controller.evaluateJavascript(source: """
         (function() {
@@ -874,7 +876,48 @@ class _WebViewTileState extends State<WebViewTile>
   @override
   void onConsoleMessage(
       InAppWebViewController controller, ConsoleMessage consoleMessage) {
-    print("🔧 WebViewTile Console [${widget.url}]: ${consoleMessage.message}");
+    // Filter out common, non-critical console messages to reduce noise
+    final message = consoleMessage.message;
+    final messageLevel = consoleMessage.messageLevel;
+
+    // Skip common framework messages and non-critical warnings
+    final skipPatterns = [
+      'Lit is in dev mode',
+      'lit-html is in dev mode',
+      'Download the React DevTools',
+      'The above error occurred',
+      'Consider adding an error boundary',
+      'Failed to load resource: net::ERR_BLOCKED_BY_CLIENT',
+      'Violates the following Content Security Policy directive',
+      'extensions::SafeBuiltins',
+      'chrome-extension://',
+      'moz-extension://',
+      'safari-extension://',
+      '[object Object]', // Generic object logging
+      'Warning: componentWillMount has been renamed',
+      'Warning: componentWillReceiveProps has been renamed',
+      'Warning: componentWillUpdate has been renamed',
+    ];
+
+    // Check if message should be skipped
+    if (skipPatterns.any((pattern) => message.contains(pattern))) {
+      return; // Skip this message
+    }
+
+    // Only show errors and important warnings
+    if (messageLevel == ConsoleMessageLevel.ERROR) {
+      print("❌ WebViewTile Error [${widget.url}]: $message");
+    } else if (messageLevel == ConsoleMessageLevel.WARNING &&
+        !message.toLowerCase().contains('deprecated') &&
+        !message.toLowerCase().contains('favicon')) {
+      print("⚠️ WebViewTile Warning [${widget.url}]: $message");
+    }
+    // Skip INFO, DEBUG, LOG levels unless they contain critical keywords
+    else if (message.toLowerCase().contains('error') ||
+        message.toLowerCase().contains('failed') ||
+        message.toLowerCase().contains('critical')) {
+      print("🔧 WebViewTile Important [${widget.url}]: $message");
+    }
   }
 
   @override

@@ -16,7 +16,6 @@ class WebViewInstanceManager {
 
   // Map of window IDs to their WebView instances
   final Map<String, _WebViewWrapper> _instances = {};
-
   // Create or get an existing WebView instance
   InAppWebView getOrCreateWebView({
     required String id,
@@ -24,9 +23,12 @@ class WebViewInstanceManager {
     required ValueKey<String> key,
     required WebViewCallbackHandler callbackHandler,
   }) {
+    print('📌 WebViewInstanceManager: Request for ID: $id, URL: $url');
+    print(
+        '📌 WebViewInstanceManager: Current instances: ${_instances.keys.toList()}');
+
     if (!_instances.containsKey(id)) {
-      print(
-          '📌 WebViewInstanceManager: Creating new WebView for ID: $id and URL: $url');
+      print('📌 WebViewInstanceManager: ✨ Creating NEW WebView for ID: $id');
       _instances[id] = _WebViewWrapper(
         id: id,
         url: url,
@@ -34,21 +36,35 @@ class WebViewInstanceManager {
         callbackHandler: callbackHandler,
       );
     } else {
-      print('📌 WebViewInstanceManager: Reusing WebView for ID: $id');
+      print(
+          '📌 WebViewInstanceManager: ♻️ Reusing EXISTING WebView for ID: $id');
       // Update the callback handler to ensure it's using the current state
       _instances[id]!.updateCallbackHandler(callbackHandler);
     }
+
+    print(
+        '📌 WebViewInstanceManager: Total active instances: ${_instances.length}');
     return _instances[id]!.webView;
   }
 
   // Remove a WebView instance
   bool removeWebView(String id) {
+    print('📌 WebViewInstanceManager: Request to REMOVE WebView ID: $id');
+    print(
+        '📌 WebViewInstanceManager: Current instances before removal: ${_instances.keys.toList()}');
+
     if (_instances.containsKey(id)) {
-      print('📌 WebViewInstanceManager: Removing WebView for ID: $id');
+      print(
+          '📌 WebViewInstanceManager: ✅ Successfully removing WebView for ID: $id');
       _instances.remove(id);
+      print(
+          '📌 WebViewInstanceManager: Remaining instances: ${_instances.keys.toList()}');
       return true;
+    } else {
+      print(
+          '📌 WebViewInstanceManager: ❌ WebView ID: $id not found for removal');
+      return false;
     }
-    return false;
   }
 }
 
@@ -181,7 +197,6 @@ class _WebViewTileState extends State<WebViewTile>
   bool _isLoading = true;
   bool _hasError = false;
   String _errorMessage = '';
-
   // Track retry attempts for exponential backoff
   int _retryAttempts = 0;
   static const int MAX_RETRY_ATTEMPTS = 5;
@@ -196,17 +211,23 @@ class _WebViewTileState extends State<WebViewTile>
   // The actual WebView instance - will be retrieved from WebViewInstanceManager
   late final InAppWebView _stableWebViewWidget;
 
+  // Debug tracking
+  static int _instanceCount = 0;
+  late final int _instanceId;
+  late final DateTime _createdAt;
+
   @override
   bool get wantKeepAlive => true; // Keep state alive when widget is not visible
-
   @override
   void didUpdateWidget(WebViewTile oldWidget) {
     super.didUpdateWidget(oldWidget);
 
     print(
-        '🔧 WebViewTile - didUpdateWidget called. Old URL: ${oldWidget.url}, New URL: ${widget.url}');
+        '� WebViewTile #$_instanceId UPDATE: ${oldWidget.url} -> ${widget.url}');
     print(
-        '🔧 WebViewTile - didUpdateWidget old refreshKey: ${oldWidget.refreshKey}, new refreshKey: ${widget.refreshKey}');
+        '� WebViewTile #$_instanceId refreshKey: ${oldWidget.refreshKey} -> ${widget.refreshKey}');
+    print(
+        '🔄 WebViewTile #$_instanceId windowId: ${oldWidget.windowId} -> ${widget.windowId}');
 
     // Only reload the WebView if URL changed OR refreshKey changed AND refreshKey is not null
     bool shouldReloadPage = oldWidget.url != widget.url;
@@ -221,6 +242,14 @@ class _WebViewTileState extends State<WebViewTile>
     bool windowIdChanged = oldWidget.windowId != widget.windowId &&
         widget.windowId != null &&
         oldWidget.windowId != null;
+
+    if (shouldReloadPage || windowIdChanged) {
+      print(
+          '🔄 WebViewTile #$_instanceId RELOADING: shouldReloadPage=$shouldReloadPage, windowIdChanged=$windowIdChanged');
+    } else {
+      print(
+          '🔄 WebViewTile #$_instanceId NO RELOAD: No significant changes detected');
+    }
 
     // We no longer need to recreate the WebView - just reload the URL if needed
     if (shouldReloadPage || windowIdChanged) {
@@ -255,6 +284,13 @@ class _WebViewTileState extends State<WebViewTile>
 
   @override
   void dispose() {
+    final lifespan = DateTime.now().difference(_createdAt);
+    print('🔴 WebViewTile #$_instanceId DISPOSE: ${widget.url}');
+    print(
+        '⏱️ WebViewTile #$_instanceId lifespan: ${lifespan.inMilliseconds}ms');
+    print('🆔 WebViewTile #$_instanceId windowId: ${widget.windowId}');
+    print('🔢 Total active instances before disposal: $_instanceCount');
+
     WidgetsBinding.instance.removeObserver(this);
     // Note: We don't remove the WebView instance here since it would defeat the purpose
     // of maintaining stable instances. WebView instances should be cleaned up when
@@ -265,6 +301,16 @@ class _WebViewTileState extends State<WebViewTile>
   @override
   void initState() {
     super.initState();
+
+    // Initialize debug tracking
+    _instanceId = ++_instanceCount;
+    _createdAt = DateTime.now();
+
+    print('🟢 WebViewTile #$_instanceId INIT: ${widget.url}');
+    print('🕐 WebViewTile #$_instanceId created at: ${_createdAt.toString()}');
+    print('🆔 WebViewTile #$_instanceId windowId: ${widget.windowId}');
+    print('🔑 WebViewTile #$_instanceId refreshKey: ${widget.refreshKey}');
+
     // Disable WebView debug logging
     PlatformInAppWebViewController.debugLoggingSettings.enabled = false;
     WidgetsBinding.instance.addObserver(this);
@@ -529,8 +575,17 @@ class _WebViewTileState extends State<WebViewTile>
 
   @override
   void onLoadStart(InAppWebViewController controller, WebUri? url) {
+    if (!mounted) {
+      print(
+          '⚠️ WebViewTile #$_instanceId onLoadStart called but widget not mounted!');
+      return;
+    }
+
     print(
-        '🔧 WebViewTile - Load started for URL: ${url?.toString() ?? widget.url}');
+        '🔄 WebViewTile #$_instanceId LOAD START: ${url?.toString() ?? widget.url}');
+    print(
+        '🔄 WebViewTile #$_instanceId mounted: $mounted, loading: $_isLoading');
+
     setState(() {
       _isLoading = true;
     });
@@ -538,8 +593,20 @@ class _WebViewTileState extends State<WebViewTile>
 
   @override
   void onLoadStop(InAppWebViewController controller, WebUri? url) async {
+    if (!mounted) {
+      print(
+          '⚠️ WebViewTile #$_instanceId onLoadStop called but widget not mounted!');
+      return;
+    }
+
+    final loadTime = DateTime.now().difference(_createdAt);
     print(
-        '🔧 WebViewTile - Load completed for URL: ${url?.toString() ?? widget.url}');
+        '✅ WebViewTile #$_instanceId LOAD COMPLETE: ${url?.toString() ?? widget.url}');
+    print(
+        '⏱️ WebViewTile #$_instanceId total load time: ${loadTime.inMilliseconds}ms');
+    print(
+        '🔄 WebViewTile #$_instanceId mounted: $mounted, retries: $_retryAttempts');
+
     setState(() {
       _isLoading = false;
       // Reset retry counter on successful load
@@ -560,7 +627,7 @@ class _WebViewTileState extends State<WebViewTile>
             return function executedFunction(...args) {
               clearTimeout(timeout);
               timeout = setTimeout(() => func(...args), wait);
-            };
+            }
           }
           
           // Ultimate Windows keyboard trigger with retry mechanism
@@ -775,8 +842,18 @@ class _WebViewTileState extends State<WebViewTile>
   @override
   void onReceivedError(InAppWebViewController controller, URLRequest request,
       WebResourceError error) {
+    if (!mounted) {
+      print(
+          '⚠️ WebViewTile #$_instanceId onReceivedError called but widget not mounted!');
+      return;
+    }
+
+    print('❌ WebViewTile #$_instanceId ERROR: ${request.url}');
+    print('❌ WebViewTile #$_instanceId error type: ${error.type}');
     print(
-        '⚠️ WebViewTile - Error loading URL: ${request.url}, Error: ${error.description}');
+        '❌ WebViewTile #$_instanceId error description: ${error.description}');
+    print(
+        '❌ WebViewTile #$_instanceId retry attempt: $_retryAttempts/$MAX_RETRY_ATTEMPTS');
 
     // Skip retry for resources, only retry main frame errors
     if (error.type == WebResourceErrorType.TIMEOUT ||
@@ -790,6 +867,7 @@ class _WebViewTileState extends State<WebViewTile>
       });
 
       // Auto-retry with backoff for connection errors
+      print('🔁 WebViewTile #$_instanceId attempting retry with backoff...');
       _retryWithBackoff();
     }
   }
@@ -797,7 +875,48 @@ class _WebViewTileState extends State<WebViewTile>
   @override
   void onConsoleMessage(
       InAppWebViewController controller, ConsoleMessage consoleMessage) {
-    print("🔧 WebViewTile Console [${widget.url}]: ${consoleMessage.message}");
+    // Filter out common, non-critical console messages to reduce noise
+    final message = consoleMessage.message;
+    final messageLevel = consoleMessage.messageLevel;
+
+    // Skip common framework messages and non-critical warnings
+    final skipPatterns = [
+      'Lit is in dev mode',
+      'lit-html is in dev mode',
+      'Download the React DevTools',
+      'The above error occurred',
+      'Consider adding an error boundary',
+      'Failed to load resource: net::ERR_BLOCKED_BY_CLIENT',
+      'Violates the following Content Security Policy directive',
+      'extensions::SafeBuiltins',
+      'chrome-extension://',
+      'moz-extension://',
+      'safari-extension://',
+      '[object Object]', // Generic object logging
+      'Warning: componentWillMount has been renamed',
+      'Warning: componentWillReceiveProps has been renamed',
+      'Warning: componentWillUpdate has been renamed',
+    ];
+
+    // Check if message should be skipped
+    if (skipPatterns.any((pattern) => message.contains(pattern))) {
+      return; // Skip this message
+    }
+
+    // Only show errors and important warnings
+    if (messageLevel == ConsoleMessageLevel.ERROR) {
+      print("❌ WebViewTile Error [${widget.url}]: $message");
+    } else if (messageLevel == ConsoleMessageLevel.WARNING &&
+        !message.toLowerCase().contains('deprecated') &&
+        !message.toLowerCase().contains('favicon')) {
+      print("⚠️ WebViewTile Warning [${widget.url}]: $message");
+    }
+    // Skip INFO, DEBUG, LOG levels unless they contain critical keywords
+    else if (message.toLowerCase().contains('error') ||
+        message.toLowerCase().contains('failed') ||
+        message.toLowerCase().contains('critical')) {
+      print("🔧 WebViewTile Important [${widget.url}]: $message");
+    }
   }
 
   @override
@@ -884,5 +1003,24 @@ class _WebViewTileState extends State<WebViewTile>
   // Get human-readable seconds for display
   int _getBackoffSeconds() {
     return (_getBackoffMilliseconds() / 1000).ceil();
+  }
+
+  // WidgetsBindingObserver methods for lifecycle debugging
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    print('🔄 WebViewTile #$_instanceId APP LIFECYCLE: $state');
+    super.didChangeAppLifecycleState(state);
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    print('🔄 WebViewTile #$_instanceId BRIGHTNESS CHANGED');
+    super.didChangePlatformBrightness();
+  }
+
+  @override
+  void didChangeMetrics() {
+    print('🔄 WebViewTile #$_instanceId METRICS CHANGED');
+    super.didChangeMetrics();
   }
 }

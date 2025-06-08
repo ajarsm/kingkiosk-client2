@@ -125,94 +125,93 @@ enum ObjectCategory {
   other,
 }
 
-/// Helper function to get class name for COCO dataset class IDs
+/// Helper function to get class name for MobileNet SSD class IDs
 String _getClassNameForId(int classId) {
-  // Complete COCO dataset class names (80 classes + background)
-  const cocoClasses = {
-    0: 'background',
-    1: 'person',
-    2: 'bicycle',
-    3: 'car',
-    4: 'motorcycle',
-    5: 'airplane',
-    6: 'bus',
-    7: 'train',
-    8: 'truck',
-    9: 'boat',
-    10: 'traffic light',
-    11: 'fire hydrant',
-    12: 'stop sign',
-    13: 'parking meter',
-    14: 'bench',
-    15: 'bird',
-    16: 'cat',
-    17: 'dog',
-    18: 'horse',
-    19: 'sheep',
-    20: 'cow',
-    21: 'elephant',
-    22: 'bear',
-    23: 'zebra',
-    24: 'giraffe',
-    25: 'backpack',
-    26: 'umbrella',
-    27: 'handbag',
-    28: 'tie',
-    29: 'suitcase',
-    30: 'frisbee',
-    31: 'skis',
-    32: 'snowboard',
-    33: 'sports ball',
-    34: 'kite',
-    35: 'baseball bat',
-    36: 'baseball glove',
-    37: 'skateboard',
-    38: 'surfboard',
-    39: 'tennis racket',
-    40: 'bottle',
-    41: 'wine glass',
-    42: 'cup',
-    43: 'fork',
-    44: 'knife',
-    45: 'spoon',
-    46: 'bowl',
-    47: 'banana',
-    48: 'apple',
-    49: 'sandwich',
-    50: 'orange',
-    51: 'broccoli',
-    52: 'carrot',
-    53: 'hot dog',
-    54: 'pizza',
-    55: 'donut',
-    56: 'cake',
-    57: 'chair',
-    58: 'couch',
-    59: 'potted plant',
-    60: 'bed',
-    61: 'dining table',
-    62: 'toilet',
-    63: 'tv',
-    64: 'laptop',
-    65: 'mouse',
-    66: 'remote',
-    67: 'keyboard',
-    68: 'cell phone',
-    69: 'microwave',
-    70: 'oven',
-    71: 'toaster',
-    72: 'sink',
-    73: 'refrigerator',
-    74: 'book',
-    75: 'clock',
-    76: 'vase',
-    77: 'scissors',
-    78: 'teddy bear',
-    79: 'hair drier',
-    80: 'toothbrush',
+  // MobileNet SSD class names (optimized for person detection)
+  // Note: MobileNet SSD uses different class ordering than COCO
+  const mobilenetSsdClasses = {
+    0: 'person', // Primary target for person detection
+    1: 'bicycle',
+    2: 'car',
+    3: 'motorcycle',
+    4: 'airplane',
+    5: 'bus',
+    6: 'train',
+    7: 'truck',
+    8: 'boat',
+    9: 'traffic light',
+    10: 'fire hydrant',
+    11: 'stop sign',
+    12: 'parking meter',
+    13: 'bench',
+    14: 'bird',
+    15: 'cat',
+    16: 'dog',
+    17: 'horse',
+    18: 'sheep',
+    19: 'cow',
+    20: 'elephant',
+    21: 'bear',
+    22: 'zebra',
+    23: 'giraffe',
+    24: 'backpack',
+    25: 'umbrella',
+    26: 'handbag',
+    27: 'tie',
+    28: 'suitcase',
+    29: 'frisbee',
+    30: 'skis',
+    31: 'snowboard',
+    32: 'sports ball',
+    33: 'kite',
+    34: 'baseball bat',
+    35: 'baseball glove',
+    36: 'skateboard',
+    37: 'surfboard',
+    38: 'tennis racket',
+    39: 'bottle',
+    40: 'wine glass',
+    41: 'cup',
+    42: 'fork',
+    43: 'knife',
+    44: 'spoon',
+    45: 'bowl',
+    46: 'banana',
+    47: 'apple',
+    48: 'sandwich',
+    49: 'orange',
+    50: 'broccoli',
+    51: 'carrot',
+    52: 'hot dog',
+    53: 'pizza',
+    54: 'donut',
+    55: 'cake',
+    56: 'chair',
+    57: 'couch',
+    58: 'potted plant',
+    59: 'bed',
+    60: 'dining table',
+    61: 'toilet',
+    62: 'tv',
+    63: 'laptop',
+    64: 'mouse',
+    65: 'remote',
+    66: 'keyboard', 67: 'cell phone',
+    68: 'microwave',
+    69: 'oven',
+    70: 'toaster',
+    71: 'sink',
+    72: 'refrigerator',
+    73: 'book',
+    74: 'clock',
+    75: 'vase',
+    76: 'scissors',
+    77: 'teddy bear',
+    78: 'hair drier',
+    79: 'toothbrush',
   };
 
-  return cocoClasses[classId] ?? 'unknown';
+  return mobilenetSsdClasses[classId] ?? 'unknown';
 }
 
 /// Enhanced background inference function that handles complete frame processing in isolate
@@ -307,28 +306,30 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
       } else {
         totalDetections = scores[0].length;
       }
-
       for (int i = 0; i < totalDetections && i < scores[0].length; i++) {
         final classId = classes[0][i].toInt();
         final score = scores[0][i];
 
-        // Extract bounding box coordinates (typically in format [y1, x1, y2, x2])
+        // Extract bounding box coordinates (MobileNet SSD format: [y1, x1, y2, x2])
         final y1 = boxes[0][i][0];
         final x1 = boxes[0][i][1];
         final y2 = boxes[0][i][2];
         final x2 = boxes[0][i][3];
 
-        // Debug logging for model output (only for significant detections)
+        // Enhanced debug logging for MobileNet SSD (focused on person detection)
         if (score > data.objectDetectionThreshold) {
-          print(
-              'DEBUG: Enhanced detection $i - ClassID: $classId, Score: ${score.toStringAsFixed(3)}, '
-              'ClassName: ${_getClassNameForId(classId)}, '
-              'Box: [${y1.toStringAsFixed(3)}, ${x1.toStringAsFixed(3)}, '
-              '${y2.toStringAsFixed(3)}, ${x2.toStringAsFixed(3)}]');
+          final className = _getClassNameForId(classId);
+          final isPersonDetection = classId == data.personClassId;
+
+          print('${isPersonDetection ? "🚶" : "🔍"} MobileNet detection $i - '
+              'ClassID: $classId (${className}), '
+              'Confidence: ${(score * 100).toStringAsFixed(1)}%, '
+              'BBox: [${y1.toStringAsFixed(3)}, ${x1.toStringAsFixed(3)}, '
+              '${y2.toStringAsFixed(3)}, ${x2.toStringAsFixed(3)}]'
+              '${isPersonDetection ? " ⭐ PERSON DETECTED!" : ""}');
         }
 
-        // Only create detection boxes for significant detections
-        // For efficiency, we could filter here, but keeping all for debug purposes
+        // Create detection boxes for all significant detections
         if (score > data.objectDetectionThreshold) {
           detectionBoxes.add(DetectionBox(
             x1: x1,
@@ -341,9 +342,11 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
           ));
         }
 
-        // Track the highest person confidence for the main detection result
+        // Track the highest person confidence (MobileNet SSD: person = class 0)
         if (classId == data.personClassId && score > maxPersonConfidence) {
           maxPersonConfidence = score;
+          print(
+              '🎯 New highest person confidence: ${(score * 100).toStringAsFixed(1)}%');
         }
       }
     } else if (outputTensors.containsKey(0)) {
@@ -365,11 +368,15 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
       try {
         // Create preprocessed frame visualization
         preprocessedFrameData = _generatePreprocessedFrameVisualization(
-            data.rawFrameData, data.inputWidth, data.inputHeight);
-
-        // Create debug frame with bounding boxes
-        debugFrameWithBoxes = _generateDebugFrameWithBoxes(data.rawFrameData,
-            detectionBoxes, data.inputWidth, data.inputHeight);
+            data.rawFrameData,
+            data.inputWidth,
+            data.inputHeight); // Create debug frame with bounding boxes
+        debugFrameWithBoxes = _generateDebugFrameWithBoxes(
+            data.rawFrameData,
+            detectionBoxes,
+            data.inputWidth,
+            data.inputHeight,
+            data.personClassId);
       } catch (e) {
         print('Warning: Debug frame generation failed: $e');
       }
@@ -417,13 +424,14 @@ Future<EnhancedInferenceResult> _runEnhancedInferenceInBackground(
 }
 
 /// Helper function to center crop and resize an image
-img.Image _centerCropAndResize(img.Image image, int targetWidth, int targetHeight) {
+img.Image _centerCropAndResize(
+    img.Image image, int targetWidth, int targetHeight) {
   // Calculate the aspect ratios
   final sourceAspect = image.width / image.height;
   final targetAspect = targetWidth / targetHeight;
-  
+
   img.Image cropped;
-  
+
   if (sourceAspect > targetAspect) {
     // Source is wider - crop the width
     final newWidth = (image.height * targetAspect).round();
@@ -431,24 +439,24 @@ img.Image _centerCropAndResize(img.Image image, int targetWidth, int targetHeigh
     cropped = img.copyCrop(image,
         x: cropX, y: 0, width: newWidth, height: image.height);
   } else {
-    // Source is taller - crop the height  
+    // Source is taller - crop the height
     final newHeight = (image.width / targetAspect).round();
     final cropY = ((image.height - newHeight) / 2).round();
     cropped = img.copyCrop(image,
         x: 0, y: cropY, width: image.width, height: newHeight);
   }
-  
+
   // Now resize to exact target dimensions
   return img.copyResize(cropped, width: targetWidth, height: targetHeight);
 }
 
-/// Preprocess frame data for model input in background isolate
+/// Preprocess frame data for MobileNet SSD model input in background isolate (OPTIMIZED)
 Object _preprocessFrameInBackground(Uint8List frameData, int inputWidth,
     int inputHeight, int numChannels, bool isQuantizedModel) {
   try {
     img.Image? image;
 
-    // Always try to decode as image first (handles JPEG/PNG and raw RGBA)
+    // Optimized image decoding with fallback strategy
     image = img.decodeImage(frameData);
     if (image == null && frameData.length == inputWidth * inputHeight * 4) {
       // Fallback: try raw RGBA if decodeImage failed
@@ -469,34 +477,42 @@ Object _preprocessFrameInBackground(Uint8List frameData, int inputWidth,
       throw Exception('Failed to decode frame data for preprocessing');
     }
 
-    // Center crop and resize to model input dimensions (instead of stretching)
+    // Optimized center crop and resize for MobileNet SSD
     final resized = _centerCropAndResize(image, inputWidth, inputHeight);
 
     if (isQuantizedModel) {
-      // For quantized models (uint8), use raw pixel values (0-255)
+      // For MobileNet SSD quantized models: use raw pixel values (0-255)
+      // Optimized memory allocation and pixel processing
       final totalSize = 1 * inputHeight * inputWidth * numChannels;
       final input = Uint8List(totalSize);
       int index = 0;
+
+      // Optimized pixel processing loop
       for (int y = 0; y < inputHeight; y++) {
         for (int x = 0; x < inputWidth; x++) {
           final pixel = resized.getPixel(x, y);
-          input[index++] = pixel.r.toInt().clamp(0, 255);
-          input[index++] = pixel.g.toInt().clamp(0, 255);
-          input[index++] = pixel.b.toInt().clamp(0, 255);
+          // MobileNet SSD expects RGB format
+          input[index++] = pixel.r.toInt();
+          input[index++] = pixel.g.toInt();
+          input[index++] = pixel.b.toInt();
         }
       }
       return input.reshape([1, inputHeight, inputWidth, numChannels]);
     } else {
-      // For float models, use normalized values (0.0-1.0)
+      // For float models: normalized values (0.0-1.0) with MobileNet optimizations
       final totalSize = 1 * inputHeight * inputWidth * numChannels;
       final input = Float32List(totalSize);
       int index = 0;
+
+      // Optimized normalization for MobileNet SSD
+      const double normalizationFactor = 1.0 / 255.0;
       for (int y = 0; y < inputHeight; y++) {
         for (int x = 0; x < inputWidth; x++) {
           final pixel = resized.getPixel(x, y);
-          input[index++] = (pixel.r / 255.0).clamp(0.0, 1.0);
-          input[index++] = (pixel.g / 255.0).clamp(0.0, 1.0);
-          input[index++] = (pixel.b / 255.0).clamp(0.0, 1.0);
+          // MobileNet SSD normalization: (pixel_value / 255.0)
+          input[index++] = pixel.r * normalizationFactor;
+          input[index++] = pixel.g * normalizationFactor;
+          input[index++] = pixel.b * normalizationFactor;
         }
       }
       return input.reshape([1, inputHeight, inputWidth, numChannels]);
@@ -533,8 +549,8 @@ Uint8List? _generatePreprocessedFrameVisualization(
 }
 
 /// Generate debug frame with bounding boxes drawn
-Uint8List? _generateDebugFrameWithBoxes(
-    Uint8List frameData, List<DetectionBox> boxes, int width, int height) {
+Uint8List? _generateDebugFrameWithBoxes(Uint8List frameData,
+    List<DetectionBox> boxes, int width, int height, int personClassId) {
   try {
     final image = img.decodeImage(frameData);
     if (image == null) return null;
@@ -547,16 +563,17 @@ Uint8List? _generateDebugFrameWithBoxes(
       final x1 = (box.x1 * width).round().clamp(0, width - 1);
       final y1 = (box.y1 * height).round().clamp(0, height - 1);
       final x2 = (box.x2 * width).round().clamp(0, width - 1);
-      final y2 = (box.y2 * height).round().clamp(0, height - 1);
-
-      // Draw rectangle (simple implementation)
+      final y2 = (box.y2 * height)
+          .round()
+          .clamp(0, height - 1); // Draw rectangle (simple implementation)
       img.drawRect(resized,
           x1: x1,
           y1: y1,
           x2: x2,
           y2: y2,
-          color: box.classId == 1  // Person class ID
-              ? img.ColorRgb8(0, 255, 0)  // Green for person
+          color: box.classId ==
+                  personClassId // Person class ID (0 for MobileNet SSD)
+              ? img.ColorRgb8(0, 255, 0) // Green for person
               : img.ColorRgb8(255, 0, 0), // Red for other objects
           thickness: 2);
     }
@@ -606,17 +623,17 @@ class PersonDetectionService extends GetxService {
   // Frame source tracking for debug widget
   final RxBool isFrameSourceReal =
       false.obs; // Track if frames are real camera or simulated
-  final RxString frameSourceStatus = 'No frames captured'.obs;
-  // Processing configuration for SSD MobileNet
+  final RxString frameSourceStatus =
+      'No frames captured'.obs; // Processing configuration for SSD MobileNet
   final int inputWidth = 300; // Matches your current model requirements
   final int inputHeight = 300; // Matches your current model requirements
   final int numChannels = 3;
   final double confidenceThreshold =
-      0.5; // Higher threshold for person detection
+      0.6; // Higher threshold for more reliable person detection
   final double objectDetectionThreshold =
-      0.3; // Reasonable threshold for all object detection
+      0.4; // Reasonable threshold for all object detection
   final int personClassId =
-      1; // Person class ID in COCO dataset (1, not 0 which is background)
+      0; // Person class ID in MobileNet SSD (0 for person, not COCO's 1)
 
   // Frame processing timer and stream
   Timer? _processingTimer;
@@ -845,13 +862,13 @@ class PersonDetectionService extends GetxService {
 
       // Try to load the TensorFlow Lite model from assets
       try {
-        // Load model as bytes for background processing
+        // Load the optimized MobileNet SSD model for better person detection
         final modelData =
-            await rootBundle.load('assets/models/person_detect.tflite');
+            await rootBundle.load('assets/models/ssd_mobilenet_v1.tflite');
         _modelBytes = modelData.buffer.asUint8List();
 
-        _interpreter =
-            await Interpreter.fromAsset('assets/models/person_detect.tflite');
+        _interpreter = await Interpreter.fromAsset(
+            'assets/models/ssd_mobilenet_v1.tflite');
 
         // Verify model input/output shape
         final inputShape = _interpreter!.getInputTensor(0).shape;
@@ -1831,12 +1848,13 @@ class PersonDetectionService extends GetxService {
     final validDetections = aboveThreshold.take(10).toList();
 
     print("🏆 Final object detections (all types): ${validDetections.length}");
-    
+
     // Log all detected object types
     if (validDetections.isNotEmpty) {
       print("📋 Detected object types:");
       for (final box in validDetections) {
-        print("   - ${box.className} (ID: ${box.classId}, confidence: ${box.confidence.toStringAsFixed(3)})");
+        print(
+            "   - ${box.className} (ID: ${box.classId}, confidence: ${box.confidence.toStringAsFixed(3)})");
       }
     }
 
@@ -1859,20 +1877,18 @@ class PersonDetectionService extends GetxService {
 
     objectCounts.value = counts;
     objectConfidences.value = confidences;
-    anyObjectDetected.value = validDetections.isNotEmpty;
-
-    // Update person-specific detection status for backward compatibility
+    anyObjectDetected.value = validDetections
+        .isNotEmpty; // Update person-specific detection status for backward compatibility
     final personDetections = validDetections
-        .where((box) => 
-            box.classId == 1 && 
-            box.className != null && 
+        .where((box) =>
+            box.classId == personClassId &&
+            box.className != null &&
             box.className!.toLowerCase() == 'person')
         .toList();
-        
+
     isPersonPresent.value = personDetections.isNotEmpty;
-    confidence.value = personDetections.isNotEmpty 
-        ? personDetections.first.confidence 
-        : 0.0;
+    confidence.value =
+        personDetections.isNotEmpty ? personDetections.first.confidence : 0.0;
 
     // Log detected objects periodically
     if (framesProcessed.value % 10 == 0 && validDetections.isNotEmpty) {
