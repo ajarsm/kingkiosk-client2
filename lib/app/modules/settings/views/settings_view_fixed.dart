@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import '../controllers/settings_controller_compat.dart';
 import 'web_url_settings_view_fixed.dart';
 import 'mqtt_settings_view.dart';
@@ -7,6 +8,9 @@ import 'communications_settings_view.dart';
 import 'ai_settings_view.dart';
 import 'media_settings_view.dart';
 import '../../../controllers/app_state_controller.dart';
+import '../../../widgets/responsive_app_bar.dart';
+import '../../../widgets/responsive_settings_layout.dart';
+import '../../../core/utils/responsive_utils.dart';
 
 class SettingsViewFixed extends GetView<SettingsControllerFixed> {
   const SettingsViewFixed({Key? key}) : super(key: key);
@@ -14,203 +18,196 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
   Widget build(BuildContext context) {
     // Controller is automatically provided by GetView
     return Scaffold(
-      appBar: AppBar(
-        title: Text('Settings'),
+      appBar: ResponsiveAppBar(
+        title: 'Settings',
         actions: [
-          IconButton(
-            icon: Icon(Icons.refresh),
-            onPressed: controller.resetAllSettings,
+          ResponsiveAction(
+            icon: const Icon(Icons.refresh),
+            label: 'Reset All',
             tooltip: 'Reset All Settings',
+            onPressed: controller.resetAllSettings,
+          ),
+          ResponsiveAction(
+            icon: const Icon(Icons.info_outline),
+            label: 'Help',
+            tooltip: 'Settings Help',
+            onPressed: () => _showSettingsHelp(context),
           ),
         ],
       ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(16.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildPinSettings(controller),
-            // App Settings
-            _buildSection(
-              title: 'App Settings',
-              children: [
-                _buildThemeToggle(),
-                _buildKioskModeToggle(),
-                _buildSystemInfoToggle(),
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-                  child: ListTile(
-                    leading: ShaderMask(
-                      shaderCallback: (rect) => LinearGradient(
-                        colors: [Colors.blueAccent, Colors.cyanAccent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
-                      child: Icon(Icons.settings_rounded, color: Colors.white),
-                    ),
-                    title: Text('App Settings',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('General application settings'),
-                    trailing: Icon(Icons.arrow_forward_ios_rounded,
-                        color: Colors.blueGrey.shade300),
-                    onTap: () => controller.saveAppSettings(),
+      body: ResponsiveSettingsLayout(
+        children: [
+          _buildPinSettings(controller), // App Settings
+          _buildSection(
+            context,
+            title: 'App Settings',
+            children: [
+              _buildThemeToggle(),
+              _buildKioskModeToggle(),
+              _buildSystemInfoToggle(),
+              Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+                child: ListTile(
+                  leading: ShaderMask(
+                    shaderCallback: (rect) => LinearGradient(
+                      colors: [Colors.blueAccent, Colors.cyanAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(rect),
+                    child: Icon(Icons.settings_rounded, color: Colors.white),
                   ),
-                ),
-              ],
-            ),
-
-            // Web URLs
-            _buildSection(
-              title: 'Web URLs',
-              children: [
-                WebUrlSettingsViewFixed(),
-              ],
-            ), // MQTT
-            _buildSection(
-              title: 'IoT & Integrations',
-              children: [
-                MqttSettingsView(),
-              ],
-            ), // Communications
-            _buildSection(
-              title: 'Communications',
-              children: [
-                CommunicationsSettingsView(),
-              ],
-            ), // AI Settings
-            _buildSection(
-              title: 'AI Assistant',
-              children: [
-                const AiSettingsView(),
-              ],
-            ),
-
-            // Media Settings
-            _buildSection(
-              title: 'Media & Playback',
-              children: [
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-                  child: ListTile(
-                    leading: ShaderMask(
-                      shaderCallback: (rect) => LinearGradient(
-                        colors: [Colors.redAccent, Colors.orangeAccent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
-                      child: Icon(Icons.videocam, color: Colors.white),
-                    ),
-                    title: Text('Media Settings',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle:
-                        Text('Hardware acceleration, video compatibility'),
-                    trailing: Icon(Icons.arrow_forward_ios_rounded,
-                        color: Colors.blueGrey.shade300),
-                    onTap: () => Get.to(() => MediaSettingsView()),
-                  ),                ),
-              ],
-            ),
-
-            // Security Settings
-            _buildSection(
-              title: 'Security',
-              children: [
-                Card(
-                  elevation: 8,
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(20)),
-                  margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-                  child: ListTile(
-                    leading: ShaderMask(
-                      shaderCallback: (rect) => LinearGradient(
-                        colors: [Colors.blueAccent, Colors.cyanAccent],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ).createShader(rect),
-                      child: Icon(Icons.security_rounded, color: Colors.white),
-                    ),
-                    title: Text('Security',
-                        style: TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text('PIN and access control'),
-                    trailing: Icon(Icons.arrow_forward_ios_rounded,
-                        color: Colors.blueGrey.shade300),
-                    onTap: () {
-                      // No saveSecuritySettings method exists; open PIN dialog or show info instead
-                      Get.snackbar(
-                        'Security',
-                        'PIN and access control settings are managed above.',
-                        snackPosition: SnackPosition.BOTTOM,
-                        backgroundColor:
-                            Colors.blueGrey.shade900.withOpacity(0.9),
-                        colorText: Colors.white,
-                        margin: EdgeInsets.all(16),
-                        borderRadius: 16,
-                        icon: Icon(Icons.security_rounded,
-                            color: Colors.cyanAccent),
-                        duration: Duration(seconds: 3),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            ),
-
-            // App info
-            Padding(
-              padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
-              child: Center(
-                child: Text(
-                  'Flutter GetX Kiosk v1.0.0',
-                  style: TextStyle(
-                    color: Colors.grey,
-                    fontSize: 12.0,
-                  ),
+                  title: Text('App Settings',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('General application settings'),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded,
+                      color: Colors.blueGrey.shade300),
+                  onTap: () => controller.saveAppSettings(),
                 ),
               ),
+            ],
+          ), // Web URLs
+          _buildSection(
+            context,
+            title: 'Web URLs',
+            children: [
+              WebUrlSettingsViewFixed(),
+            ],
+          ), // MQTT
+          _buildSection(
+            context,
+            title: 'IoT & Integrations',
+            children: [
+              MqttSettingsView(),
+            ],
+          ), // Communications
+          _buildSection(
+            context,
+            title: 'Communications',
+            children: [
+              CommunicationsSettingsView(),
+            ],
+          ), // AI Settings
+          _buildSection(
+            context,
+            title: 'AI Assistant',
+            children: [
+              const AiSettingsView(),
+            ],
+          ), // Media Settings
+          _buildSection(
+            context,
+            title: 'Media & Playback',
+            children: [
+              Card(
+                elevation: 8,
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(20)),
+                margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+                child: ListTile(
+                  leading: ShaderMask(
+                    shaderCallback: (rect) => LinearGradient(
+                      colors: [Colors.redAccent, Colors.orangeAccent],
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                    ).createShader(rect),
+                    child: Icon(Icons.videocam, color: Colors.white),
+                  ),
+                  title: Text('Media Settings',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  subtitle: Text('Hardware acceleration, video compatibility'),
+                  trailing: Icon(Icons.arrow_forward_ios_rounded,
+                      color: Colors.blueGrey.shade300),
+                  onTap: () => Get.to(() => MediaSettingsView()),
+                ),
+              ),
+            ],
+          ), // App info
+          Padding(
+            padding: const EdgeInsets.only(top: 24.0, bottom: 16.0),
+            child: Center(
+              child: FutureBuilder<PackageInfo>(
+                future: PackageInfo.fromPlatform(),
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    return Text(
+                      'King Kiosk v${snapshot.data!.version}+${snapshot.data!.buildNumber}',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12.0,
+                      ),
+                    );
+                  } else {
+                    return Text(
+                      'King Kiosk v1.0.0',
+                      style: TextStyle(
+                        color: Colors.grey,
+                        fontSize: 12.0,
+                      ),
+                    );
+                  }
+                },
+              ),
             ),
-          ],
-        ),
+          ),
+        ], // Close children array for ResponsiveSettingsLayout
       ),
     );
   }
 
-  Widget _buildSection(
+  // Add the help method
+  void _showSettingsHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Settings Help'),
+        content: const Text(
+          'Navigate through different settings categories:\n\n'
+          '• App Settings: General application preferences\n'
+          '• Web URLs: Configure web content sources\n'
+          '• IoT & Integrations: MQTT and device connections\n'
+          '• Communications: Video call and chat settings\n'
+          '• AI Assistant: AI model and behavior settings\n'
+          '• Media & Playback: Hardware acceleration options\n\n'
+          'Use the refresh button to reset all settings to defaults.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSection(BuildContext context,
       {required String title, required List<Widget> children}) {
-    return Card(
-      elevation: 6,
-      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 18.0, horizontal: 20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            ShaderMask(
-              shaderCallback: (rect) => LinearGradient(
-                colors: [Colors.blueAccent, Colors.cyanAccent],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ).createShader(rect),
-              child: Text(
-                title,
-                style: TextStyle(
-                  fontSize: 22.0,
-                  fontWeight: FontWeight.bold,
-                  color: Colors.white,
-                  letterSpacing: 1.1,
-                ),
+    return ResponsiveCard(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShaderMask(
+            shaderCallback: (rect) => LinearGradient(
+              colors: [Colors.blueAccent, Colors.cyanAccent],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ).createShader(rect),
+            child: Text(
+              title,
+              style: TextStyle(
+                fontSize: ResponsiveUtils.getResponsiveFontSize(context, 22.0),
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 1.1,
               ),
             ),
-            SizedBox(height: 12.0),
-            ...children,
-          ],
-        ),
+          ),
+          SizedBox(height: ResponsiveUtils.getSpacing(context)),
+          ...children,
+        ],
       ),
     );
   }
@@ -341,7 +338,8 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                   controller.setSettingsPin(value);
                 }
               },
-            ),            Text('Changing this PIN will be required to unlock settings.',
+            ),
+            Text('Changing this PIN will be required to unlock settings.',
                 style: TextStyle(fontSize: 12, color: Colors.grey)),
           ],
         ),

@@ -139,7 +139,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
               padding: EdgeInsets.only(top: 20, right: 20),
             ),
             // Floating AI button for call hangup
-            _buildFloatingAiButton(),            // Unified grab button for toolbar/appbar reveal (both mobile and desktop)
+            _buildFloatingAiButton(), // Unified grab button for toolbar/appbar reveal (both mobile and desktop)
             Positioned(
               top: 0,
               left: 0,
@@ -155,12 +155,14 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     },
                     child: Container(
                       width: 80, // Optimized size for both mobile and desktop
-                      height: 32, // Good touch target for mobile, visible for desktop
+                      height:
+                          32, // Good touch target for mobile, visible for desktop
                       alignment: Alignment.topCenter,
                       color: Colors.transparent,
                       child: Container(
                         width: 80,
-                        height: 12, // Thick enough to be easily visible and tappable
+                        height:
+                            12, // Thick enough to be easily visible and tappable
                         decoration: BoxDecoration(
                           color: Get.isDarkMode
                               ? Colors.white.withOpacity(0.8)
@@ -172,7 +174,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   ),
                 ),
               ),
-            ),// Auto-hiding toolbar at the bottom
+            ), // Auto-hiding toolbar at the bottom
             _AutoHidingToolbar(
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),
@@ -299,6 +301,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
       alwaysVisible: false, // Set to true for debugging if needed
     );
   }
+
   Widget _getIconForTileType(TileType type) {
     switch (type) {
       case TileType.webView:
@@ -373,12 +376,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
           url: tile.url,
           loop: tile.loop,
         );
-        break;      case TileType.audio:
+        break;
+      case TileType.audio:
         content = AudioTile(
           url: tile.url,
         );
         break;
-        
+
       case TileType.audioVisualizer:
         content = AudioVisualizerTile(
           url: tile.url,
@@ -418,231 +422,78 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ],
         borderRadius: const BorderRadius.vertical(top: Radius.circular(18)),
       ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          // Left-side toolbar buttons
-          ...[
-            _buildToolbarButton(
-              icon: Icons.web,
-              label: 'Web',
-              onPressed: locked ? null : () => _showAddWebViewDialog(context),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.video_collection_rounded,
-              label: 'Video',
-              onPressed: locked
-                  ? null
-                  : () => _showAddMediaDialog(context, isAudio: false),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.music_note_rounded,
-              label: 'Audio',
-              onPressed: locked
-                  ? null
-                  : () => _showAddMediaDialog(context, isAudio: true),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.smart_display,
-              label: 'YouTube',
-              onPressed: locked ? null : () => _showAddYouTubeDialog(context),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.picture_as_pdf,
-              label: 'PDF',
-              onPressed: locked ? null : () => _showAddPdfDialog(context),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: controller.tilingMode.value
-                  ? Icons.grid_view_rounded
-                  : Icons.view_carousel_rounded,
-              label: controller.tilingMode.value ? 'Tiling' : 'Floating',
-              onPressed: locked ? null : () => controller.toggleWindowMode(),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.info_outline_rounded,
-              label: 'IDs',
-              onPressed: locked ? null : () => _showWindowIdsDialog(context),
-              locked: locked,
-            ),
-            _buildToolbarButton(
-              icon: Icons.dashboard_customize_rounded,
-              label: 'System Info',
-              onPressed: locked ? null : () => _showSystemInfoDialog(context),
-              locked: locked,
-            ),
-            _buildAiAssistantButton(),
-          ],
-          // Center lock icon
-          Expanded(
-            child: Center(
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  borderRadius: BorderRadius.circular(32),
-                  onTap: () async {
-                    if (locked) {
-                      final result = await showDialog<bool>(
-                        context: context,
-                        builder: (context) => AlertDialog(
-                          title: Text('Unlock Kiosk'),
-                          content: Builder(
-                            builder: (context) {
-                              final pinPadKey =
-                                  GlobalKey<SettingsLockPinPadState>();
-                              return SettingsLockPinPad(
-                                key: pinPadKey,
-                                onPinEntered: (pin) {
-                                  if (pin ==
-                                      settingsController.settingsPin.value) {
-                                    settingsController.unlockSettings();
-                                    Navigator.of(context).pop(true);
-                                  } else {
-                                    pinPadKey.currentState
-                                        ?.showError('Incorrect PIN');
-                                  }
-                                },
-                                pinLength: 4,
-                              );
-                            },
-                          ),
-                        ),
-                      );
-                      if (result == true) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              'Unlocked!',
-                              style: TextStyle(
-                                color: Get.isDarkMode
-                                    ? Colors.black
-                                    : Colors.white,
-                              ),
-                            ),
-                            backgroundColor:
-                                Get.isDarkMode ? Colors.white : Colors.black,
-                            behavior: SnackBarBehavior.floating,
-                          ),
-                        );
-                      }
-                    } else {
-                      settingsController.lockSettings();
-                    }
-                  },
-                  child: AnimatedSwitcher(
-                    duration: Duration(milliseconds: 300),
-                    child: locked
-                        ? Icon(Icons.lock_rounded,
-                            key: ValueKey('locked'),
-                            color: Colors.redAccent,
-                            size: 38)
-                        : Icon(Icons.lock_open_rounded,
-                            key: ValueKey('unlocked'),
-                            color: Colors.greenAccent,
-                            size: 38),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final isSmallScreen = constraints.maxWidth < 800;
+
+          if (isSmallScreen) {
+            // On small screens, use horizontal scroll
+            return SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  // Left-side toolbar buttons
+                  ..._buildToolbarButtons(locked),
+
+                  // Center lock icon (fixed width for small screens)
+                  Container(
+                    width: 80,
+                    child: Center(
+                      child: _buildLockIcon(locked, context),
+                    ),
                   ),
-                ),
+
+                  // System info and settings
+                  _buildCompactSystemInfo(),
+                  NotificationBadge(),
+                  SizedBox(width: 8),
+                  _buildSettingsButton(context),
+                  SizedBox(width: 8),
+                  _buildExitButton(context),
+                  SizedBox(width: 8),
+                ],
               ),
-            ),
-          ), // System info and settings
-          _buildCompactSystemInfo(),
-          // Notification Badge
-          NotificationBadge(),
-          SizedBox(width: 8),
-          SizedBox(width: 8),
-          _buildToolbarButton(
-            icon: Icons.settings_rounded,
-            label: 'Settings',
-            onPressed: () async {
-              final result = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Enter PIN to Access Settings'),
-                  content: Builder(
-                    builder: (context) {
-                      final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                      return SettingsLockPinPad(
-                        key: pinPadKey,
-                        onPinEntered: (pin) {
-                          if (pin == settingsController.settingsPin.value) {
-                            Navigator.of(context).pop(true);
-                          } else {
-                            pinPadKey.currentState?.showError('Incorrect PIN');
-                          }
-                        },
-                        pinLength: 4,
-                      );
-                    },
+            );
+          } else {
+            // On larger screens, use the original layout with Expanded
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Left-side toolbar buttons - wrap in flexible to prevent overflow
+                Flexible(
+                  flex: 3,
+                  child: _buildScrollableToolbar(locked),
+                ),
+
+                // Center lock icon
+                Expanded(
+                  flex: 1,
+                  child: Center(
+                    child: _buildLockIcon(locked, context),
                   ),
                 ),
-              );
-              if (result == true) {
-                _navigateToSettings();
-              }
-            },
-            locked: false,
-          ),
-          SizedBox(width: 8),
-          _buildToolbarButton(
-            icon: Icons.exit_to_app_rounded,
-            label: 'Exit',
-            onPressed: () async {
-              final result = await showDialog<bool>(
-                context: context,
-                builder: (context) => AlertDialog(
-                  title: Text('Enter PIN to Exit Application'),
-                  content: Builder(
-                    builder: (context) {
-                      final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                      return SettingsLockPinPad(
-                        key: pinPadKey,
-                        onPinEntered: (pin) {
-                          if (pin == settingsController.settingsPin.value) {
-                            Navigator.of(context).pop(true);
-                          } else {
-                            pinPadKey.currentState?.showError('Incorrect PIN');
-                          }
-                        },
-                        pinLength: 4,
-                      );
-                    },
-                  ),
-                ),
-              );
-              if (result == true) {
-                final confirm = await showDialog<bool>(
-                  context: context,
-                  builder: (context) => AlertDialog(
-                    title: Text('Confirm Exit'),
-                    content:
-                        Text('Are you sure you want to exit the application?'),
-                    actions: [
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(false),
-                        child: Text('No'),
-                      ),
-                      TextButton(
-                        onPressed: () => Navigator.of(context).pop(true),
-                        child: Text('Yes'),
-                      ),
+
+                // System info and settings - wrap in flexible to prevent overflow
+                Flexible(
+                  flex: 2,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      _buildCompactSystemInfo(),
+                      NotificationBadge(),
+                      SizedBox(width: 8),
+                      _buildSettingsButton(context),
+                      SizedBox(width: 8),
+                      _buildExitButton(context),
+                      SizedBox(width: 8),
                     ],
                   ),
-                );
-                if (confirm == true) {
-                  _exitApplication();
-                }
-              }
-            },
-            locked: false,
-          ),
-          SizedBox(width: 8),
-        ],
+                ),
+              ],
+            );
+          }
+        },
       ),
     );
   }
@@ -1237,84 +1088,378 @@ class TilingWindowViewState extends State<TilingWindowView> {
     return _buildBottomToolbar(locked);
   }
 
-  // Floating AI button for quickly hanging up during calls
+  /// Builds the list of main toolbar buttons
+  List<Widget> _buildToolbarButtons(bool locked) {
+    return [
+      _buildToolbarButton(
+        icon: Icons.web,
+        label: 'Web',
+        onPressed: locked ? null : () => _showAddWebViewDialog(context),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.video_collection_rounded,
+        label: 'Video',
+        onPressed:
+            locked ? null : () => _showAddMediaDialog(context, isAudio: false),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.music_note_rounded,
+        label: 'Audio',
+        onPressed:
+            locked ? null : () => _showAddMediaDialog(context, isAudio: true),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.smart_display,
+        label: 'YouTube',
+        onPressed: locked ? null : () => _showAddYouTubeDialog(context),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.picture_as_pdf,
+        label: 'PDF',
+        onPressed: locked ? null : () => _showAddPdfDialog(context),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: controller.tilingMode.value
+            ? Icons.grid_view_rounded
+            : Icons.view_carousel_rounded,
+        label: controller.tilingMode.value ? 'Tiling' : 'Floating',
+        onPressed: locked ? null : () => controller.toggleWindowMode(),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.info_outline_rounded,
+        label: 'IDs',
+        onPressed: locked ? null : () => _showWindowIdsDialog(context),
+        locked: locked,
+      ),
+      _buildToolbarButton(
+        icon: Icons.dashboard_customize_rounded,
+        label: 'System Info',
+        onPressed: locked ? null : () => _showSystemInfoDialog(context),
+        locked: locked,
+      ),
+      _buildAiAssistantButton(),
+    ];
+  }
+
+  /// Builds the lock/unlock icon
+  Widget _buildLockIcon(bool locked, BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(32),
+        onTap: () async {
+          if (locked) {
+            final result = await showDialog<bool>(
+              context: context,
+              builder: (context) => AlertDialog(
+                title: Text('Unlock Kiosk'),
+                content: Builder(
+                  builder: (context) {
+                    final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                    return SettingsLockPinPad(
+                      key: pinPadKey,
+                      onPinEntered: (pin) {
+                        if (pin == settingsController.settingsPin.value) {
+                          settingsController.unlockSettings();
+                          Navigator.of(context).pop(true);
+                        } else {
+                          pinPadKey.currentState?.showError('Incorrect PIN');
+                        }
+                      },
+                      pinLength: 4,
+                    );
+                  },
+                ),
+              ),
+            );
+            if (result == true) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Unlocked!',
+                    style: TextStyle(
+                      color: Get.isDarkMode ? Colors.black : Colors.white,
+                    ),
+                  ),
+                  backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
+                  behavior: SnackBarBehavior.floating,
+                ),
+              );
+            }
+          } else {
+            settingsController.lockSettings();
+          }
+        },
+        child: AnimatedSwitcher(
+          duration: Duration(milliseconds: 300),
+          child: locked
+              ? Icon(Icons.lock_rounded,
+                  key: ValueKey('locked'), color: Colors.redAccent, size: 38)
+              : Icon(Icons.lock_open_rounded,
+                  key: ValueKey('unlocked'),
+                  color: Colors.greenAccent,
+                  size: 38),
+        ),
+      ),
+    );
+  }
+
+  /// Builds the settings button
+  Widget _buildSettingsButton(BuildContext context) {
+    return _buildToolbarButton(
+      icon: Icons.settings_rounded,
+      label: 'Settings',
+      onPressed: () async {
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Enter PIN to Access Settings'),
+            content: Builder(
+              builder: (context) {
+                final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                return SettingsLockPinPad(
+                  key: pinPadKey,
+                  onPinEntered: (pin) {
+                    if (pin == settingsController.settingsPin.value) {
+                      Navigator.of(context).pop(true);
+                    } else {
+                      pinPadKey.currentState?.showError('Incorrect PIN');
+                    }
+                  },
+                  pinLength: 4,
+                );
+              },
+            ),
+          ),
+        );
+        if (result == true) {
+          _navigateToSettings();
+        }
+      },
+      locked: false,
+    );
+  }
+
+  /// Builds the exit button
+  Widget _buildExitButton(BuildContext context) {
+    return _buildToolbarButton(
+      icon: Icons.exit_to_app_rounded,
+      label: 'Exit',
+      onPressed: () async {
+        final result = await showDialog<bool>(
+          context: context,
+          builder: (context) => AlertDialog(
+            title: Text('Enter PIN to Exit Application'),
+            content: Builder(
+              builder: (context) {
+                final pinPadKey = GlobalKey<SettingsLockPinPadState>();
+                return SettingsLockPinPad(
+                  key: pinPadKey,
+                  onPinEntered: (pin) {
+                    if (pin == settingsController.settingsPin.value) {
+                      Navigator.of(context).pop(true);
+                    } else {
+                      pinPadKey.currentState?.showError('Incorrect PIN');
+                    }
+                  },
+                  pinLength: 4,
+                );
+              },
+            ),
+          ),
+        );
+        if (result == true) {
+          final confirm = await showDialog<bool>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text('Confirm Exit'),
+              content: Text('Are you sure you want to exit the application?'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text('No'),
+                ),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text('Yes'),
+                ),
+              ],
+            ),
+          );
+          if (confirm == true) {
+            _exitApplication();
+          }
+        }
+      },
+      locked: false,
+    );
+  }
+
+  /// Builds a floating AI button for quick access
   Widget _buildFloatingAiButton() {
     if (aiAssistantService == null) {
-      return const SizedBox.shrink(); // No button if service not available
+      return SizedBox.shrink();
     }
 
     return Obx(() {
-      // Only show the button when an AI call is active
-      if (!aiAssistantService!.isAiCallActive.value) {
-        return const SizedBox.shrink(); // Hide when no active call
+      // Only show the floating button if AI is enabled and there's an active call
+      if (!aiAssistantService!.isAiEnabled.value ||
+          !aiAssistantService!.isAiCallActive.value) {
+        return SizedBox.shrink();
       }
 
-      // Choose icon based on call state
-      IconData callIcon;
-      Color iconColor;
-      Color bgColor;
-
-      switch (aiAssistantService!.aiCallState.value) {
-        case 'connecting':
-          callIcon = Icons.call_end_rounded;
-          iconColor = Colors.white;
-          bgColor = Colors.amber.withOpacity(0.7);
-          break;
-        case 'connected':
-        case 'confirmed':
-          callIcon = Icons.call_end_rounded;
-          iconColor = Colors.white;
-          bgColor = Colors.red.withOpacity(0.7);
-          break;
-        case 'failed':
-          return const SizedBox.shrink(); // Hide button on call failure
-        case 'ended':
-          return const SizedBox.shrink(); // Hide button when call ended
-        default:
-          callIcon = Icons.call_end_rounded;
-          iconColor = Colors.white;
-          bgColor = Colors.red.withOpacity(0.7);
-      } // Return a translucent floating button in the corner that doesn't block input events to what's below
       return Positioned(
-        top: 16,
-        right: 16,
+        top: 80,
+        right: 20,
         child: Material(
-          elevation: 3,
           color: Colors.transparent,
-          borderRadius: BorderRadius.circular(24),
-          child: InkWell(
-            borderRadius: BorderRadius.circular(24),
-            onTap: () => aiAssistantService!.endAiCall(),
-            child: Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: bgColor,
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(
-                  color: Colors.white.withOpacity(0.4),
-                  width: 1,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.red.withOpacity(0.9),
+              borderRadius: BorderRadius.circular(28),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: Offset(0, 4),
                 ),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(callIcon, color: iconColor, size: 24),
-                  const SizedBox(width: 8),
-                  Text(
-                    'End Call',
-                    style: TextStyle(
-                      color: iconColor,
-                      fontSize: 14,
-                      fontWeight: FontWeight.bold,
+              ],
+            ),
+            child: InkWell(
+              borderRadius: BorderRadius.circular(28),
+              onTap: () => aiAssistantService!.endAiCall(),
+              child: Container(
+                width: 56,
+                height: 56,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.call_end,
+                      color: Colors.white,
+                      size: 24,
                     ),
-                  ),
-                ],
+                    SizedBox(height: 2),
+                    Text(
+                      'End',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
         ),
       );
     });
+  }
+
+  /// Builds a scrollable toolbar with visual indicators for overflow
+  Widget _buildScrollableToolbar(bool locked) {
+    return StatefulBuilder(
+      builder: (context, setState) {
+        final ScrollController scrollController = ScrollController();
+        bool showLeftIndicator = false;
+        bool showRightIndicator = false;
+
+        void updateIndicators() {
+          if (scrollController.hasClients) {
+            setState(() {
+              showLeftIndicator = scrollController.offset > 0;
+              showRightIndicator = scrollController.offset <
+                  scrollController.position.maxScrollExtent;
+            });
+          }
+        }
+
+        // Listen to scroll changes
+        scrollController.addListener(updateIndicators);
+
+        // Check initial state after frame builds
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          updateIndicators();
+        });
+
+        return Stack(
+          children: [
+            // Main scrollable content
+            SingleChildScrollView(
+              controller: scrollController,
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: _buildToolbarButtons(locked),
+              ),
+            ),
+
+            // Left scroll indicator
+            if (showLeftIndicator)
+              Positioned(
+                left: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 20,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Colors.black.withOpacity(0.3),
+                        Colors.transparent,
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.keyboard_arrow_left,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ),
+
+            // Right scroll indicator
+            if (showRightIndicator)
+              Positioned(
+                right: 0,
+                top: 0,
+                bottom: 0,
+                child: Container(
+                  width: 20,
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Colors.transparent,
+                        Colors.black.withOpacity(0.3),
+                      ],
+                    ),
+                  ),
+                  child: Center(
+                    child: Icon(
+                      Icons.keyboard_arrow_right,
+                      color: Colors.white.withOpacity(0.8),
+                      size: 16,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
   }
 }
 

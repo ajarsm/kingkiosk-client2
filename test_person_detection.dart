@@ -125,7 +125,7 @@ void main() async {
   // Test 9: Configuration Validation
   print('\n📋 Test 9: Configuration Validation');
   print('Detection threshold: ${service.confidenceThreshold}');
-  print('Processing interval: ${service.processingInterval.inMilliseconds}ms');
+  print('Processing interval: ${service.analysisInterval.inMilliseconds}ms');
   print('Service status: ${service.getStatus()}');
 
   // Test 10: Model File Verification
