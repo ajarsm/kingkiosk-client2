@@ -21,6 +21,7 @@ import '../../controllers/halo_effect_controller.dart';
 import '../../controllers/window_halo_controller.dart';
 import '../../services/media_hardware_detection.dart';
 import '../../services/android_kiosk_service.dart';
+import '../../services/platform_kiosk_service.dart';
 import 'package:king_kiosk/notification_system/services/alert_service.dart';
 
 class InitialBinding extends Bindings {
@@ -87,12 +88,19 @@ class InitialBinding extends Bindings {
     print(
         'MQTT service initialized successfully'); // Register Alert service for center-screen alerts
     Get.put<AlertService>(AlertService(), permanent: true);
-    print('Alert service initialized successfully');
-
-    // Register Android Kiosk Service (Android only)
+    print(
+        'Alert service initialized successfully'); // Register Android Kiosk Service (Android only)
     if (Platform.isAndroid) {
       Get.put<AndroidKioskService>(AndroidKioskService(), permanent: true);
       print('Android Kiosk service initialized successfully');
+    }
+
+    // Register Platform Kiosk Service (cross-platform wrapper)
+    try {
+      Get.put<PlatformKioskService>(PlatformKioskService(), permanent: true);
+      print('Platform Kiosk service initialized successfully');
+    } catch (e) {
+      print('Error initializing Platform Kiosk service: $e');
     }
 
     // Initialize AI Assistant service

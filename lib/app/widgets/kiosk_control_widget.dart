@@ -1,14 +1,87 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:king_kiosk/app/services/android_kiosk_service.dart';
+import 'package:king_kiosk/app/services/platform_kiosk_service.dart';
+import 'dart:io';
 
 /// Demo widget showing how to integrate kiosk controls into your app
 /// This can be added to settings or admin panels
+/// Now supports cross-platform kiosk functionality
 class KioskControlWidget extends StatelessWidget {
   const KioskControlWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    // Check if we have the new platform service, otherwise use Android service
+    final bool hasPlatformService = Get.isRegistered<PlatformKioskService>();
+
+    if (hasPlatformService) {
+      return _buildPlatformKioskWidget(context);
+    } else {
+      return _buildAndroidKioskWidget(context);
+    }
+  }
+
+  Widget _buildPlatformKioskWidget(BuildContext context) {
+    final platformService = Get.find<PlatformKioskService>();
+
+    return Card(
+      margin: const EdgeInsets.all(16),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Platform header with icon
+            Row(
+              children: [
+                Icon(_getPlatformIcon(), size: 24, color: _getPlatformColor()),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    '🔒 ${platformService.platformName} Kiosk Mode',
+                    style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                          fontWeight: FontWeight.bold,
+                        ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+
+            // Control level indicator
+            Text(
+              '${platformService.controlLevel}% Control (${platformService.controlLevelDescription})',
+              style: TextStyle(
+                color: Colors.grey[600],
+                fontSize: 14,
+              ),
+            ),
+            LinearProgressIndicator(
+              value: platformService.controlLevel / 100,
+              backgroundColor: Colors.grey[300],
+              valueColor: AlwaysStoppedAnimation<Color>(
+                  _getControlColor(platformService.controlLevel)),
+            ),
+            const SizedBox(height: 16),
+
+            // Status Display
+            Obx(() => _buildPlatformStatusSection(platformService)),
+            const SizedBox(height: 24),
+
+            // Main Controls
+            _buildPlatformMainControls(platformService),
+            const SizedBox(height: 16),
+
+            // Platform-specific warning
+            _buildPlatformWarning(platformService),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAndroidKioskWidget(BuildContext context) {
     final kioskService = Get.find<AndroidKioskService>();
 
     return Card(
@@ -64,6 +137,214 @@ class KioskControlWidget extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  // Platform-specific helper methods
+  IconData _getPlatformIcon() {
+    if (Platform.isAndroid) return Icons.android;
+    if (Platform.isWindows) return Icons.desktop_windows;
+    if (Platform.isMacOS) return Icons.desktop_mac;
+    if (Platform.isIOS) return Icons.phone_iphone;
+    return Icons.device_unknown;
+  }
+
+  Color _getPlatformColor() {
+    if (Platform.isAndroid) return Colors.green;
+    if (Platform.isWindows) return Colors.blue;
+    if (Platform.isMacOS) return Colors.grey;
+    if (Platform.isIOS) return Colors.blue;
+    return Colors.grey;
+  }
+
+  Color _getControlColor(int level) {
+    if (level >= 90) return Colors.green;
+    if (level >= 70) return Colors.lightGreen;
+    if (level >= 50) return Colors.orange;
+    if (level >= 30) return Colors.deepOrange;
+    return Colors.red;
+  }
+
+  Widget _buildPlatformStatusSection(PlatformKioskService service) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Current Status',
+            style: TextStyle(
+              fontWeight: FontWeight.w600,
+              color: Colors.grey.shade700,
+            ),
+          ),
+          const SizedBox(height: 8),
+          _buildStatusRow(
+            'Kiosk Mode',
+            service.isKioskModeActive,
+            service.isKioskModeActive ? Colors.green : Colors.grey,
+          ),
+          _buildStatusRow(
+            '${service.platformName} Platform',
+            true,
+            _getPlatformColor(),
+          ),
+          _buildStatusRow(
+            'Control Level',
+            service.controlLevel > 50,
+            _getControlColor(service.controlLevel),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPlatformMainControls(PlatformKioskService service) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Main Controls',
+          style: TextStyle(
+            fontWeight: FontWeight.w600,
+            color: Colors.grey.shade700,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Row(
+          children: [
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: service.isKioskModeActive
+                    ? null
+                    : () async {
+                        final success = await service.enableKioskMode();
+                        if (success) {
+                          Get.snackbar(
+                            'Success',
+                            'Kiosk mode enabled on ${service.platformName}',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.green,
+                            colorText: Colors.white,
+                          );
+                        } else {
+                          Get.snackbar(
+                            'Failed',
+                            'Could not enable kiosk mode',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.red,
+                            colorText: Colors.white,
+                          );
+                        }
+                      },
+                icon: const Icon(Icons.lock),
+                label: const Text('Enable Kiosk'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.green,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: ElevatedButton.icon(
+                onPressed: service.isKioskModeActive
+                    ? () async {
+                        final success = await service.disableKioskMode();
+                        if (success) {
+                          Get.snackbar(
+                            'Success',
+                            'Kiosk mode disabled',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.orange,
+                            colorText: Colors.white,
+                          );
+                        } else {
+                          Get.snackbar(
+                            'Failed',
+                            'Could not disable kiosk mode',
+                            snackPosition: SnackPosition.BOTTOM,
+                            backgroundColor: Colors.red,
+                            colorText: Colors.white,
+                          );
+                        }
+                      }
+                    : null,
+                icon: const Icon(Icons.lock_open),
+                label: const Text('Disable Kiosk'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red,
+                  foregroundColor: Colors.white,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        SizedBox(
+          width: double.infinity,
+          child: OutlinedButton.icon(
+            onPressed: () => service.showSetupInstructions(),
+            icon: const Icon(Icons.info_outline),
+            label: Text('${service.platformName} Platform Info'),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildPlatformWarning(PlatformKioskService service) {
+    Color warningColor = Colors.orange;
+    String warningText = 'Kiosk mode will restrict device access.';
+
+    if (Platform.isIOS) {
+      warningColor = Colors.blue;
+      warningText =
+          'iOS requires manual Guided Access activation for full kiosk mode.';
+    } else if (Platform.isMacOS) {
+      warningColor = Colors.grey;
+      warningText =
+          'macOS has limited kiosk capabilities due to system restrictions.';
+    } else if (Platform.isWindows) {
+      warningColor = Colors.blue;
+      warningText = 'Windows kiosk mode may require administrator privileges.';
+    } else if (Platform.isAndroid) {
+      warningColor = Colors.orange;
+      warningText = 'Android kiosk mode provides full device control.';
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: warningColor.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: warningColor.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Platform.isIOS ? Icons.accessibility : Icons.warning,
+            color: warningColor,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              warningText,
+              style: TextStyle(
+                fontSize: 12,
+                color: warningColor.withValues(alpha: 0.8),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -246,8 +527,9 @@ class KioskControlWidget extends StatelessWidget {
       avatar: Icon(icon, size: 18),
       label: Text(label),
       onPressed: onTap,
-      backgroundColor: color?.withOpacity(0.1) ?? Colors.blue.shade50,
-      side: BorderSide(color: color?.withOpacity(0.3) ?? Colors.blue.shade200),
+      backgroundColor: color?.withValues(alpha: 0.1) ?? Colors.blue.shade50,
+      side: BorderSide(
+          color: color?.withValues(alpha: 0.3) ?? Colors.blue.shade200),
     );
   }
 
@@ -496,14 +778,12 @@ class KioskControlWidget extends StatelessWidget {
               _buildInfoItem('Is Home App', stateInfo['isHomeApp']),
               _buildInfoItem('Has Permissions', stateInfo['hasPermissions']),
               _buildInfoItem('Is Restoring', stateInfo['isRestoring']),
-
               const SizedBox(height: 16),
               Text(
                 'Configuration:',
                 style: TextStyle(fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 8),
-
               Container(
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
