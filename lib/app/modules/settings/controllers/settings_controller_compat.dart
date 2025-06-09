@@ -361,17 +361,44 @@ class SettingsControllerFixed extends SettingsController {
 
     // Update the service if available
     if (personDetectionService != null) {
-      personDetectionService.isEnabled.value = personDetectionEnabled.value;
-      // If enabling, check permissions first, then start detection with the selected camera from MediaDeviceService
+      personDetectionService.isEnabled.value = personDetectionEnabled
+          .value; // If enabling, check permissions first, then start detection with the selected camera from MediaDeviceService
       if (personDetectionEnabled.value) {
-        // Request camera and microphone permissions before starting person detection
-        final hasPermissions =
-            await PermissionsManager.requestCameraAndMicPermissions();
-        if (!hasPermissions) {
+        // Request camera permission for person detection (no microphone needed)
+        final cameraPermissionResult =
+            await PermissionsManager.requestCameraPermission();
+        if (!cameraPermissionResult.granted) {
           // Revert the toggle if permissions are denied
           personDetectionEnabled.value = false;
           storageService.write(AppConstants.keyPersonDetectionEnabled, false);
           storageService.flush();
+
+          if (cameraPermissionResult.permanentlyDenied) {
+            // Show dialog to open settings for permanently denied permissions
+            if (Get.context != null) {
+              showDialog(
+                context: Get.context!,
+                builder: (context) => AlertDialog(
+                  title: const Text('Permission Required'),
+                  content: const Text(
+                      'Camera access is permanently denied. Please enable camera permissions in your device settings to use person detection.'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Cancel'),
+                    ),
+                    TextButton(
+                      onPressed: () async {
+                        Navigator.of(context).pop();
+                        await PermissionsManager.openAppSettings();
+                      },
+                      child: const Text('Open Settings'),
+                    ),
+                  ],
+                ),
+              );
+            }
+          }
 
           Get.snackbar(
             'Permission Required',

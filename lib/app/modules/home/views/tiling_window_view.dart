@@ -11,6 +11,7 @@ import '../widgets/pdf_tile.dart';
 import '../widgets/auto_hide_title_bar.dart';
 import '../widgets/webview_tile_manager.dart';
 import '../widgets/youtube_player_tile.dart';
+import '../widgets/clock_widget.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -334,6 +335,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.smart_display, size: 16);
       case TileType.pdf:
         return Icon(Icons.picture_as_pdf, size: 16);
+      case TileType.clock:
+        return Icon(Icons.access_time, size: 16);
     }
   }
 
@@ -410,11 +413,17 @@ class TilingWindowViewState extends State<TilingWindowView> {
           imageUrls: tile.imageUrls,
         );
         break;
-
       case TileType.pdf:
         content = PdfTile(
           url: tile.url,
           windowId: tile.id,
+        );
+        break;
+
+      case TileType.clock:
+        content = ClockWidget(
+          windowId: tile.id,
+          showControls: false, // Controls are handled by the title bar
         );
         break;
     }

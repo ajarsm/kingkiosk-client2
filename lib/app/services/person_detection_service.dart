@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:get/get.dart';
@@ -677,6 +678,69 @@ class PersonDetectionService extends GetxService {
     ever(isEnabled, (bool enabled) async {
       _storageService.write(AppConstants.keyPersonDetectionEnabled, enabled);
       if (enabled) {
+        // First check current permission status for debugging
+        final currentCameraStatus =
+            await PermissionsManager.checkCameraPermission();
+        print(
+            '[PersonDetection] Current camera permission: ${currentCameraStatus.status}');
+
+        // Debug permission statuses
+        final debugStatuses =
+            await PermissionsManager.debugPermissionStatuses();
+        print('[PersonDetection] Debug permissions: $debugStatuses');
+
+        // If already granted, proceed directly
+        if (currentCameraStatus.granted) {
+          print(
+              '[PersonDetection] Camera permission already granted, proceeding...');
+          final modelInitialized = await _initializeModel();
+          if (modelInitialized) {
+            final detectionStarted = await startDetection();
+            if (detectionStarted) {
+              print('✅ Person detection started with existing permission');
+            } else {
+              print(
+                  '⚠️ Person detection model initialized but failed to start camera');
+            }
+          }
+          return;
+        }
+
+        // Check if permission is permanently denied
+        if (currentCameraStatus.permanentlyDenied) {
+          print('[PersonDetection] Camera permission permanently denied');
+          lastError.value =
+              'Camera access permanently denied. Please enable camera permissions in Settings.';
+          await _showPermissionSettingsDialog(
+              'Camera access is required for person detection. Please enable camera permissions in your device settings.');
+          isEnabled.value = false;
+          return;
+        }
+
+        // Permission is not granted and not permanently denied, try to request it
+        print('[PersonDetection] Requesting camera permission...');
+        final cameraPermissionResult =
+            await PermissionsManager.requestCameraPermission();
+        print(
+            '[PersonDetection] Camera permission result: ${cameraPermissionResult.status}');
+
+        if (!cameraPermissionResult.granted) {
+          if (cameraPermissionResult.permanentlyDenied) {
+            lastError.value =
+                'Camera access permanently denied. Please enable camera permissions in Settings.';
+            print(
+                '❌ Camera permission permanently denied for person detection.');
+            await _showPermissionSettingsDialog(
+                'Camera access is required for person detection. Please enable camera permissions in your device settings.');
+          } else {
+            lastError.value =
+                'Camera permission is required to enable person detection';
+            print(
+                '❌ Camera permission denied. Cannot enable person detection.');
+          }
+          isEnabled.value = false;
+          return;
+        }
         final modelInitialized = await _initializeModel();
         if (modelInitialized) {
           final detectionStarted = await startDetection();
@@ -701,6 +765,32 @@ class PersonDetectionService extends GetxService {
     super.onClose();
   }
 
+  /// Show permission settings dialog for permanently denied permissions
+  Future<void> _showPermissionSettingsDialog(String message) async {
+    if (!Get.isDialogOpen!) {
+      await Get.dialog(
+        AlertDialog(
+          title: const Text('Permission Required'),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back(),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () async {
+                Get.back();
+                await PermissionsManager.openAppSettings();
+              },
+              child: const Text('Open Settings'),
+            ),
+          ],
+        ),
+        barrierDismissible: false,
+      );
+    }
+  }
+
   /// Upgrade camera resolution to 720p for SIP calls
   Future<bool> upgradeTo720p({String? deviceId}) async {
     if (isUpgradedTo720p.value) {
@@ -710,22 +800,34 @@ class PersonDetectionService extends GetxService {
 
     print('📹 Upgrading camera to 720p for SIP call...');
 
-    // Platform-specific permission handling
-    // For iOS, skip permission handler completely - let getUserMedia handle permissions natively
-    // For Android, use permission handler as it's more reliable for Android WebRTC
-    if (Platform.isAndroid) {
-      final hasPermissions =
-          await PermissionsManager.requestCameraAndMicPermissions();
-      if (!hasPermissions) {
+    // Request camera and microphone permissions for 720p upgrade (SIP calls)
+    final permissionsResult =
+        await PermissionsManager.requestCameraAndMicrophonePermissions();
+    final cameraGranted = permissionsResult['camera']?.granted ?? false;
+    final micGranted = permissionsResult['microphone']?.granted ?? false;
+
+    if (!cameraGranted || !micGranted) {
+      List<String> deniedPermissions = [];
+      if (!cameraGranted) deniedPermissions.add('Camera');
+      if (!micGranted) deniedPermissions.add('Microphone');
+
+      final cameraPermanentlyDenied =
+          permissionsResult['camera']?.permanentlyDenied ?? false;
+      final micPermanentlyDenied =
+          permissionsResult['microphone']?.permanentlyDenied ?? false;
+
+      if (cameraPermanentlyDenied || micPermanentlyDenied) {
         lastError.value =
-            'Camera and microphone permissions are required for 720p upgrade';
+            '${deniedPermissions.join(' and ')} access permanently denied. Please enable permissions in Settings.';
+        await _showPermissionSettingsDialog(
+            '${deniedPermissions.join(' and ')} access is required for SIP calls. Please enable permissions in your device settings.');
+      } else {
+        lastError.value =
+            '${deniedPermissions.join(' and ')} permissions are required for 720p upgrade';
         print(
-            '❌ Camera/microphone permissions denied. Cannot upgrade to 720p.');
-        return false;
+            '❌ ${deniedPermissions.join('/')} permissions denied. Cannot upgrade to 720p.');
       }
-    } else if (Platform.isIOS) {
-      print(
-          '🍎 iOS detected - skipping permission_handler, using native getUserMedia permission flow');
+      return false;
     }
 
     try {
@@ -1127,22 +1229,21 @@ class PersonDetectionService extends GetxService {
       return false;
     }
 
-    // Platform-specific permission handling
-    // For iOS, skip permission handler completely - let getUserMedia handle permissions natively
-    // For Android, use permission handler as it's more reliable for Android WebRTC
-    if (Platform.isAndroid) {
-      final hasPermissions =
-          await PermissionsManager.requestCameraAndMicPermissions();
-      if (!hasPermissions) {
+    // Request camera permission for person detection (no microphone needed)
+    final cameraPermissionResult =
+        await PermissionsManager.requestCameraPermission();
+    if (!cameraPermissionResult.granted) {
+      if (cameraPermissionResult.permanentlyDenied) {
         lastError.value =
-            'Camera and microphone permissions are required for person detection';
-        print(
-            '❌ Camera/microphone permissions denied. Cannot start person detection.');
-        return false;
+            'Camera access permanently denied. Please enable camera permissions in Settings.';
+        print('❌ Camera permission permanently denied for person detection.');
+        await _showPermissionSettingsDialog(
+            'Camera access is required for person detection. Please enable camera permissions in your device settings.');
+      } else {
+        lastError.value = 'Camera permission is required for person detection';
+        print('❌ Camera permission denied. Cannot start person detection.');
       }
-    } else if (Platform.isIOS) {
-      print(
-          '🍎 iOS detected - skipping permission_handler, using native getUserMedia permission flow');
+      return false;
     }
 
     // Initialize model if not already done

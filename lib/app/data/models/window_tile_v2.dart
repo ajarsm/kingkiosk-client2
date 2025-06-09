@@ -9,6 +9,7 @@ enum TileType {
   image, // Added image type
   youtube, // Added YouTube player type
   pdf, // Added PDF viewer type
+  clock, // Added clock widget type
 }
 
 /// Represents a window tile in the tiling window manager

@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import 'package:battery_plus/battery_plus.dart';
@@ -362,24 +363,93 @@ class PlatformSensorService extends GetxService {
 
   Future<void> _checkAndRequestLocationPermission() async {
     try {
-      // Use PermissionsManager for consistent permission handling
-      final hasPermission =
+      // Use PermissionsManager for robust permission handling
+      final permissionResult =
           await PermissionsManager.requestLocationPermission();
 
-      if (hasPermission) {
+      if (permissionResult.granted) {
         locationEnabled.value = true;
         locationStatus.value = "Permission Granted";
-        developer.log('Location permission granted');
+        developer
+            .log('Location permission granted: ${permissionResult.status}');
       } else {
         locationEnabled.value = false;
         locationStatus.value = "Location Permission Denied";
-        developer.log('Location permission denied');
+        developer.log('Location permission denied: ${permissionResult.status}');
+
+        // Show user-friendly dialog for permission issues
+        if (permissionResult.permanentlyDenied) {
+          _showLocationPermissionDialog(
+            title: 'Location Permission Required',
+            message:
+                'Location access has been permanently denied. Please enable location permissions in your device settings to use location features.',
+            showSettingsButton: true,
+          );
+        } else {
+          _showLocationPermissionDialog(
+            title: 'Location Permission Denied',
+            message:
+                'Location access is required for location-based features. Please allow location access when prompted.',
+            showSettingsButton: false,
+          );
+        }
       }
     } catch (e) {
       developer.log('Error checking location permission', error: e);
       locationStatus.value = "Permission Error: ${e.toString()}";
       locationEnabled.value = false;
+
+      // Show error dialog
+      _showLocationPermissionDialog(
+        title: 'Location Error',
+        message: 'An error occurred while requesting location permission: $e',
+        showSettingsButton: false,
+      );
     }
+  }
+
+  /// Show user-friendly location permission dialog
+  void _showLocationPermissionDialog({
+    required String title,
+    required String message,
+    required bool showSettingsButton,
+  }) {
+    Get.dialog(
+      AlertDialog(
+        title: Text(title),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: Text('Cancel'),
+          ),
+          if (showSettingsButton)
+            TextButton(
+              onPressed: () async {
+                Get.back();
+                final opened = await PermissionsManager.openLocationSettings();
+                if (!opened) {
+                  Get.snackbar(
+                    'Settings Error',
+                    'Could not open device settings. Please manually enable location permissions in your device settings.',
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+                }
+              },
+              child: Text('Open Settings'),
+            ),
+          if (!showSettingsButton)
+            TextButton(
+              onPressed: () async {
+                Get.back();
+                // Retry permission request
+                await _checkAndRequestLocationPermission();
+              },
+              child: Text('Try Again'),
+            ),
+        ],
+      ),
+    );
   }
 
   void _startLocationTracking() {
@@ -473,13 +543,101 @@ class PlatformSensorService extends GetxService {
 
   /// Manually request location permission (useful for UI retry buttons)
   Future<bool> requestLocationPermission() async {
-    await _checkAndRequestLocationPermission();
-    return locationEnabled.value;
+    try {
+      final permissionResult =
+          await PermissionsManager.requestLocationPermission();
+
+      if (permissionResult.granted) {
+        locationEnabled.value = true;
+        locationStatus.value = "Permission Granted";
+        // Start location tracking if permission was granted and not already tracking
+        if (_locationSubscription == null) {
+          _startLocationTracking();
+        }
+
+        Get.snackbar(
+          'Location Permission',
+          'Location access granted successfully.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.withOpacity(0.7),
+          colorText: Colors.white,
+        );
+
+        return true;
+      } else {
+        locationEnabled.value = false;
+        locationStatus.value = "Permission Denied";
+
+        if (permissionResult.permanentlyDenied) {
+          Get.snackbar(
+            'Location Permission Required',
+            'Location access has been permanently denied. Please enable it in device settings.',
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.red.withOpacity(0.7),
+            colorText: Colors.white,
+            duration: Duration(seconds: 4),
+            mainButton: TextButton(
+              onPressed: () async {
+                Get.back(); // Close snackbar
+                await openLocationSettings();
+              },
+              child:
+                  Text('Open Settings', style: TextStyle(color: Colors.white)),
+            ),
+          );
+        } else {
+          Get.snackbar(
+            'Location Permission Denied',
+            permissionResult.status,
+            snackPosition: SnackPosition.BOTTOM,
+            backgroundColor: Colors.orange.withOpacity(0.7),
+            colorText: Colors.white,
+          );
+        }
+
+        return false;
+      }
+    } catch (e) {
+      developer.log('Error requesting location permission manually', error: e);
+      locationStatus.value = "Permission Error";
+
+      Get.snackbar(
+        'Error',
+        'Failed to request location permission: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.7),
+        colorText: Colors.white,
+      );
+
+      return false;
+    }
   }
 
-  /// Open app settings for location permissions
+  /// Open location settings for the user to grant permissions
   Future<bool> openLocationSettings() async {
-    return await PermissionsManager.openAppSettings();
+    try {
+      final opened = await PermissionsManager.openLocationSettings();
+      if (!opened) {
+        Get.snackbar(
+          'Settings Error',
+          'Could not open device settings. Please manually enable location permissions.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.7),
+          colorText: Colors.white,
+        );
+      }
+      return opened;
+    } catch (e) {
+      developer.log('Error opening location settings', error: e);
+      Get.snackbar(
+        'Error',
+        'Failed to open location settings: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red.withOpacity(0.7),
+        colorText: Colors.white,
+      );
+      return false;
+    }
   }
 }
 

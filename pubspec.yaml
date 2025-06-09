@@ -26,7 +26,6 @@ dependencies:
   wakelock_plus: ^1.3.2
   screen_brightness: ^2.1.3
   flutter_volume_controller: ^1.3.3
-  # audioplayers removed - replaced by media_kit and caching
   url_launcher: ^6.3.1
   flutter_html: ^3.0.0
   uuid: ^4.5.1
@@ -35,17 +34,17 @@ dependencies:
   permission_handler: ^12.0.0+1
   package_info_plus: ^8.1.0
   image_gallery_saver_plus: ^4.0.1
-  # just_audio removed - replaced by media_kit
   path_provider: ^2.0.15  # For audio caching
   crypto: ^3.0.3  # For URL hashing in audio caching
   sip_ua: ^1.0.1
   flutter_webrtc: ^0.12.12+hotfix.1  # Version compatible with sip_ua
+  animated_analog_clock: ^0.2.1  # Animated analog clock widget for kiosk display
+  cached_network_image: ^3.4.1  # Network image caching for clock backgrounds
   pdfrx: ^1.1.29
   http: ^1.4.0  
   geolocator: ^14.0.1
   tflite_flutter: ^0.11.0
   image: ^4.3.0  # For image preprocessing (replacement for tflite_flutter_helper)
- # tflite_flutter_helper: ^0.3.1
   flutter_tts: ^4.2.0  # Text-to-Speech support for all platforms
 
 dev_dependencies:

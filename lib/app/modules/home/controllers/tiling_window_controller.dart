@@ -19,6 +19,7 @@ import 'media_window_controller.dart';
 import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
 import 'pdf_window_controller.dart'; // Add import for PDF controller
+import 'clock_window_controller.dart'; // Add import for clock controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -158,8 +159,8 @@ class TilingWindowController extends GetxController {
         final size = Size(
           tileData['size']['width'],
           tileData['size']['height'],
-        ); 
-        
+        );
+
         // Parse tile type
         final String typeString = tileData['type'];
         TileType type;
@@ -185,9 +186,12 @@ class TilingWindowController extends GetxController {
           case 'pdf':
             type = TileType.pdf;
             break;
+          case 'clock':
+            type = TileType.clock;
+            break;
           default:
             type = TileType.webView;
-        }// Handle image URLs if present (for image tiles)
+        } // Handle image URLs if present (for image tiles)
         List<String> imageUrls = [];
         if (tileData['imageUrls'] != null && tileData['imageUrls'] is List) {
           imageUrls = List<String>.from(tileData['imageUrls']);
@@ -705,6 +709,81 @@ class TilingWindowController extends GetxController {
 
     // No need to register with window manager here - this will be done when the WebView is created
     // in the YouTubePlayerTile widget with the fix in youtube_window_controller_fixed.dart
+
+    // Save window state after adding tile
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a clock window tile
+  void addClockTile(String name, {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: DateTime.now().millisecondsSinceEpoch.toString(),
+      name: name,
+      type: TileType.clock,
+      url: '', // Clock tiles don't need URLs
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(350, 350), // Square size for clock
+      metadata: config, // Store clock configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register ClockWindowController for MQTT control
+    final controller = Get.put(
+      ClockWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Save window state after adding tile
+    _saveWindowState();
+    publishOpenWindowsToMqtt();
+  }
+
+  /// Creates a clock window tile with a custom ID
+  void addClockTileWithId(String id, String name,
+      {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.clock,
+      url: '', // Clock tiles don't need URLs
+      position: tilingMode.value ? Offset.zero : _calculateNextPosition(),
+      size: Size(350, 350), // Square size for clock
+      metadata: config, // Store clock configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register ClockWindowController for MQTT control
+    final controller = Get.put(
+      ClockWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
 
     // Save window state after adding tile
     _saveWindowState();

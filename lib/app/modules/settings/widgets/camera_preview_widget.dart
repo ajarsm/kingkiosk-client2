@@ -1,9 +1,8 @@
 import 'dart:async';
-import 'dart:io'; // Add platform detection
 import 'package:flutter/material.dart';
 import 'package:flutter_webrtc/flutter_webrtc.dart' as webrtc;
 import 'package:get/get.dart';
-import '../../../core/utils/permissions_manager.dart'; // Import PermissionsManager
+import '../../../core/utils/permissions_manager.dart';
 import '../../../services/person_detection_service.dart';
 
 /// Camera resolution modes for different use cases
@@ -41,7 +40,6 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   Timer? _retryTimer;
   int _retryCount = 0;
   final _maxRetryCount = 3;
-  bool _usingSharedStream = false; // Track if using shared stream
   bool _permissionDenied = false; // Track permission denial
   String _errorMessage = '';
 
@@ -62,27 +60,64 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 
   Future<void> _initRenderers() async {
-    // For iOS, skip permission handler and let getUserMedia handle permissions naturally
-    // For Android, use permission handler as it's more reliable
-    if (Platform.isAndroid) {
-      final hasPermission =
-          await PermissionsManager.requestCameraAndMicPermissions();
-      if (!hasPermission) {
-        if (mounted) {
-          setState(() {
-            _isInitialized = false;
-            _permissionDenied = true;
-            _errorMessage =
-                'Camera and microphone permissions are required to use this feature.';
-          });
-        }
-        print(
-            'Camera/mic permission not granted. Cannot start camera preview.');
-        return;
+    // First check current permission status
+    final currentCameraStatus =
+        await PermissionsManager.checkCameraPermission();
+    print(
+        '[CameraPreview] Current camera permission: ${currentCameraStatus.status}');
+
+    // Debug permission statuses
+    final debugStatuses = await PermissionsManager.debugPermissionStatuses();
+    print('[CameraPreview] Debug permissions: $debugStatuses');
+
+    // If already granted, proceed directly
+    if (currentCameraStatus.granted) {
+      print('[CameraPreview] Camera permission already granted, proceeding...');
+      _permissionDenied = false;
+      _errorMessage = '';
+      await _localRenderer.initialize();
+      await _startCamera();
+      return;
+    }
+
+    // Check if permission is permanently denied
+    if (currentCameraStatus.permanentlyDenied) {
+      print('[CameraPreview] Camera permission permanently denied');
+      if (mounted) {
+        setState(() {
+          _isInitialized = false;
+          _permissionDenied = true;
+          _errorMessage =
+              'Camera access permanently denied. Please enable camera permissions in your device settings.';
+        });
       }
-    } else if (Platform.isIOS) {
+      return;
+    }
+
+    // Permission is not granted and not permanently denied, try to request it
+    print('[CameraPreview] Requesting camera permission...');
+    final cameraPermissionResult =
+        await PermissionsManager.requestCameraPermission();
+    print(
+        '[CameraPreview] Camera permission result: ${cameraPermissionResult.status}');
+
+    if (!cameraPermissionResult.granted) {
+      if (mounted) {
+        setState(() {
+          _isInitialized = false;
+          _permissionDenied = true;
+          if (cameraPermissionResult.permanentlyDenied) {
+            _errorMessage =
+                'Camera access permanently denied. Please enable camera permissions in your device settings.';
+          } else {
+            _errorMessage =
+                'Camera permission is required for camera preview. Please allow camera access when prompted.';
+          }
+        });
+      }
       print(
-          '[CameraPreviewWidget] iOS detected - using direct getUserMedia for permissions');
+          '[CameraPreview] Camera permission not granted: ${cameraPermissionResult.status}');
+      return;
     }
 
     // Reset permission state if we got here
@@ -108,7 +143,6 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
         print(
             '[CameraPreviewWidget] Using shared camera stream from PersonDetectionService.');
         _localStream = sharedStream;
-        _usingSharedStream = true;
       } else {
         // Only acquire a new stream if the service is not running
         print(
@@ -121,7 +155,6 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
         };
         _localStream =
             await webrtc.navigator.mediaDevices.getUserMedia(mediaConstraints);
-        _usingSharedStream = false;
       }
       await _localRenderer.srcObject?.dispose();
       _localRenderer.srcObject = _localStream;
@@ -194,7 +227,6 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       _localStream?.dispose();
     }
     _localStream = null;
-    _usingSharedStream = false;
   }
 
   @override
@@ -243,6 +275,8 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
   }
 
   Widget _buildPermissionDeniedWidget(BuildContext context) {
+    final isPermanentlyDenied = _errorMessage.contains('permanently denied');
+
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(16.0),
@@ -264,22 +298,41 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 16),
-            ElevatedButton.icon(
-              onPressed: () async {
-                final result = await PermissionsManager.openAppSettings();
-                if (result) {
-                  // Retry initialization after user returns from settings
-                  _retryCount = 0;
-                  _initRenderers();
-                }
-              },
-              icon: const Icon(Icons.settings),
-              label: const Text('Open Settings'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue,
-                foregroundColor: Colors.white,
+            if (isPermanentlyDenied) ...[
+              ElevatedButton.icon(
+                onPressed: () async {
+                  final result = await PermissionsManager.openAppSettings();
+                  if (result) {
+                    // Retry initialization after user returns from settings
+                    _retryCount = 0;
+                    _initRenderers();
+                  }
+                },
+                icon: const Icon(Icons.settings),
+                label: const Text('Open Settings'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
               ),
-            ),
+            ] else ...[
+              ElevatedButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _permissionDenied = false;
+                    _errorMessage = '';
+                    _retryCount = 0;
+                  });
+                  _initRenderers();
+                },
+                icon: const Icon(Icons.refresh),
+                label: const Text('Grant Permission'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.blue,
+                  foregroundColor: Colors.white,
+                ),
+              ),
+            ],
           ],
         ),
       ),

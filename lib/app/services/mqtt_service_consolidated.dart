@@ -1365,6 +1365,64 @@ class MqttService extends GetxService {
       return;
     }
 
+    // --- open_clock command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'open_clock') {
+      final title = cmdObj['title']?.toString() ?? 'Analog Clock';
+      final String? windowId = cmdObj['window_id']?.toString();
+
+      try {
+        final controller = Get.find<TilingWindowController>();
+
+        // Build configuration from MQTT parameters
+        final Map<String, dynamic> config = {};
+
+        // Mode configuration (analog/digital)
+        final mode = cmdObj['mode']?.toString();
+        if (mode != null) {
+          config['mode'] = mode;
+        }
+
+        // Network image URL for clock background/decoration
+        final imageUrl = cmdObj['image_url']?.toString();
+        if (imageUrl != null && imageUrl.isNotEmpty) {
+          config['image_url'] = imageUrl;
+        }
+
+        // Theme configuration
+        final theme = cmdObj['theme']?.toString();
+        if (theme != null) {
+          config['theme'] = theme;
+        }
+
+        // Additional styling options
+        final showNumbers = cmdObj['show_numbers'];
+        if (showNumbers != null) {
+          config['show_numbers'] = showNumbers == true ||
+              showNumbers.toString().toLowerCase() == 'true';
+        }
+
+        final showSecondHand = cmdObj['show_second_hand'];
+        if (showSecondHand != null) {
+          config['show_second_hand'] = showSecondHand == true ||
+              showSecondHand.toString().toLowerCase() == 'true';
+        }
+
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addClockTileWithId(windowId, title, config: config);
+        } else {
+          controller.addClockTile(title, config: config);
+        }
+
+        print('🕐 [MQTT] Opened clock window: $title' +
+            (windowId != null ? ', id=$windowId' : '') +
+            ', config=$config');
+      } catch (e) {
+        print('❌ Error opening clock window: $e');
+      }
+      return;
+    }
+
     // ...existing fallback string command logic...
     print('🎯 Unknown command received: "$command"');
     return;

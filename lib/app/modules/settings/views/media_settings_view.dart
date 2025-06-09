@@ -6,6 +6,7 @@ import '../../../services/media_hardware_detection.dart';
 // import '../../../services/person_detection_service.dart';  // Temporarily commented due to FFI issues
 import '../widgets/camera_preview_widget.dart';
 import '../widgets/person_detection_debug_widget.dart';
+import '../../../core/utils/permissions_manager.dart';
 
 class MediaSettingsView extends GetView<SettingsControllerFixed> {
   const MediaSettingsView({Key? key}) : super(key: key);
@@ -578,8 +579,17 @@ class MediaSettingsView extends GetView<SettingsControllerFixed> {
                       ? 'Person detection is active'
                       : 'Person detection is disabled'),
                   value: controller.personDetectionEnabled.value,
-                  onChanged: (_) async {
-                    await controller.togglePersonDetection();
+                  onChanged: (bool value) async {
+                    // Request camera permission for person detection (no microphone needed)
+                    final cameraPermissionResult =
+                        await PermissionsManager.requestCameraPermission();
+                    if (!cameraPermissionResult.granted) {
+                      if (cameraPermissionResult.permanentlyDenied) {
+                        await PermissionsManager.openAppSettings();
+                      }
+                      return;
+                    }
+                    controller.personDetectionEnabled.value = value;
                   },
                   secondary: Icon(
                     controller.personDetectionEnabled.value
