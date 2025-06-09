@@ -20,6 +20,8 @@ import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
 import 'pdf_window_controller.dart'; // Add import for PDF controller
 import 'clock_window_controller.dart'; // Add import for clock controller
+import 'alarmo_window_controller.dart'; // Add import for alarmo controller
+import 'weather_window_controller.dart'; // Add import for weather controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -188,6 +190,12 @@ class TilingWindowController extends GetxController {
             break;
           case 'clock':
             type = TileType.clock;
+            break;
+          case 'alarmo':
+            type = TileType.alarmo;
+            break;
+          case 'weather':
+            type = TileType.weather;
             break;
           default:
             type = TileType.webView;
@@ -788,6 +796,148 @@ class TilingWindowController extends GetxController {
     // Save window state after adding tile
     _saveWindowState();
     publishOpenWindowsToMqtt();
+  }
+
+  /// Creates an Alarmo window tile
+  void addAlarmoTile(String name, {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: 'alarmo_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      type: TileType.alarmo,
+      url: '', // Alarmo tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 500), // Portrait size for dialpad
+      metadata: config, // Store Alarmo configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register AlarmoWindowController for MQTT control
+    final controller = Get.put(
+      AlarmoWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    print('Added Alarmo tile: ${newTile.name} with ID: ${newTile.id}');
+  }
+
+  /// Creates an Alarmo window tile with a custom ID
+  void addAlarmoTileWithId(String id, String name,
+      {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.alarmo,
+      url: '', // Alarmo tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 500), // Portrait size for dialpad
+      metadata: config, // Store Alarmo configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register AlarmoWindowController for MQTT control
+    final controller = Get.put(
+      AlarmoWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    print('Added Alarmo tile: ${newTile.name} with ID: ${newTile.id}');
+  }
+
+  /// Creates a Weather window tile
+  void addWeatherTile(String name, {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: 'weather_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      type: TileType.weather,
+      url: '', // Weather tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 400), // Square size for weather display
+      metadata: config, // Store weather configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register WeatherWindowController for weather data
+    final controller = Get.put(
+      WeatherWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    print('Added Weather tile: ${newTile.name} with ID: ${newTile.id}');
+  }
+
+  /// Creates a Weather window tile with a custom ID
+  void addWeatherTileWithId(String id, String name,
+      {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.weather,
+      url: '', // Weather tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 400), // Square size for weather display
+      metadata: config, // Store weather configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value = newTile;
+
+    // Register WeatherWindowController for weather data
+    final controller = Get.put(
+      WeatherWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      controller.configure(config);
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    print('Added Weather tile: ${newTile.name} with ID: ${newTile.id}');
   }
 
   /// Selects a tile and brings it to the front

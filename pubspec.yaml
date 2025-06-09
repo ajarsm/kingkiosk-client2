@@ -46,6 +46,7 @@ dependencies:
   tflite_flutter: ^0.11.0
   image: ^4.3.0  # For image preprocessing (replacement for tflite_flutter_helper)
   flutter_tts: ^4.2.0  # Text-to-Speech support for all platforms
+  open_weather_client: ^2.4.1  # Weather data from OpenWeatherMap API
 
 dev_dependencies:
   flutter_test:

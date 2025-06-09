@@ -1421,6 +1421,79 @@ class MqttService extends GetxService {
         print('❌ Error opening clock window: $e');
       }
       return;
+    } // --- alarmo_widget command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'alarmo_widget') {
+      final name = cmdObj['name']?.toString() ?? 'Alarmo';
+      final String? windowId = cmdObj['window_id']?.toString();
+
+      // Extract configuration parameters
+      final Map<String, dynamic> config = {};
+      if (cmdObj['entity'] != null) config['entity'] = cmdObj['entity'];
+      if (cmdObj['require_code'] != null)
+        config['require_code'] = cmdObj['require_code'];
+      if (cmdObj['code_length'] != null)
+        config['code_length'] = cmdObj['code_length'];
+      if (cmdObj['state_topic'] != null)
+        config['state_topic'] = cmdObj['state_topic'];
+      if (cmdObj['command_topic'] != null)
+        config['command_topic'] = cmdObj['command_topic'];
+      if (cmdObj['event_topic'] != null)
+        config['event_topic'] = cmdObj['event_topic'];
+      if (cmdObj['available_modes'] != null)
+        config['available_modes'] = cmdObj['available_modes'];
+
+      try {
+        final controller = Get.find<TilingWindowController>();
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addAlarmoTileWithId(windowId, name,
+              config: config.isNotEmpty ? config : null);
+        } else {
+          controller.addAlarmoTile(name,
+              config: config.isNotEmpty ? config : null);
+        }
+        print('🚨 [MQTT] Created Alarmo widget: $name' +
+            (windowId != null ? ', id=$windowId' : '') +
+            (config.isNotEmpty ? ', config=$config' : ''));
+      } catch (e) {
+        print('❌ Error creating Alarmo widget: $e');
+      }
+      return;
+    }
+
+    // --- open_weather_client command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'open_weather_client') {
+      final name = cmdObj['name']?.toString() ?? 'Weather';
+      final String? windowId = cmdObj['window_id']?.toString();
+
+      // Extract configuration parameters
+      final Map<String, dynamic> config = {};
+      if (cmdObj['api_key'] != null) config['api_key'] = cmdObj['api_key'];
+      if (cmdObj['location'] != null) config['location'] = cmdObj['location'];
+      if (cmdObj['units'] != null) config['units'] = cmdObj['units'];
+      if (cmdObj['language'] != null) config['language'] = cmdObj['language'];
+      if (cmdObj['show_forecast'] != null)
+        config['show_forecast'] = cmdObj['show_forecast'];
+      if (cmdObj['auto_refresh'] != null)
+        config['auto_refresh'] = cmdObj['auto_refresh'];
+
+      try {
+        final controller = Get.find<TilingWindowController>();
+        // Use custom ID if provided, otherwise auto-generate
+        if (windowId != null && windowId.isNotEmpty) {
+          controller.addWeatherTileWithId(windowId, name,
+              config: config.isNotEmpty ? config : null);
+        } else {
+          controller.addWeatherTile(name,
+              config: config.isNotEmpty ? config : null);
+        }
+        print('🌤️ [MQTT] Created Weather widget: $name' +
+            (windowId != null ? ', id=$windowId' : '') +
+            (config.isNotEmpty ? ', config=$config' : ''));
+      } catch (e) {
+        print('❌ Error creating Weather widget: $e');
+      }
+      return;
     }
 
     // ...existing fallback string command logic...
@@ -1539,46 +1612,14 @@ class MqttService extends GetxService {
     if (!isConnected.value || !haDiscovery.value) return;
 
     try {
-      print('MQTT DEBUG: Setting up all discovery sensors with debug logging');
-
-      // Set up the key sensors one by one with debug logging
+      print(
+          'MQTT DEBUG: Setting up all discovery sensors with debug logging'); // Set up the key sensors one by one with debug logging
       print('MQTT DEBUG: Setting up battery level sensor');
       _setupDiscoverySensorWithDebug(
           'battery', 'Battery Level', 'battery', '%', 'mdi:battery');
       print('MQTT DEBUG: Setting up battery status sensor');
-      _setupDiscoverySensorWithDebug('battery_status', 'Battery Status', 'enum',
-          '', 'mdi:battery-charging');
-
-      print('MQTT DEBUG: Setting up CPU usage sensor');
       _setupDiscoverySensorWithDebug(
-          'cpu_usage', 'CPU Usage', 'cpu', '%', 'mdi:cpu-64-bit');
-
-      print('MQTT DEBUG: Setting up memory usage sensor');
-      _setupDiscoverySensorWithDebug(
-          'memory_usage', 'Memory Usage', 'memory', '%', 'mdi:memory');
-      print('MQTT DEBUG: Setting up platform sensor');
-      _setupDiscoverySensorWithDebug(
-          'platform', 'Platform', 'text', '', 'mdi:laptop');
-      print('MQTT DEBUG: Setting up location sensors');
-      _setupDiscoverySensorWithDebug(
-          'latitude', 'Latitude', '', '°', 'mdi:crosshairs-gps');
-
-      _setupDiscoverySensorWithDebug(
-          'longitude', 'Longitude', '', '°', 'mdi:crosshairs-gps');
-
-      _setupDiscoverySensorWithDebug(
-          'altitude', 'Altitude', 'distance', 'm', 'mdi:elevation-rise');
-
-      _setupDiscoverySensorWithDebug('location_accuracy', 'Location Accuracy',
-          'distance', 'm', 'mdi:target');
-      _setupDiscoverySensorWithDebug(
-          'location_status', 'Location Status', 'text', '', 'mdi:map-marker');
-
-      // Object Detection sensors
-      print('MQTT DEBUG: Setting up object detection sensors');
-      _setupObjectDetectionDiscovery();
-
-      print('MQTT DEBUG: Home Assistant discovery setup complete');
+          'battery_status', 'Battery Status', 'enum', '', 'mdi:battery-alert');
     } catch (e) {
       print('MQTT DEBUG: Error setting up discovery: $e');
     }

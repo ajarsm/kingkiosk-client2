@@ -12,6 +12,8 @@ import '../widgets/auto_hide_title_bar.dart';
 import '../widgets/webview_tile_manager.dart';
 import '../widgets/youtube_player_tile.dart';
 import '../widgets/clock_widget.dart';
+import '../widgets/alarmo_widget.dart';
+import '../widgets/weather_widget.dart';
 import '../../../data/models/window_tile_v2.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/navigation_service.dart';
@@ -337,6 +339,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.picture_as_pdf, size: 16);
       case TileType.clock:
         return Icon(Icons.access_time, size: 16);
+      case TileType.alarmo:
+        return Icon(Icons.security, size: 16);
+      case TileType.weather:
+        return Icon(Icons.wb_sunny, size: 16);
     }
   }
 
@@ -426,6 +432,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
           showControls: false, // Controls are handled by the title bar
         );
         break;
+      case TileType.alarmo:
+        content = AlarmoWidget(
+          windowId: tile.id,
+          showControls: false, // Controls are handled by the title bar
+        );
+        break;
+      case TileType.weather:
+        content = WeatherWidget(
+          windowId: tile.id,
+          windowName: tile.name,
+        );
+        break;
     }
     // Wrap the content with WindowHaloWrapper to enable window-specific halo effects
     return WindowHaloWrapper(
@@ -488,7 +506,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 // Left-side toolbar buttons - wrap in flexible to prevent overflow
                 Flexible(
                   flex: 3,
-                  child: _buildScrollableToolbar(locked),
+                  child: _buildToolbar(context, locked),
                 ),
 
                 // Center lock icon
@@ -1387,104 +1405,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ),
       );
     });
-  }
-
-  /// Builds a scrollable toolbar with visual indicators for overflow
-  Widget _buildScrollableToolbar(bool locked) {
-    return StatefulBuilder(
-      builder: (context, setState) {
-        final ScrollController scrollController = ScrollController();
-        bool showLeftIndicator = false;
-        bool showRightIndicator = false;
-
-        void updateIndicators() {
-          if (scrollController.hasClients) {
-            setState(() {
-              showLeftIndicator = scrollController.offset > 0;
-              showRightIndicator = scrollController.offset <
-                  scrollController.position.maxScrollExtent;
-            });
-          }
-        }
-
-        // Listen to scroll changes
-        scrollController.addListener(updateIndicators);
-
-        // Check initial state after frame builds
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          updateIndicators();
-        });
-
-        return Stack(
-          children: [
-            // Main scrollable content
-            SingleChildScrollView(
-              controller: scrollController,
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                children: _buildToolbarButtons(locked),
-              ),
-            ),
-
-            // Left scroll indicator
-            if (showLeftIndicator)
-              Positioned(
-                left: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 20,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Colors.black.withOpacity(0.3),
-                        Colors.transparent,
-                      ],
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.keyboard_arrow_left,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 16,
-                    ),
-                  ),
-                ),
-              ),
-
-            // Right scroll indicator
-            if (showRightIndicator)
-              Positioned(
-                right: 0,
-                top: 0,
-                bottom: 0,
-                child: Container(
-                  width: 20,
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.centerLeft,
-                      end: Alignment.centerRight,
-                      colors: [
-                        Colors.transparent,
-                        Colors.black.withOpacity(0.3),
-                      ],
-                    ),
-                  ),
-                  child: Center(
-                    child: Icon(
-                      Icons.keyboard_arrow_right,
-                      color: Colors.white.withOpacity(0.8),
-                      size: 16,
-                    ),
-                  ),
-                ),
-              ),
-          ],
-        );
-      },
-    );
   }
 }
 
