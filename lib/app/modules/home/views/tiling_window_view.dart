@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:get/get.dart';
 import '../controllers/tiling_window_controller.dart';
 import '../widgets/media_tile.dart';
@@ -63,13 +64,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
       aiAssistantService = Get.find<AiAssistantService>();
     } catch (e) {
       // AI Assistant service may not be ready yet
-      debugPrint('AI Assistant service not available yet: $e');
-
-      // Set up delayed retry
+      debugPrint(
+          'AI Assistant service not available yet: $e'); // Set up delayed retry
       Future.delayed(Duration(seconds: 3), () {
         try {
           aiAssistantService = Get.find<AiAssistantService>();
-          setState(() {}); // Refresh UI once service is available
+          // Remove setState() - GetX reactive updates will handle UI refresh
         } catch (e) {
           debugPrint('Still cannot find AI Assistant service: $e');
         }
@@ -236,9 +236,6 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   return SizedBox.shrink();
                 }
               }),
-
-            // Floating AI button for quickly hanging up during calls
-            _buildFloatingAiButton(),
           ],
         );
       }),
@@ -468,61 +465,36 @@ class TilingWindowViewState extends State<TilingWindowView> {
       child: LayoutBuilder(
         builder: (context, constraints) {
           final isSmallScreen = constraints.maxWidth < 800;
-
           if (isSmallScreen) {
-            // On small screens, use horizontal scroll
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // Left-side toolbar buttons
-                  ..._buildToolbarButtons(locked),
+            // On small screens, use horizontal scroll with always visible scrollbar
+            final scrollController = ScrollController();
 
-                  // Center lock icon (fixed width for small screens)
-                  Container(
-                    width: 80,
-                    child: Center(
-                      child: _buildLockIcon(locked, context),
-                    ),
-                  ),
-
-                  // System info and settings
-                  _buildCompactSystemInfo(),
-                  NotificationBadge(),
-                  SizedBox(width: 8),
-                  _buildSettingsButton(context),
-                  SizedBox(width: 8),
-                  _buildExitButton(context),
-                  SizedBox(width: 8),
-                ],
-              ),
-            );
-          } else {
-            // On larger screens, use the original layout with Expanded
-            return Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                // Left-side toolbar buttons - wrap in flexible to prevent overflow
-                Flexible(
-                  flex: 3,
-                  child: _buildToolbar(context, locked),
-                ),
-
-                // Center lock icon
-                Expanded(
-                  flex: 1,
-                  child: Center(
-                    child: _buildLockIcon(locked, context),
-                  ),
-                ),
-
-                // System info and settings - wrap in flexible to prevent overflow
-                Flexible(
-                  flex: 2,
+            return Scrollbar(
+              controller: scrollController,
+              scrollbarOrientation: ScrollbarOrientation.bottom,
+              thumbVisibility: true,
+              trackVisibility: true,
+              child: SingleChildScrollView(
+                controller: scrollController,
+                scrollDirection: Axis.horizontal,
+                physics: const BouncingScrollPhysics(),
+                child: IntrinsicWidth(
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      // Left-side toolbar buttons
+                      ..._buildToolbarButtons(locked),
+
+                      // Center lock icon (fixed width for small screens)
+                      Container(
+                        width: 80,
+                        child: Center(
+                          child: _buildLockIcon(locked, context),
+                        ),
+                      ),
+
+                      // System info and settings
                       _buildCompactSystemInfo(),
                       NotificationBadge(),
                       SizedBox(width: 8),
@@ -531,6 +503,82 @@ class TilingWindowViewState extends State<TilingWindowView> {
                       _buildExitButton(context),
                       SizedBox(width: 8),
                     ],
+                  ),
+                ),
+              ),
+            );
+          } else {
+            // On larger screens, use proper layout that scrolls when overflowing
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Left-side toolbar buttons - scrollable when overflowing
+                Expanded(
+                  flex: 3,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final scrollController = ScrollController();
+
+                      return Scrollbar(
+                        controller: scrollController,
+                        scrollbarOrientation: ScrollbarOrientation.bottom,
+                        thumbVisibility: true,
+                        trackVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: IntrinsicWidth(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: _buildToolbarButtons(locked),
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+
+                // Center lock icon
+                Container(
+                  width: 80,
+                  child: Center(
+                    child: _buildLockIcon(locked, context),
+                  ),
+                ), // System info and settings - scrollable when overflowing
+                Expanded(
+                  flex: 2,
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final scrollController = ScrollController();
+
+                      return Scrollbar(
+                        controller: scrollController,
+                        scrollbarOrientation: ScrollbarOrientation.bottom,
+                        thumbVisibility: true,
+                        trackVisibility: true,
+                        child: SingleChildScrollView(
+                          controller: scrollController,
+                          scrollDirection: Axis.horizontal,
+                          physics: const BouncingScrollPhysics(),
+                          child: IntrinsicWidth(
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                _buildCompactSystemInfo(),
+                                NotificationBadge(),
+                                SizedBox(width: 8),
+                                _buildSettingsButton(context),
+                                SizedBox(width: 8),
+                                _buildExitButton(context),
+                                SizedBox(width: 8),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -1204,19 +1252,19 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 title: Text('Unlock Kiosk'),
                 content: Builder(
                   builder: (context) {
-                    final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                    return SettingsLockPinPad(
-                      key: pinPadKey,
+                    late SettingsLockPinPad pinPad;
+                    pinPad = SettingsLockPinPad(
                       onPinEntered: (pin) {
                         if (pin == settingsController.settingsPin.value) {
                           settingsController.unlockSettings();
                           Navigator.of(context).pop(true);
                         } else {
-                          pinPadKey.currentState?.showError('Incorrect PIN');
+                          pinPad.showError('Incorrect PIN');
                         }
                       },
                       pinLength: 4,
                     );
+                    return pinPad;
                   },
                 ),
               ),
@@ -1265,18 +1313,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
             title: Text('Enter PIN to Access Settings'),
             content: Builder(
               builder: (context) {
-                final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                return SettingsLockPinPad(
-                  key: pinPadKey,
+                late SettingsLockPinPad pinPad;
+                pinPad = SettingsLockPinPad(
                   onPinEntered: (pin) {
                     if (pin == settingsController.settingsPin.value) {
                       Navigator.of(context).pop(true);
                     } else {
-                      pinPadKey.currentState?.showError('Incorrect PIN');
+                      pinPad.showError('Incorrect PIN');
                     }
                   },
                   pinLength: 4,
                 );
+                return pinPad;
               },
             ),
           ),
@@ -1301,18 +1349,18 @@ class TilingWindowViewState extends State<TilingWindowView> {
             title: Text('Enter PIN to Exit Application'),
             content: Builder(
               builder: (context) {
-                final pinPadKey = GlobalKey<SettingsLockPinPadState>();
-                return SettingsLockPinPad(
-                  key: pinPadKey,
+                late SettingsLockPinPad pinPad;
+                pinPad = SettingsLockPinPad(
                   onPinEntered: (pin) {
                     if (pin == settingsController.settingsPin.value) {
                       Navigator.of(context).pop(true);
                     } else {
-                      pinPadKey.currentState?.showError('Incorrect PIN');
+                      pinPad.showError('Incorrect PIN');
                     }
                   },
                   pinLength: 4,
                 );
+                return pinPad;
               },
             ),
           ),
@@ -1423,23 +1471,21 @@ class _AutoHidingToolbar extends StatefulWidget {
 }
 
 class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
-  bool _isVisible = false;
   Timer? _hideTimer;
   late NotificationService _notificationService;
 
-  // Add a reactive stream for visibility state
+  // Use only the reactive stream for visibility state
   final RxBool isToolbarVisible = false.obs;
 
   @override
   void initState() {
     super.initState();
     // Find the notification service
-    _notificationService = Get.find<NotificationService>();
-
-    // Listen to changes in notification center visibility
+    _notificationService = Get.find<
+        NotificationService>(); // Listen to changes in notification center visibility
     _notificationService.notificationCenterVisibilityStream
         .listen((bool isOpen) {
-      if (isOpen && !_isVisible) {
+      if (isOpen && !isToolbarVisible.value) {
         // If notification center opens but toolbar is hidden, show the toolbar
         showToolbar();
       }
@@ -1448,8 +1494,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
 
   // Expose a method to show the toolbar from outside (e.g., from handle)
   void showToolbar() {
-    setState(() => _isVisible = true);
-    isToolbarVisible.value = true;
+    isToolbarVisible.value = true; // Use reactive update instead of setState
     _startHideTimer();
   }
 
@@ -1461,8 +1506,8 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
         if (_notificationService.isNotificationCenterOpen) {
           _notificationService.toggleNotificationCenter();
         }
-        setState(() => _isVisible = false);
-        isToolbarVisible.value = false;
+        isToolbarVisible.value =
+            false; // Use reactive update instead of setState
       }
     });
   }
@@ -1479,15 +1524,18 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
       left: 0,
       right: 0,
       bottom: 0,
-      child: IgnorePointer(
-        ignoring: !_isVisible, // Only allow interaction when visible
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 200),
-          height: _isVisible ? 50 : 0, // Fully hide when not visible
-          curve: Curves.easeInOut,
-          child: _isVisible ? widget.child : const SizedBox.shrink(),
-        ),
-      ),
+      child: Obx(() {
+        final isVisible = isToolbarVisible.value;
+        return IgnorePointer(
+          ignoring: !isVisible, // Only allow interaction when visible
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            height: isVisible ? 50 : 0, // Fully hide when not visible
+            curve: Curves.easeInOut,
+            child: isVisible ? widget.child : const SizedBox.shrink(),
+          ),
+        );
+      }),
     );
   }
 }

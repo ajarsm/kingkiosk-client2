@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'web_view_tile.dart'; // For WebViewCallbackHandler
 import '../../../services/window_manager_service.dart';
 import '../controllers/youtube_window_controller.dart';
+import '../controllers/youtube_player_tile_controller.dart';
 
 /// YouTube Player Tile Manager to manage YouTube player instances across rebuilds
 class YouTubePlayerManager {
@@ -92,7 +93,7 @@ class YouTubePlayerManager {
 
 /// YouTubePlayerTile widget
 /// A specialized WebViewTile for YouTube videos using the IFrame API
-class YouTubePlayerTile extends StatefulWidget {
+class YouTubePlayerTile extends GetView<YouTubePlayerTileController> {
   final String videoUrl;
   final String videoId;
   final String windowId;
@@ -113,13 +114,62 @@ class YouTubePlayerTile extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<YouTubePlayerTile> createState() => _YouTubePlayerTileState();
+  Widget build(BuildContext context) {
+    // Initialize controller
+    Get.put(
+        YouTubePlayerTileController(
+          videoUrl: videoUrl,
+          videoId: videoId,
+          windowId: windowId,
+          refreshKey: refreshKey,
+          autoplay: autoplay,
+          showControls: showControls,
+          showInfo: showInfo,
+        ),
+        tag: windowId);
+
+    return Obx(() => _YouTubePlayerView(
+          controller: controller,
+          videoUrl: videoUrl,
+          videoId: videoId,
+          windowId: windowId,
+          refreshKey: refreshKey,
+          autoplay: autoplay,
+          showControls: showControls,
+          showInfo: showInfo,
+        ));
+  }
 }
 
-class _YouTubePlayerTileState extends State<YouTubePlayerTile>
+class _YouTubePlayerView extends StatefulWidget {
+  final YouTubePlayerTileController controller;
+  final String videoUrl;
+  final String videoId;
+  final String windowId;
+  final int? refreshKey;
+  final bool autoplay;
+  final bool showControls;
+  final bool showInfo;
+
+  const _YouTubePlayerView({
+    Key? key,
+    required this.controller,
+    required this.videoUrl,
+    required this.videoId,
+    required this.windowId,
+    this.refreshKey,
+    this.autoplay = true,
+    this.showControls = true,
+    this.showInfo = true,
+  }) : super(key: key);
+
+  @override
+  State<_YouTubePlayerView> createState() => _YouTubePlayerViewState();
+}
+
+class _YouTubePlayerViewState extends State<_YouTubePlayerView>
     implements WebViewCallbackHandler {
   late final InAppWebViewController _controller;
-  bool _isLoading = true;
 
   // Create HTML content with YouTube IFrame API
   String get _youtubeHtml {
@@ -263,9 +313,7 @@ class _YouTubePlayerTileState extends State<YouTubePlayerTile>
             controller.addJavaScriptHandler(
               handlerName: 'onPlayerReady',
               callback: (args) {
-                setState(() {
-                  _isLoading = false;
-                });
+                widget.controller.setLoading(false);
                 print(
                     '🎬 YouTube player ready for windowId: ${widget.windowId}');
 
@@ -323,7 +371,7 @@ class _YouTubePlayerTileState extends State<YouTubePlayerTile>
                 action: ServerTrustAuthResponseAction.PROCEED);
           },
         ),
-        if (_isLoading)
+        if (widget.controller.isLoading.value)
           Center(
             child: CircularProgressIndicator(),
           ),
@@ -372,9 +420,7 @@ class _YouTubePlayerTileState extends State<YouTubePlayerTile>
     if (error.type == WebResourceErrorType.TIMEOUT ||
         error.type == WebResourceErrorType.HOST_LOOKUP ||
         error.type == WebResourceErrorType.FAILED_SSL_HANDSHAKE) {
-      setState(() {
-        _isLoading = false;
-      });
+      widget.controller.setLoading(false);
     }
   }
 

@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:number_pad_keyboard/number_pad_keyboard.dart';
-import '../services/audio_service_concurrent.dart';
 import 'shake_widget.dart';
+import 'controllers/settings_lock_pin_pad_controller.dart';
 
 export 'settings_lock_pin_pad.dart'
-    show SettingsLockPinPad, SettingsLockPinPadState;
+    show SettingsLockPinPad;
 
-class SettingsLockPinPad extends StatefulWidget {
+class SettingsLockPinPad extends GetView<SettingsLockPinPadController> {
   final void Function(String pin) onPinEntered;
   final int pinLength;
   final String? title;
@@ -21,84 +22,30 @@ class SettingsLockPinPad extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  SettingsLockPinPadState createState() => SettingsLockPinPadState();
-}
-
-class SettingsLockPinPadState extends State<SettingsLockPinPad> {
-  String _enteredPin = '';
-  String? _error;
-  bool _shake = false;
-
-  void _onDigit(int digit) {
-    if (_enteredPin.length < widget.pinLength) {
-      setState(() {
-        _enteredPin += digit.toString();
-        _error = null;
-      });
-    }
-  }
-
-  void _onBackspace() {
-    if (_enteredPin.isNotEmpty) {
-      setState(() {
-        _enteredPin = _enteredPin.substring(0, _enteredPin.length - 1);
-        _error = null;
-      });
-    }
-  }
-
-  void _onEnter() async {
-    if (_enteredPin.length == widget.pinLength) {
-      widget.onPinEntered(_enteredPin);
-      // Parent must call showError('Incorrect PIN') if PIN is wrong
-    } else {
-      await _triggerError('Enter ${widget.pinLength}-digit PIN');
-    }
-  }
-
-  Future<void> _triggerError(String error) async {
-    // Play error sound using AudioService concurrently with animation
-    try {
-      // Call error sound without awaiting to allow concurrent execution with animation
-      AudioServiceConcurrent.playErrorConcurrent();
-    } catch (_) {}
-
-    setState(() {
-      _error = error;
-      _enteredPin = '';
-      _shake = true;
-    });
-
-    // Reset shake state after animation completes
-    await Future.delayed(const Duration(milliseconds: 500));
-    setState(() {
-      _shake = false;
-    });
-  }
-
-  void showError(String error) {
-    _triggerError(error);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return Column(
+    // Initialize controller with parameters
+    Get.put(SettingsLockPinPadController(
+      pinLength: pinLength,
+      onPinEntered: onPinEntered,
+    ));
+
+    return Obx(() => Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (widget.title != null)
+        if (title != null)
           Padding(
             padding: const EdgeInsets.only(bottom: 16.0),
             child: Text(
-              widget.title!,
+              title!,
               style: Theme.of(context).textTheme.titleLarge,
             ),
           ),
         ShakeWidget(
-          shake: _shake,
+          shake: controller.shake.value,
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
-            children: List.generate(widget.pinLength, (i) {
-              final filled = i < _enteredPin.length;
+            children: List.generate(pinLength, (i) {
+              final filled = i < controller.enteredPin.value.length;
               return Container(
                 margin: const EdgeInsets.symmetric(horizontal: 8),
                 width: 20,
@@ -111,20 +58,20 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
             }),
           ),
         ),
-        if (_error != null || widget.errorMessage != null)
+        if (controller.error.value.isNotEmpty || errorMessage != null)
           Padding(
             padding: const EdgeInsets.only(top: 12.0),
             child: Text(
-              _error ?? widget.errorMessage ?? '',
+              controller.error.value.isNotEmpty ? controller.error.value : errorMessage ?? '',
               style: TextStyle(color: Colors.red),
             ),
           ),
         Padding(
           padding: const EdgeInsets.only(top: 24.0),
           child: NumberPadKeyboard(
-            addDigit: _onDigit,
-            backspace: _onBackspace,
-            onEnter: _onEnter,
+            addDigit: controller.onDigit,
+            backspace: controller.onBackspace,
+            onEnter: controller.onEnter,
             numberStyle: TextStyle(fontSize: 24, color: Colors.black),
             enterButtonColor: Colors.blue[100],
             enterButtonText: 'OK',
@@ -132,6 +79,14 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
           ),
         ),
       ],
-    );
+    ));
+  }
+}
+
+// Extension to access controller methods from outside
+extension SettingsLockPinPadExtension on SettingsLockPinPad {
+  void showError(String error) {
+    final controller = Get.find<SettingsLockPinPadController>();
+    controller.showError(error);
   }
 }

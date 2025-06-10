@@ -109,13 +109,6 @@ class _AnimatedHaloEffectState extends State<AnimatedHaloEffect>
         curve: Curves.easeInOut,
       ));
 
-      // Add listener to rebuild on animation changes
-      _animationController.addListener(() {
-        if (mounted) {
-          setState(() {});
-        }
-      });
-
       print('✅ Animations setup successfully for HaloEffect');
     } catch (e) {
       print('❌ Error setting up animations for HaloEffect: $e');

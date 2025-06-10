@@ -46,13 +46,6 @@ class _AppHaloWrapperState extends State<AppHaloWrapper>
 
     // Start animation if needed
     _checkAnimationState();
-
-    // Add listener to rebuild when animation changes
-    _animationController.addListener(() {
-      if (mounted) {
-        setState(() {});
-      }
-    });
   }
 
   @override

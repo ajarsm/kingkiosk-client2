@@ -4,6 +4,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import 'dart:async';
 import 'package:get/get.dart';
 import '../../../services/media_hardware_detection.dart';
+import '../controllers/media_tile_controller.dart';
 
 // Player manager to keep players persistent across rebuilds
 class MediaPlayerManager {
@@ -256,7 +257,7 @@ class PlayerWithController {
   PlayerWithController(this.player, this.controller);
 }
 
-class MediaTile extends StatefulWidget {
+class MediaTile extends GetView<MediaTileController> {
   final String url;
   final bool loop;
 
@@ -267,190 +268,27 @@ class MediaTile extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<MediaTile> createState() => _MediaTileState();
-}
-
-class _MediaTileState extends State<MediaTile>
-    with AutomaticKeepAliveClientMixin, WidgetsBindingObserver {
-  late final PlayerWithController _playerData;
-  bool _isInitialized = false;
-  bool _hasError = false;
-  String _errorMessage = '';
-  Duration _position = Duration.zero;
+  String get tag => url; // Use URL as unique tag for multiple instances
 
   @override
-  bool get wantKeepAlive =>
-      true; // Keep this widget alive when it's not visible  @override
-  void initState() {
-    super.initState();
-    WidgetsBinding.instance.addObserver(this);
-    try {
-      _playerData = MediaPlayerManager().getPlayerFor(widget.url);
-      // Defer playlist mode setting to _initializePlayer to avoid race conditions
-      _initializePlayer();
-    } catch (e) {
-      print('Error initializing media player in MediaTile: $e');
-      // Handle initialization error gracefully
-      setState(() {
-        _hasError = true;
-        _errorMessage = 'Error initializing player: $e';
-      });
-    }
+  Widget build(BuildContext context) {
+    // Initialize controller with URL-specific tag
+    Get.put(MediaTileController(url: url, loop: loop), tag: tag);
+
+    return Obx(() {
+      if (controller.hasError.value) {
+        return _buildErrorWidget();
+      }
+
+      if (!controller.isInitialized.value) {
+        return _buildLoadingWidget();
+      }
+
+      return _buildVideoPlayer();
+    });
   }
 
-  @override
-  void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Handle app lifecycle changes to prevent restarts
-    if (state == AppLifecycleState.resumed && _isInitialized) {
-      // Resume from the saved position when app comes back to foreground
-      _playerData.player.seek(_position);
-    } else if (state == AppLifecycleState.paused) {
-      // Save position when app goes to background
-      _position = _playerData.player.state.position;
-    }
-  }
-
-  Future<void> _initializePlayer() async {
-    if (_playerData.isInitialized) {
-      // If already initialized, just update our state
-      setState(() {
-        _isInitialized = true;
-      });
-      return;
-    }
-
-    try {
-      // Save position listener to track playback position
-      _playerData.player.streams.position.listen((position) {
-        _position = position;
-      });
-
-      // Wait for player to initialize
-      await _playerData.player.open(Media(widget.url));
-
-      // Set playlist mode safely after player is initialized
-      try {
-        if (widget.loop) {
-          await _playerData.player.setPlaylistMode(PlaylistMode.loop);
-        } else {
-          await _playerData.player.setPlaylistMode(PlaylistMode.none);
-        }
-      } catch (e) {
-        print('Warning: Could not set playlist mode: $e');
-        // Continue anyway - better to play without loop than to fail
-      }
-
-      // Mark as initialized
-      _playerData.isInitialized = true;
-
-      // Set the state to reflect that the player is initialized
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (error) {
-      print('Error initializing video player: $error');
-
-      // Report error to hardware detection service
-      try {
-        final hardwareDetectionService =
-            Get.find<MediaHardwareDetectionService>();
-        hardwareDetectionService.trackMediaError(error.toString());
-
-        // If hardware acceleration was disabled due to this error,
-        // try to recreate the player with new settings
-        if (hardwareDetectionService.hasDetectedIssue.value) {
-          print('Hardware issue detected, recreating player with new settings');
-          // Force manager to dispose and recreate this player
-          MediaPlayerManager().disposePlayerFor(widget.url);
-          // Get a new player with updated hardware settings
-          _playerData = MediaPlayerManager().getPlayerFor(widget.url);
-
-          // Try to initialize again with new settings
-          await _playerData.player.open(Media(widget.url));
-
-          if (widget.loop) {
-            await _playerData.player.setPlaylistMode(PlaylistMode.loop);
-          }
-
-          // If we got here, the player was successfully recreated with new settings
-          _playerData.isInitialized = true;
-          if (mounted) {
-            setState(() {
-              _isInitialized = true;
-              _hasError = false;
-            });
-          }
-          return;
-        }
-      } catch (e) {
-        print('Error reporting hardware issue: $e');
-        // Continue with normal error handling
-      }
-
-      if (mounted) {
-        setState(() {
-          _hasError = true;
-          _errorMessage = error.toString();
-        });
-      }
-    }
-  }
-
-  @override
-  void didUpdateWidget(MediaTile oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    // If URL changed, get a different player
-    if (oldWidget.url != widget.url) {
-      _position = Duration.zero;
-      _playerData = MediaPlayerManager().getPlayerFor(widget.url);
-      _initializePlayer();
-    }
-  }
-
-  @override
-  void dispose() {
-    WidgetsBinding.instance.removeObserver(this);
-    // Note: We don't fully dispose the player here since it's managed by MediaPlayerManager
-    // But we do need to stop it to release hardware resources
-    try {
-      // Check if player is already disposed
-      bool isDisposed = false;
-      try {
-        final _ = _playerData.player.state.playing;
-      } catch (e) {
-        if (e.toString().contains('Player has been disposed')) {
-          isDisposed = true;
-          print('Player for ${widget.url} was already disposed in MediaTile');
-        }
-      }
-
-      if (!isDisposed) {
-        _playerData.player.pause();
-        print('MediaTile for ${widget.url} disposed');
-      }
-    } catch (e) {
-      print('Error cleaning up MediaTile resources: $e');
-    }
-    super.dispose();
-  }
-
-  Widget _buildErrorWidget(String message) {
-    // Check if this is a hardware acceleration issue
-    bool isHardwareIssue = false;
-    bool hardwareAccelerationEnabled = true;
-
-    try {
-      final hardwareDetectionService =
-          Get.find<MediaHardwareDetectionService>();
-      isHardwareIssue = hardwareDetectionService.hasDetectedIssue.value;
-      hardwareAccelerationEnabled =
-          hardwareDetectionService.isHardwareAccelerationEnabled.value;
-    } catch (e) {
-      print('Error checking hardware acceleration status: $e');
-    }
-
+  Widget _buildErrorWidget() {
     return Center(
       child: Card(
         elevation: 12,
@@ -482,13 +320,13 @@ class _MediaTileState extends State<MediaTile>
                 duration: Duration(milliseconds: 400),
                 style: TextStyle(fontSize: 14, color: Colors.red.shade400),
                 child: Text(
-                  message,
+                  controller.errorMessage.value,
                   textAlign: TextAlign.center,
                 ),
               ),
 
               // Show hardware acceleration status if it's a hardware issue
-              if (isHardwareIssue) ...[
+              if (controller.isHardwareIssue) ...[
                 SizedBox(height: 12),
                 Container(
                   padding: EdgeInsets.all(8),
@@ -497,7 +335,7 @@ class _MediaTileState extends State<MediaTile>
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    'Hardware acceleration is ${hardwareAccelerationEnabled ? 'enabled' : 'disabled'}',
+                    'Hardware acceleration is ${controller.isHardwareAccelerationEnabled ? 'enabled' : 'disabled'}',
                     style: TextStyle(
                       color: Colors.amber.shade900,
                       fontWeight: FontWeight.w500,
@@ -521,21 +359,15 @@ class _MediaTileState extends State<MediaTile>
                       padding:
                           EdgeInsets.symmetric(horizontal: 36, vertical: 16),
                     ),
-                    onPressed: () {
-                      setState(() {
-                        _hasError = false;
-                        _isInitialized = false;
-                      });
-                      _initializePlayer();
-                    },
+                    onPressed: () => controller.retry(),
                     label: Text('Retry', style: TextStyle(fontSize: 17)),
                   ),
 
                   // Add button to toggle hardware acceleration if it's a hardware issue
-                  if (isHardwareIssue) ...[
+                  if (controller.isHardwareIssue) ...[
                     SizedBox(width: 12),
                     ElevatedButton.icon(
-                      icon: Icon(hardwareAccelerationEnabled
+                      icon: Icon(controller.isHardwareAccelerationEnabled
                           ? Icons.hardware
                           : Icons.settings_applications),
                       style: ElevatedButton.styleFrom(
@@ -547,24 +379,10 @@ class _MediaTileState extends State<MediaTile>
                         padding:
                             EdgeInsets.symmetric(horizontal: 36, vertical: 16),
                       ),
-                      onPressed: () {
-                        try {
-                          final hardwareDetectionService =
-                              Get.find<MediaHardwareDetectionService>();
-                          hardwareDetectionService.toggleHardwareAcceleration(
-                              !hardwareAccelerationEnabled);
-                          // Force reload
-                          setState(() {
-                            _hasError = false;
-                            _isInitialized = false;
-                          });
-                          _initializePlayer();
-                        } catch (e) {
-                          print('Error toggling hardware acceleration: $e');
-                        }
-                      },
+                      onPressed: () =>
+                          controller.toggleHardwareAccelerationAndRetry(),
                       label: Text(
-                        hardwareAccelerationEnabled
+                        controller.isHardwareAccelerationEnabled
                             ? 'Disable Hardware Accel.'
                             : 'Enable Hardware Accel.',
                         style: TextStyle(fontSize: 17),
@@ -580,25 +398,30 @@ class _MediaTileState extends State<MediaTile>
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    super.build(context); // Required for AutomaticKeepAliveClientMixin
+  Widget _buildLoadingWidget() {
+    return Container(
+      color: Colors.black,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(color: Colors.white),
+            SizedBox(height: 8),
+            Text(
+              'Loading media...',
+              style: TextStyle(color: Colors.white),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
-    if (_hasError) {
-      return _buildErrorWidget(_errorMessage);
-    }
-
-    if (!_isInitialized) {
-      return Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
-    // Use MediaKit's built-in video player with default controls
+  Widget _buildVideoPlayer() {
     return Material(
       color: Colors.black,
       child: Video(
-        controller: _playerData.controller,
+        controller: controller.videoController,
         controls: AdaptiveVideoControls, // Use MediaKit's built-in controls
       ),
     );

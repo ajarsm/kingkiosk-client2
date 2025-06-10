@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
+import '../../../services/window_manager_service.dart';
+import '../controllers/web_window_controller.dart';
 import '../controllers/web_view_tile_controller.dart';
+import 'webview_manager.dart';
 
 /// A global manager for WebView instances to prevent recreation during rebuilds
 class WebViewInstanceManager {
@@ -14,7 +17,6 @@ class WebViewInstanceManager {
 
   // Map of window IDs to their WebView instances
   final Map<String, _WebViewWrapper> _instances = {};
-
   // Create or get an existing WebView instance
   InAppWebView getOrCreateWebView({
     required String id,
@@ -48,103 +50,59 @@ class WebViewInstanceManager {
 
   // Remove a WebView instance
   bool removeWebView(String id) {
-    print('📌 WebViewInstanceManager: Request to REMOVE WebView ID: $id');
-    print(
-        '📌 WebViewInstanceManager: Current instances before removal: ${_instances.keys.toList()}');
-
     if (_instances.containsKey(id)) {
-      print(
-          '📌 WebViewInstanceManager: ✅ Successfully removing WebView for ID: $id');
+      print('🗑️ WebViewInstanceManager: Removing WebView for ID: $id');
       _instances.remove(id);
-      print(
-          '📌 WebViewInstanceManager: Remaining instances: ${_instances.keys.toList()}');
       return true;
-    } else {
-      print(
-          '📌 WebViewInstanceManager: ❌ WebView ID: $id not found for removal');
-      return false;
     }
+    return false;
+  }
+
+  // Clear all instances
+  void clearAll() {
+    print('🧹 WebViewInstanceManager: Clearing all instances');
+    _instances.clear();
+  }
+
+  // Get current instances for debugging
+  List<String> getActiveInstanceIds() {
+    return _instances.keys.toList();
   }
 }
 
-/// A wrapper class that holds a WebView instance and its callback handler
 class _WebViewWrapper {
   final String id;
   final String url;
+  final ValueKey<String> key;
   late WebViewCallbackHandler _callbackHandler;
   late final InAppWebView webView;
 
   _WebViewWrapper({
     required this.id,
     required this.url,
-    required ValueKey<String> key,
+    required this.key,
     required WebViewCallbackHandler callbackHandler,
   }) {
     _callbackHandler = callbackHandler;
-    webView = _createWebView(url, key);
+    _createWebView();
   }
 
-  // Update the callback handler (used when same WebView is used with a new WebViewTile instance)
   void updateCallbackHandler(WebViewCallbackHandler handler) {
     _callbackHandler = handler;
   }
 
-  // Create a new WebView instance with all event handlers
-  InAppWebView _createWebView(String url, ValueKey<String> key) {
-    return InAppWebView(
+  void _createWebView() {
+    webView = InAppWebView(
       key: key,
-      initialUrlRequest: URLRequest(
-        url: WebUri(url),
-      ),
-      initialSettings: InAppWebViewSettings(
-        javaScriptEnabled: true,
-        mediaPlaybackRequiresUserGesture: false,
-        transparentBackground: true,
-        useOnLoadResource: false,
-        supportZoom: true,
-        verticalScrollBarEnabled: true,
-        horizontalScrollBarEnabled: true,
-        allowsInlineMediaPlayback: true,
-        disableHorizontalScroll: false,
-        disableVerticalScroll: false,
-        allowsLinkPreview: true,
-        allowsBackForwardNavigationGestures: true,
-        javaScriptCanOpenWindowsAutomatically: true,
-        userAgent:
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/16.0 Safari/605.1.15",
-        useOnDownloadStart: true,
-        useShouldOverrideUrlLoading: true,
-        useShouldInterceptAjaxRequest: true,
-        useShouldInterceptFetchRequest: true,
-        clearCache: false,
-        cacheEnabled: true,
-      ),
-      // Pass event handlers in the constructor
-      onWebViewCreated: (controller) {
-        _callbackHandler.onWebViewCreated(controller, id);
-      },
-      onLoadStart: (controller, url) {
-        _callbackHandler.onLoadStart(controller, url);
-      },
-      onLoadStop: (controller, url) {
-        _callbackHandler.onLoadStop(controller, url);
-      },
-      onReceivedError: (controller, request, error) {
-        // Convert WebResourceRequest to URLRequest for the callback
-        final urlRequest = URLRequest(url: request.url);
-        _callbackHandler.onReceivedError(controller, urlRequest, error);
-      },
-      onConsoleMessage: (controller, consoleMessage) {
-        _callbackHandler.onConsoleMessage(controller, consoleMessage);
-      },
-      shouldOverrideUrlLoading: (controller, navigationAction) async {
-        return _callbackHandler.shouldOverrideUrlLoading(
-            controller, navigationAction);
-      },
-      // Handler for SSL certificate errors - proceed regardless of certificate validity
+      initialUrlRequest: URLRequest(url: WebUri(url)),
+      onWebViewCreated: (controller) =>
+          _callbackHandler.onWebViewCreated(controller, id),
+      onLoadStart: _callbackHandler.onLoadStart,
+      onLoadStop: _callbackHandler.onLoadStop,
+      onReceivedError: _callbackHandler.onReceivedError,
+      onConsoleMessage: _callbackHandler.onConsoleMessage,
+      shouldOverrideUrlLoading: _callbackHandler.shouldOverrideUrlLoading,
       onReceivedServerTrustAuthRequest: (controller, challenge) async {
-        print(
-            '🔒 WebViewTile - Received SSL certificate challenge, proceeding anyway');
         return ServerTrustAuthResponse(
             action: ServerTrustAuthResponseAction.PROCEED);
       },

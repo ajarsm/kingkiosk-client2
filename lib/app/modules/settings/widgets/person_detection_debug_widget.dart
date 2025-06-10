@@ -1,9 +1,9 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../services/person_detection_service.dart';
+import '../controllers/dynamic_bounding_box_controller.dart';
 
 class PersonDetectionDebugWidget extends StatelessWidget {
   const PersonDetectionDebugWidget({Key? key}) : super(key: key);
@@ -808,7 +808,7 @@ class PersonDetectionDebugWidget extends StatelessWidget {
   }
 }
 
-class _DynamicBoundingBoxOverlay extends StatefulWidget {
+class _DynamicBoundingBoxOverlay extends GetView<DynamicBoundingBoxController> {
   final List<DetectionBox> detectionBoxes;
   final Uint8List imageBytes;
 
@@ -819,54 +819,26 @@ class _DynamicBoundingBoxOverlay extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<_DynamicBoundingBoxOverlay> createState() =>
-      _DynamicBoundingBoxOverlayState();
-}
-
-class _DynamicBoundingBoxOverlayState
-    extends State<_DynamicBoundingBoxOverlay> {
-  Size? _imageSize;
-
-  @override
-  void initState() {
-    super.initState();
-    _decodeImageSize();
-  }
-
-  void _decodeImageSize() async {
-    try {
-      final codec = await ui.instantiateImageCodec(widget.imageBytes);
-      final frame = await codec.getNextFrame();
-      if (mounted) {
-        setState(() {
-          _imageSize = Size(
-            frame.image.width.toDouble(),
-            frame.image.height.toDouble(),
-          );
-        });
-      }
-    } catch (e) {
-      // Handle error silently
-    }
-  }
-
-  @override
-  void didUpdateWidget(covariant _DynamicBoundingBoxOverlay oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageBytes != widget.imageBytes) {
-      _decodeImageSize();
-    }
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: BoundingBoxPainter(
-        widget.detectionBoxes,
-        context,
-        imageSize: _imageSize,
-      ),
-    );
+    // Initialize controller if not already bound
+    if (!Get.isRegistered<DynamicBoundingBoxController>()) {
+      Get.put(DynamicBoundingBoxController());
+    }
+
+    // Decode image size when widget is built
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      controller.decodeImageSize(imageBytes);
+    });
+
+    return Obx(() {
+      return CustomPaint(
+        painter: BoundingBoxPainter(
+          detectionBoxes,
+          context,
+          imageSize: controller.imageSize.value,
+        ),
+      );
+    });
   }
 }
 

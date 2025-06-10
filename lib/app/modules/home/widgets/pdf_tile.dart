@@ -1,11 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:pdfrx/pdfrx.dart';
-import '../controllers/pdf_window_controller.dart';
-import '../../../services/window_manager_service.dart';
+import '../controllers/pdf_tile_controller.dart';
 
 /// A widget that displays a PDF document
-class PdfTile extends StatefulWidget {
+class PdfTile extends GetView<PdfTileController> {
   final String url;
   final String windowId;
   final VoidCallback? onClose;
@@ -18,192 +17,129 @@ class PdfTile extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _PdfTileState createState() => _PdfTileState();
-}
-
-class _PdfTileState extends State<PdfTile> {
-  late PdfWindowController windowController;
-  bool isLoading = true;
-  String? errorMessage;
-  final pdfController = PdfViewerController();
-  bool pdfReady = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Setup window controller
-    _setupWindowController();
-
-    // We'll set loading to false since the PdfViewer.uri handles loading internally
-    setState(() {
-      isLoading = false;
-    });
-  }
-
-  void _setupWindowController() {
-    try {
-      final wm = Get.find<WindowManagerService>();
-      final existingController = wm.getWindow(widget.windowId);
-
-      if (existingController != null &&
-          existingController is PdfWindowController) {
-        windowController = existingController;
-      } else {
-        // Create a new controller and register it with the window manager
-        windowController = PdfWindowController(
-          windowName: widget.windowId,
-          pdfUrl: widget.url,
-          onCloseCallback: widget.onClose,
-        );
-        wm.registerWindow(windowController);
-      }
-
-      // Listen for changes from the window controller
-      windowController.currentPage.listen((page) {
-        if (pdfReady &&
-            page > 0 &&
-            pdfController.pageCount > 0 &&
-            page <= pdfController.pageCount) {
-          // Only go to the page if not already there
-          if (pdfController.pageNumber != page - 1) {
-            pdfController.goToPage(pageNumber: page - 1);
-            print('📄 Controller requested page change to: $page');
-          }
-        }
-      });
-    } catch (e) {
-      print('❌ Error setting up PDF window controller: $e');
-      windowController = PdfWindowController(
-        windowName: widget.windowId,
-        pdfUrl: widget.url,
-        onCloseCallback: widget.onClose,
-      );
-    }
-  }
+  String get tag => windowId; // Use windowId as unique tag
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Expanded(
-          child: Stack(
-            children: [
-              if (isLoading)
-                const Center(
-                  child: CircularProgressIndicator(),
-                )
-              else
-                PdfViewer.uri(
-                  Uri.parse(widget.url),
-                  controller: pdfController,
-                  params: PdfViewerParams(
-                    onDocumentChanged: (document) {
-                      if (document != null) {
-                        setState(() {
-                          errorMessage = null;
-                        });
-                        final pageCount = document.pages.length;
-                        windowController.totalPages.value = pageCount;
-                        // Always reset to page 1 on load
-                        windowController.currentPage.value = 1;
-                        print(
-                            '📄 PDF loaded: ${widget.url}, pages: $pageCount');
-                      } else {
-                        setState(() {
-                          errorMessage = 'Failed to load PDF document';
-                        });
-                        print('❌ Error: PDF document is null');
-                      }
-                    },
-                    onViewerReady: (document, controller) {
-                      pdfReady = true;
-                      setState(() {});
-                      print(
-                          '📄 PDF viewer ready with document: ${document.pages.length} pages');
-                    },
-                    onPageChanged: (page) {
-                      if (page != null) {
-                        final newPage = page + 1;
-                        // Only update if different and within bounds
-                        if (windowController.currentPage.value != newPage &&
-                            newPage <= windowController.totalPages.value) {
-                          windowController.currentPage.value = newPage;
-                          print('📄 Page changed to: $newPage');
-                        }
-                      }
-                    },
-                    loadingBannerBuilder:
-                        (context, bytesDownloaded, totalBytes) {
-                      return const Center(
-                        child: CircularProgressIndicator(),
-                      );
-                    },
-                    errorBannerBuilder:
-                        (context, error, stackTrace, documentRef) {
-                      print('❌ Error in PDF viewer: $error');
-                      // Set error message to be displayed in the UI
-                      WidgetsBinding.instance.addPostFrameCallback((_) {
-                        setState(() {
-                          errorMessage = 'Failed to load PDF: $error';
-                        });
-                      });
-                      return Container(); // Error will be handled by our custom error overlay
-                    },
-                  ),
-                ),
+    // Initialize controller with window-specific tag
+    Get.put(
+        PdfTileController(
+          url: url,
+          windowId: windowId,
+          onCloseCallback: onClose,
+        ),
+        tag: tag);
 
-              // Show error overlay if there's an error
-              if (errorMessage != null)
-                Center(
-                  child: Container(
-                    padding: const EdgeInsets.all(16),
-                    color: Colors.black54,
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error, color: Colors.red, size: 40),
-                        const SizedBox(height: 16),
-                        Text(
-                          errorMessage!,
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
+    return Obx(() => _buildContent());
+  }
+
+  Widget _buildContent() {
+    if (controller.isLoading.value) {
+      return _buildLoadingWidget();
+    }
+
+    if (controller.errorMessage.value != null) {
+      return _buildErrorWidget();
+    }
+
+    return _buildPdfViewer();
+  }
+
+  Widget _buildLoadingWidget() {
+    return Container(
+      color: Colors.white,
+      child: Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            CircularProgressIndicator(),
+            SizedBox(height: 16),
+            Text(
+              'Loading PDF...',
+              style: TextStyle(
+                color: Colors.grey.shade600,
+                fontSize: 16,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Container(
+      color: Colors.red.shade50,
+      child: Center(
+        child: Card(
+          elevation: 8,
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          color: Colors.white,
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.error_outline, color: Colors.red, size: 48),
+                SizedBox(height: 16),
+                Text(
+                  'Failed to load PDF',
+                  style: TextStyle(
+                    color: Colors.red.shade700,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-            ],
+                SizedBox(height: 8),
+                Text(
+                  controller.errorMessage.value ?? 'Unknown error',
+                  style: TextStyle(color: Colors.red.shade600),
+                  textAlign: TextAlign.center,
+                ),
+                SizedBox(height: 24),
+                ElevatedButton.icon(
+                  icon: Icon(Icons.refresh),
+                  label: Text('Retry'),
+                  onPressed: () => controller.reload(),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    foregroundColor: Colors.white,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        // PDF controls toolbar
-        Container(
-          color: Colors.grey[900],
-          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              IconButton(
-                icon: const Icon(Icons.navigate_before),
-                tooltip: 'Previous Page',
-                onPressed: () {
-                  windowController.previousPage();
-                },
-              ),
-              Obx(() => Text(
-                    '${windowController.currentPage.value} / ${windowController.totalPages.value}',
-                    style: const TextStyle(color: Colors.white),
-                  )),
-              IconButton(
-                icon: const Icon(Icons.navigate_next),
-                tooltip: 'Next Page',
-                onPressed: () {
-                  windowController.nextPage();
-                },
-              ),
-            ],
+      ),
+    );
+  }
+
+  Widget _buildPdfViewer() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.grey.shade100,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: PdfViewer.uri(
+          Uri.parse(url),
+          controller: controller.pdfController,
+          params: PdfViewerParams(
+            backgroundColor: Colors.grey.shade100,
+            onDocumentChanged: (document) {
+              if (document != null) {
+                controller.onPdfReady();
+              }
+            },
+            onViewerReady: (document, controller) {
+              // PDF is ready to be viewed
+              this.controller.onPdfReady();
+            },
           ),
         ),
-      ],
+      ),
     );
   }
 }

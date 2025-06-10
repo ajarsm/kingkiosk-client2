@@ -18,10 +18,12 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
   @override
   Widget build(BuildContext context) {
     // Initialize controller with URL-specific tag
-    Get.put(AudioVisualizerTileController(
-      url: url,
-      title: title,
-    ), tag: tag);
+    Get.put(
+        AudioVisualizerTileController(
+          url: url,
+          title: title,
+        ),
+        tag: tag);
 
     return Obx(() => _buildContent());
   }
@@ -230,12 +232,12 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
                     ),
                   SizedBox(height: 4),
                   Obx(() => Text(
-                    _formatDuration(controller.position.value),
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  )),
+                        _formatDuration(controller.position.value),
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      )),
                 ],
               ),
             ),
@@ -327,6 +329,7 @@ class FrequencyBarsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(FrequencyBarsPainter oldDelegate) {
-    return frequencyData != oldDelegate.frequencyData || color != oldDelegate.color;
+    return frequencyData != oldDelegate.frequencyData ||
+        color != oldDelegate.color;
   }
 }
