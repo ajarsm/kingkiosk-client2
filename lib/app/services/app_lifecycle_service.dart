@@ -193,7 +193,19 @@ class AppLifecycleService extends GetxService with WidgetsBindingObserver {
     }
 
     // Disconnect from MQTT
-    await _safeDisconnectMqtt();
+    await _safeDisconnectMqtt(); // Release storage service application lock
+    if (Get.isRegistered<StorageService>()) {
+      try {
+        final storageService = Get.find<StorageService>();
+        developer.log('Releasing storage service application lock before exit');
+        await storageService.releaseApplicationLock();
+        developer.log('Storage service lock released');
+      } catch (e) {
+        developer.log('Error releasing storage service lock: $e', error: e);
+      }
+    } else {
+      developer.log('Storage service not found during shutdown');
+    }
 
     // Small delay to ensure cleanup completes
     await Future.delayed(Duration(milliseconds: 200));

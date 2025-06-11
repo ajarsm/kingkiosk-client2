@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:window_manager/window_manager.dart';
 import '../services/app_lifecycle_service.dart';
+import '../services/storage_service.dart';
 import '../services/sip_service.dart';
 import '../services/mqtt_service_consolidated.dart';
 import '../core/utils/platform_utils.dart';
@@ -61,6 +62,18 @@ class WindowCloseHandler extends GetxService with WindowListener {
       debugPrint(
           'AppLifecycleService not found, falling back to direct cleanup');
       // Fallback to direct service cleanup
+
+      // Release storage service application lock
+      if (Get.isRegistered<StorageService>()) {
+        try {
+          final storageService = Get.find<StorageService>();
+          debugPrint('Releasing storage service application lock before close');
+          await storageService.releaseApplicationLock();
+          debugPrint('Storage service lock released');
+        } catch (e) {
+          debugPrint('Error releasing storage service lock: $e');
+        }
+      }
 
       // Unregister SIP if available
       if (Get.isRegistered<SipService>()) {

@@ -18,6 +18,7 @@ import '../../settings/controllers/settings_controller_compat.dart';
 import 'media_window_controller.dart';
 import 'web_window_controller.dart';
 import 'image_window_controller.dart'; // Add import for image controller
+import '../../calendar/controllers/calendar_controller.dart';
 import 'pdf_window_controller.dart'; // Add import for PDF controller
 import 'clock_window_controller.dart'; // Add import for clock controller
 import 'alarmo_window_controller.dart'; // Add import for alarmo controller
@@ -229,6 +230,9 @@ class TilingWindowController extends GetxController {
         );
         tiles.add(tile);
 
+        // Register window controllers for restored tiles
+        _registerWindowControllerForTile(tile);
+
         // Set selected tile if this is it
         if (tile.id == selectedId) {
           selectedTile.value = tile;
@@ -246,6 +250,157 @@ class TilingWindowController extends GetxController {
     } catch (e) {
       print('Error restoring tiling window state: $e');
       return false;
+    }
+  }
+
+  /// Register window controllers for restored tiles
+  void _registerWindowControllerForTile(WindowTile tile) {
+    try {
+      switch (tile.type) {
+        case TileType.calendar:
+          // Register CalendarWindowController for calendar tiles
+          final controller = Get.put(
+            CalendarWindowController(windowName: tile.id),
+            tag: tile.id,
+          );
+
+          // Register with window manager
+          Get.find<WindowManagerService>().registerWindow(controller);
+
+          // Show the calendar window to ensure it's visible
+          controller.showWindow();
+
+          // Set the calendar title to match the tile name
+          try {
+            final calendarController = Get.find<CalendarController>();
+            calendarController.setCalendarTitle(tile.name);
+          } catch (e) {
+            print('⚠️ Could not set calendar title: $e');
+          }
+
+          print(
+              '📅 Registered and showed CalendarWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.clock:
+          // Register ClockWindowController for clock tiles
+          final controller = Get.put(
+            ClockWindowController(windowName: tile.id),
+            tag: tile.id,
+          );
+
+          // Apply initial configuration if metadata is present
+          if (tile.metadata != null) {
+            controller.configure(tile.metadata!);
+          }
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '🕒 Registered ClockWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.alarmo:
+          // Register AlarmoWindowController for alarmo tiles
+          final controller = Get.put(
+            AlarmoWindowController(windowName: tile.id),
+            tag: tile.id,
+          );
+
+          // Apply initial configuration if metadata is present
+          if (tile.metadata != null) {
+            controller.configure(tile.metadata!);
+          }
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '🚨 Registered AlarmoWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.weather:
+          // Register WeatherWindowController for weather tiles
+          final controller = Get.put(
+            WeatherWindowController(windowName: tile.id),
+            tag: tile.id,
+          );
+
+          // Apply initial configuration if metadata is present
+          if (tile.metadata != null) {
+            controller.configure(tile.metadata!);
+          }
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '🌤️ Registered WeatherWindowController for restored tile: ${tile.id}');
+          break;
+        case TileType.webView:
+          // Register WebWindowController for webview tiles
+          // Note: WebView controller needs the actual InAppWebViewController,
+          // which will be created when the WebViewTile widget is initialized
+          // For now, skip registration since it requires a valid webViewController
+          print(
+              '🌐 Skipping WebWindowController registration for restored tile: ${tile.id} (requires webViewController)');
+          break;
+
+        case TileType.media:
+          // Register MediaWindowController for media tiles
+          final playerData = MediaPlayerManager().getPlayerFor(tile.url);
+          final controller = MediaWindowController(
+            windowName: tile.id,
+            playerData: playerData,
+            onClose: () {
+              Get.find<WindowManagerService>().unregisterWindow(tile.id);
+            },
+          );
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '🎬 Registered MediaWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.image:
+          // Register ImageWindowController for image tiles
+          // Get the first image URL or use tile.url as fallback
+          final imageUrl =
+              tile.imageUrls.isNotEmpty ? tile.imageUrls.first : tile.url;
+          final controller = ImageWindowController(
+            windowName: tile.id,
+            imageUrl: imageUrl,
+            imageUrls: tile.imageUrls,
+            closeCallback: () {
+              Get.find<WindowManagerService>().unregisterWindow(tile.id);
+            },
+          );
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '🖼️ Registered ImageWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.pdf:
+          // Register PdfWindowController for PDF tiles
+          final controller = PdfWindowController(
+            windowName: tile.id,
+            pdfUrl: tile.url,
+            onCloseCallback: () {
+              Get.find<WindowManagerService>().unregisterWindow(tile.id);
+            },
+          );
+
+          Get.find<WindowManagerService>().registerWindow(controller);
+          print(
+              '📄 Registered PdfWindowController for restored tile: ${tile.id}');
+          break;
+
+        case TileType.audio:
+        case TileType.audioVisualizer:
+        case TileType.youtube:
+          // These tiles don't need separate window controllers for visibility
+          print(
+              '🔊 Tile type ${tile.type} does not require a window controller: ${tile.id}');
+          break;
+      }
+    } catch (e) {
+      print('❌ Error registering window controller for tile ${tile.id}: $e');
     }
   }
 
@@ -966,15 +1121,21 @@ class TilingWindowController extends GetxController {
     final controller = Get.put(
       CalendarWindowController(windowName: newTile.id),
       tag: newTile.id,
-    );
-
-    // Apply initial configuration if provided
+    ); // Apply initial configuration if provided
     if (config != null) {
       // Handle calendar-specific configuration
       print('📅 Calendar configuration: $config');
     }
 
     Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Set the calendar title to match the tile name
+    try {
+      final calendarController = Get.find<CalendarController>();
+      calendarController.setCalendarTitle(name);
+    } catch (e) {
+      print('⚠️ Could not set calendar title: $e');
+    }
 
     // Show the calendar window by default when created
     controller.showWindow();
@@ -1014,8 +1175,15 @@ class TilingWindowController extends GetxController {
       // Handle calendar-specific configuration
       print('📅 Calendar configuration: $config');
     }
-
     Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Set the calendar title to match the tile name
+    try {
+      final calendarController = Get.find<CalendarController>();
+      calendarController.setCalendarTitle(name);
+    } catch (e) {
+      print('⚠️ Could not set calendar title: $e');
+    }
 
     // Show the calendar window by default when created
     controller.showWindow();
@@ -1387,7 +1555,6 @@ class TilingWindowController extends GetxController {
       } catch (e) {
         print('Error reinitializing MediaKit: $e');
       }
-
       print('=== EMERGENCY MEDIA RESET COMPLETED ===');
     } catch (e) {
       print('Error during emergency media reset: $e');

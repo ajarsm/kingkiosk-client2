@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:get/get.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:crypto/crypto.dart';
@@ -8,7 +9,7 @@ import 'package:path_provider/path_provider.dart' if (dart.library.html) '';
 import 'package:universal_html/html.dart' as universal_html;
 
 // Universal imports for File and Directory access on non-web platforms
-import 'dart:io' show File, Directory if (dart.library.html) '';
+import 'dart:io' show File, Directory, pid, ProcessSignal, exit if (dart.library.html) '';
 
 /// Cross-platform unified storage service
 /// - Desktop/Mobile: File-based storage with JSON files
@@ -17,7 +18,10 @@ import 'dart:io' show File, Directory if (dart.library.html) '';
 class StorageService extends GetxService {
   File? _regularFile;
   File? _secureFile;
+  File? _lockFile;
   late final String _encryptionKey;
+  StreamSubscription? _sigintSubscription;
+  StreamSubscription? _sigtermSubscription;
 
   Map<String, dynamic> _regularData = {};
   Map<String, String> _secureData = {};
@@ -38,6 +42,12 @@ class StorageService extends GetxService {
           await storageDir.create(recursive: true);
         }
 
+        // Check for application lock to prevent multiple instances
+        await _acquireApplicationLock(storageDir);
+
+        // Set up signal handling for graceful shutdown
+        _setupSignalHandling();
+
         // Initialize storage files
         _regularFile = File('${storageDir.path}/regular.json');
         _secureFile = File('${storageDir.path}/secure.json');
@@ -47,6 +57,9 @@ class StorageService extends GetxService {
         print('✅ File-based storage initialized (Desktop/Mobile)');
       } else {
         // Web: Use localStorage for persistent storage
+        // Check for application lock to prevent multiple instances (Web)
+        await _acquireWebApplicationLock();
+        
         await _loadWebData();
         print('✅ localStorage initialized (Web)');
         print('ℹ️  Web storage uses HTML5 localStorage for persistence.');
@@ -448,8 +461,260 @@ class StorageService extends GetxService {
   /// Compatibility property for services that check this
   StorageService? get secureStorage => this;
 
+  // ============================================================================
+  // APPLICATION LOCK METHODS
+  // ============================================================================
+
+  /// Manually release application lock (useful for graceful shutdown)
+  Future<void> releaseApplicationLock() async {
+    if (kIsWeb) {
+      await _releaseWebApplicationLock();
+    } else {
+      await _releaseApplicationLock();
+    }
+  }
+
+  /// Acquire application lock to prevent multiple instances
+  Future<void> _acquireApplicationLock(Directory storageDir) async {
+    _lockFile = File('${storageDir.path}/app.lock');
+    
+    // Check if lock file exists and is still valid
+    if (await _lockFile!.exists()) {
+      try {
+        final lockContent = await _lockFile!.readAsString();
+        final lockData = jsonDecode(lockContent);
+        final lockTime = DateTime.parse(lockData['timestamp']);
+        final lockPid = lockData['pid'];
+        
+        // Check if lock is stale (older than 5 minutes) or from same process
+        final now = DateTime.now();
+        final lockAge = now.difference(lockTime);
+        
+        if (lockAge.inMinutes > 5) {
+          print('⚠️ Stale application lock found (${lockAge.inMinutes} minutes old), removing...');
+          await _lockFile!.delete();
+        } else if (lockPid == getCurrentProcessId()) {
+          print('⚠️ Lock file belongs to current process, removing...');
+          await _lockFile!.delete();
+        } else {
+          print('❌ Another KingKiosk instance is running (PID: $lockPid, started: ${lockTime.toLocal()})');
+          print('❌ Please close the other instance before starting a new one');
+          print('❌ If you believe this is an error, delete the lock file: ${_lockFile!.path}');
+          throw Exception('Another instance of KingKiosk is already running');
+        }
+      } catch (e) {
+        if (e.toString().contains('Another instance')) {
+          rethrow;
+        }
+        // Lock file is corrupted, remove it
+        print('⚠️ Corrupted lock file found, removing...');
+        await _lockFile!.delete();
+      }
+    }
+    
+    // Create new lock file
+    final lockData = {
+      'timestamp': DateTime.now().toIso8601String(),
+      'pid': getCurrentProcessId(),
+      'app': 'KingKiosk',
+      'version': '1.0.0',
+      'platform': kIsWeb ? 'web' : 'desktop',
+    };
+    
+    await _lockFile!.writeAsString(jsonEncode(lockData));
+    print('🔒 Application lock acquired (PID: ${lockData['pid']})');
+  }
+
+  /// Get current process ID (platform-specific)
+  int getCurrentProcessId() {
+    try {
+      if (!kIsWeb) {
+        return pid;
+      }
+    } catch (e) {
+      // Fallback for platforms that don't support pid
+    }
+    return DateTime.now().millisecondsSinceEpoch % 100000; // Fallback ID
+  }
+
+  /// Release application lock
+  Future<void> _releaseApplicationLock() async {
+    if (_lockFile != null && await _lockFile!.exists()) {
+      try {
+        await _lockFile!.delete();
+        print('🔓 Application lock released');
+      } catch (e) {
+        print('⚠️ Failed to release application lock: $e');
+      }
+    }
+  }
+
+  /// Acquire application lock for Web platform using localStorage
+  Future<void> _acquireWebApplicationLock() async {
+    const lockKey = 'kingkiosk_app_lock';
+    
+    try {
+      final storage = _getWebStorage();
+      if (storage == null) {
+        print('⚠️ localStorage not available, skipping Web lock mechanism');
+        return;
+      }
+
+      // Check if lock exists
+      final existingLockData = storage[lockKey];
+      if (existingLockData != null) {
+        try {
+          final lock = jsonDecode(existingLockData);
+          final lockTime = DateTime.parse(lock['timestamp']);
+          final tabId = lock['tab_id'];
+          
+          // Check if lock is stale (older than 5 minutes)
+          final now = DateTime.now();
+          final lockAge = now.difference(lockTime);
+          
+          if (lockAge.inMinutes > 5) {
+            print('⚠️ Stale Web application lock found (${lockAge.inMinutes} minutes old), removing...');
+            storage.remove(lockKey);
+          } else {
+            print('❌ Another KingKiosk Web instance is running (Tab: $tabId, started: ${lockTime.toLocal()})');
+            print('❌ Please close the other browser tab before opening a new one');
+            print('❌ If you believe this is an error, clear your browser\'s localStorage for this site');
+            throw Exception('Another instance of KingKiosk is already running in another tab');
+          }
+        } catch (e) {
+          if (e.toString().contains('Another instance')) {
+            rethrow;
+          }
+          // Lock data is corrupted, remove it
+          print('⚠️ Corrupted Web lock found, removing...');
+          storage.remove(lockKey);
+        }
+      }
+      
+      // Create new lock
+      final tabId = _generateWebTabId();
+      final newLockData = {
+        'timestamp': DateTime.now().toIso8601String(),
+        'tab_id': tabId,
+        'app': 'KingKiosk',
+        'version': '1.0.0',
+        'platform': 'web',
+      };
+      
+      storage[lockKey] = jsonEncode(newLockData);
+      print('🔒 Web application lock acquired (Tab: $tabId)');
+      
+      // Set up periodic lock refresh to keep it alive
+      _setupWebLockRefresh(lockKey, tabId);
+    } catch (e) {
+      if (e.toString().contains('Another instance')) {
+        rethrow;
+      }
+      print('⚠️ Failed to acquire Web application lock: $e');
+      // Don't throw here, allow app to continue for Web compatibility
+    }
+  }
+
+  /// Generate a unique tab identifier for Web
+  String _generateWebTabId() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final random = (now * 0.123456789).floor() % 10000;
+    return 'tab_${now}_$random';
+  }
+
+  /// Set up periodic refresh of Web lock
+  void _setupWebLockRefresh(String lockKey, String tabId) {
+    // Refresh lock every 30 seconds to keep it alive
+    Timer.periodic(const Duration(seconds: 30), (timer) {
+      try {
+        final storage = _getWebStorage();
+        if (storage == null) {
+          timer.cancel();
+          return;
+        }
+        
+        final currentLock = storage[lockKey];
+        if (currentLock != null) {
+          final lock = jsonDecode(currentLock);
+          if (lock['tab_id'] == tabId) {
+            // This is our lock, refresh it
+            lock['timestamp'] = DateTime.now().toIso8601String();
+            storage[lockKey] = jsonEncode(lock);
+          } else {
+            // Someone else has the lock, stop refreshing
+            timer.cancel();
+          }
+        }
+      } catch (e) {
+        print('⚠️ Error refreshing Web lock: $e');
+        timer.cancel();
+      }
+    });
+  }
+
+  /// Release Web application lock
+  Future<void> _releaseWebApplicationLock() async {
+    const lockKey = 'kingkiosk_app_lock';
+    
+    try {
+      final storage = _getWebStorage();
+      if (storage != null) {
+        storage.remove(lockKey);
+        print('🔓 Web application lock released');
+      }
+    } catch (e) {
+      print('⚠️ Failed to release Web application lock: $e');
+    }
+  }
+
+  /// Set up signal handling for graceful shutdown (non-web platforms)
+  void _setupSignalHandling() {
+    if (kIsWeb) return;
+
+    try {
+      // Handle SIGINT (Ctrl+C)
+      _sigintSubscription = ProcessSignal.sigint.watch().listen((signal) {
+        print('⚠️ Received SIGINT signal, performing graceful shutdown...');
+        _handleShutdownSignal();
+      });
+
+      // Handle SIGTERM (termination request)
+      _sigtermSubscription = ProcessSignal.sigterm.watch().listen((signal) {
+        print('⚠️ Received SIGTERM signal, performing graceful shutdown...');
+        _handleShutdownSignal();
+      });
+
+      print('🔧 Signal handlers set up for graceful shutdown');
+    } catch (e) {
+      print('⚠️ Failed to set up signal handlers: $e');
+    }
+  }
+
+  /// Handle shutdown signals by releasing the lock and exiting
+  void _handleShutdownSignal() async {
+    try {
+      print('🔄 Releasing application lock due to signal...');
+      await releaseApplicationLock();
+      print('✅ Application lock released successfully');
+    } catch (e) {
+      print('❌ Error releasing lock during shutdown: $e');
+    } finally {
+      exit(0);
+    }
+  }
+
   @override
   void onClose() {
+    // Cancel signal subscriptions
+    _sigintSubscription?.cancel();
+    _sigtermSubscription?.cancel();
+
+    // Release lock in background - don't await to avoid blocking
+    if (kIsWeb) {
+      _releaseWebApplicationLock();
+    } else {
+      _releaseApplicationLock();
+    }
     _saveData();
     super.onClose();
   }

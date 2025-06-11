@@ -16,6 +16,7 @@ import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
+import '../modules/calendar/controllers/calendar_controller.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
 import 'tts_service.dart';
@@ -48,9 +49,17 @@ class MqttService extends GetxService {
 
   // Stats update timer
   Timer? _statsUpdateTimer;
-
   // Update interval - 30 seconds for more responsive updates
   final int _updateIntervalSeconds = 30;
+
+  // Batch script management
+  bool _batchScriptRunning = false;
+  String? _currentBatchId;
+  Timer? _batchTimeoutTimer;
+  bool _batchKillRequested = false;
+  final RxString batchStatus = 'idle'.obs; // idle, running, killed
+  final RxInt batchProgress = 0.obs; // Current command index
+  final RxInt batchTotal = 0.obs; // Total commands in batch
 
   // Constructor
   MqttService(this._storageService, this._sensorService);
@@ -590,96 +599,34 @@ class MqttService extends GetxService {
     print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
     if (cmdObj is Map) {
       print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
-    } // --- Handle batch commands array first ---
+    }    // --- Handle batch commands array first ---
     if (cmdObj is Map &&
         (cmdObj['commands'] is List ||
             cmdObj['command']?.toString().toLowerCase() == 'batch')) {
-      // Support both batch format styles: {commands: [...]} and {command: 'batch', commands: [...]}
-      print('🎯 Processing batch command');
-      final List commandList = cmdObj['commands'] as List;
-      print('🎯 Processing batch of ${commandList.length} commands');
-
-      // Separate TTS commands for optimized batch processing
-      final List<Map<String, dynamic>> ttsCommands = [];
-      final List<dynamic> otherCommands = [];
-
-      for (final cmd in commandList) {
-        if (cmd is Map) {
-          final command = cmd['command']?.toString().toLowerCase();
-          if (command == 'tts' || command == 'speak' || command == 'say') {
-            ttsCommands.add(Map<String, dynamic>.from(cmd));
-          } else {
-            otherCommands.add(cmd);
-          }
+      
+      // Check if another batch script is already running
+      if (_batchScriptRunning) {
+        final errorMsg = 'Cannot start new batch script: another batch script is already running (ID: $_currentBatchId)';
+        print('❌ [MQTT] $errorMsg');
+        
+        // Publish error to response topic if specified
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(
+            cmdObj['response_topic'],
+            {
+              'success': false,
+              'error': errorMsg,
+              'current_batch_id': _currentBatchId,
+              'batch_status': batchStatus.value,
+            },
+            retain: false
+          );
         }
-      } // Process TTS commands as a batch if any exist
-      if (ttsCommands.isNotEmpty) {
-        try {
-          // Check if TTS service is available and initialized before using it
-          if (!Get.isRegistered<TtsService>()) {
-            print(
-                '⚠️ [MQTT] TTS service not yet registered, skipping TTS commands');
-            return;
-          }
-
-          final ttsService = Get.find<TtsService>();
-          if (!ttsService.isInitialized.value) {
-            print(
-                '⚠️ [MQTT] TTS service not yet initialized, skipping TTS commands');
-            return;
-          }
-
-          print(
-              '🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
-          final results = await ttsService.handleBatchMqttCommands(ttsCommands);
-
-          // Publish individual results to response topics if specified
-          for (int i = 0; i < results.length && i < ttsCommands.length; i++) {
-            final result = results[i];
-            final cmd = ttsCommands[i];
-
-            print('🔊 [MQTT] Batch TTS command result: $result');
-
-            if (cmd['response_topic'] != null) {
-              publishJsonToTopic(cmd['response_topic'], result, retain: false);
-            }
-          }
-        } catch (e) {
-          print('❌ [MQTT] Error processing TTS batch: $e');
-          // Publish error to response topics if specified
-          for (final cmd in ttsCommands) {
-            if (cmd['response_topic'] != null) {
-              publishJsonToTopic(
-                  cmd['response_topic'],
-                  {
-                    'success': false,
-                    'error': 'TTS batch processing failed: $e'
-                  },
-                  retain: false);
-            }
-          }
-        }
+        return;
       }
 
-      // Process other commands individually
-      for (final cmd in otherCommands) {
-        if (cmd is Map) {
-          try {
-            // Check specifically for notify command to use optimized path
-            if (cmd['command']?.toString().toLowerCase() == 'notify') {
-              MqttNotificationHandler.processNotifyCommand(cmd);
-              continue;
-            }
-
-            // Process each other command in the batch
-            final cmdString = jsonEncode(cmd);
-            print('🎯 Processing batch command: $cmdString');
-            _processCommand(cmdString);
-          } catch (e) {
-            print('❌ Error processing batch command: $e');
-          }
-        }
-      }
+      // Start managed batch processing
+      await _processManagedBatch(cmdObj);
       return;
     }
 
@@ -1494,39 +1441,152 @@ class MqttService extends GetxService {
         print('❌ Error creating Weather widget: $e');
       }
       return;
-    }
-
-    // --- calendar command ---
+    } // --- calendar command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'calendar') {
       final action = cmdObj['action']?.toString().toLowerCase();
       final name = cmdObj['name']?.toString() ?? 'Calendar';
       final String? windowId = cmdObj['window_id']?.toString();
 
       try {
-        final controller = Get.find<TilingWindowController>();
+        // Handle calendar widget management (show/hide)
+        if (action == 'show' || action == 'create' || action == 'hide') {
+          final controller = Get.find<TilingWindowController>();
 
-        if (action == 'show' || action == 'create') {
-          // Create or show calendar tile
-          if (windowId != null && windowId.isNotEmpty) {
-            controller.addCalendarTileWithId(windowId, name);
-          } else {
-            controller.addCalendarTile(name);
+          if (action == 'show' || action == 'create') {
+            // Create or show calendar tile
+            if (windowId != null && windowId.isNotEmpty) {
+              controller.addCalendarTileWithId(windowId, name);
+            } else {
+              controller.addCalendarTile(name);
+            }
+            print('📅 [MQTT] Created Calendar widget: $name' +
+                (windowId != null ? ', id=$windowId' : ''));
+          } else if (action == 'hide' && windowId != null) {
+            // Hide specific calendar tile
+            final tile = controller.tiles.firstWhere(
+                (tile) => tile.id == windowId,
+                orElse: () =>
+                    throw Exception('Calendar tile not found: $windowId'));
+            controller.closeTile(tile);
+            print('📅 [MQTT] Removed Calendar widget: $windowId');
           }
-          print('📅 [MQTT] Created Calendar widget: $name' +
-              (windowId != null ? ', id=$windowId' : ''));
-        } else if (action == 'hide' && windowId != null) {
-          // Hide specific calendar tile
-          final tile = controller.tiles.firstWhere(
-              (tile) => tile.id == windowId,
-              orElse: () =>
-                  throw Exception('Calendar tile not found: $windowId'));
-          controller.closeTile(tile);
-          print('📅 [MQTT] Removed Calendar widget: $windowId');
+        } // Handle calendar event management
+        else if (action == 'add_event' ||
+            action == 'remove_event' ||
+            action == 'clear_events' ||
+            action == 'go_to_date' ||
+            action == 'format') {
+          try {
+            final calendarController = Get.find<CalendarController>();
+            calendarController
+                .handleMqttCalendarCommand(Map<String, dynamic>.from(cmdObj));
+            print('📅 [MQTT] Calendar event command processed: $action');
+          } catch (e) {
+            print(
+                '❌ [MQTT] CalendarController not found, attempting to register...');
+            // Try to register calendar controller if not found
+            final calendarController = Get.put(CalendarController());
+            calendarController
+                .handleMqttCalendarCommand(Map<String, dynamic>.from(cmdObj));
+            print(
+                '📅 [MQTT] Calendar event command processed after registration: $action');
+          }
         } else {
           print('❌ [MQTT] Unknown calendar action: $action');
         }
       } catch (e) {
         print('❌ Error processing calendar command: $e');
+      }
+      return;
+    }
+
+    // --- kill_batch_script command to stop running batch script ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'kill_batch_script') {
+      final result = _killBatchScript();
+      print('🛑 [MQTT] Kill batch script result: $result');
+      
+      // Publish result to response topic if specified
+      if (cmdObj['response_topic'] != null) {
+        publishJsonToTopic(
+          cmdObj['response_topic'],
+          {
+            'success': result['success'],
+            'message': result['message'],
+            'killed_batch_id': result['killed_batch_id'],
+            'command': 'kill_batch_script',
+            'timestamp': DateTime.now().toIso8601String(),
+          },
+          retain: false
+        );
+      }
+      return;
+    }
+
+    // --- batch_status command to check current batch status ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'batch_status') {
+      final status = {
+        'success': true,
+        'batch_running': _batchScriptRunning,
+        'batch_id': _currentBatchId,
+        'status': batchStatus.value,
+        'progress': batchProgress.value,
+        'total': batchTotal.value,
+        'kill_requested': _batchKillRequested,
+        'command': 'batch_status',
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+      
+      print('📊 [MQTT] Batch status: $status');
+      
+      // Publish status to response topic if specified
+      if (cmdObj['response_topic'] != null) {
+        publishJsonToTopic(cmdObj['response_topic'], status, retain: false);
+      }
+      return;
+    }
+
+    // --- wait command for batch script delays ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'wait') {
+      final seconds = double.tryParse(cmdObj['seconds']?.toString() ?? '1');
+      if (seconds != null && seconds > 0 && seconds <= 300) {
+        // Max 5 minutes
+        print('⏱️ [MQTT] Wait command: pausing script for ${seconds} seconds');
+
+        // Use Future.delayed to pause without blocking other operations
+        await Future.delayed(Duration(milliseconds: (seconds * 1000).round()));
+
+        print('✅ [MQTT] Wait completed after ${seconds} seconds');
+
+        // Optionally publish completion to response topic
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(
+              cmdObj['response_topic'],
+              {
+                'success': true,
+                'waited_seconds': seconds,
+                'command': 'wait',
+                'timestamp': DateTime.now().toIso8601String(),
+              },
+              retain: false);
+        }
+      } else {
+        final errorMsg = seconds == null
+            ? 'Invalid wait seconds value: ${cmdObj['seconds']}'
+            : 'Wait seconds must be between 0 and 300, got: $seconds';
+        print('❌ [MQTT] $errorMsg');
+
+        // Publish error to response topic if specified
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(
+              cmdObj['response_topic'],
+              {
+                'success': false,
+                'error': errorMsg,
+                'command': 'wait',
+                'timestamp': DateTime.now().toIso8601String(),
+              },
+              retain: false);
+        }
       }
       return;
     }
@@ -2908,51 +2968,6 @@ class MqttService extends GetxService {
           HaloPulseMode pulseMode = HaloPulseMode.none;
 
           try {
-            switch (pulseModeStr) {
-              case 'gentle':
-                pulseMode = HaloPulseMode.gentle;
-                break;
-              case 'moderate':
-                pulseMode = HaloPulseMode.moderate;
-                break;
-              case 'alert':
-                pulseMode = HaloPulseMode.alert;
-                break;
-              default:
-                pulseMode = HaloPulseMode.none;
-            }
-          } catch (e) {
-            pulseMode = HaloPulseMode.none;
-          }
-
-          // Get animation durations
-          Duration? pulseDuration;
-          if (cmdObj['pulse_duration'] != null) {
-            try {
-              final dynamic rawValue = cmdObj['pulse_duration'];
-              int milliseconds = 2000; // Default value
-
-              if (rawValue is int) {
-                milliseconds = rawValue;
-              } else if (rawValue is double) {
-                milliseconds = rawValue.toInt();
-              } else if (rawValue is String) {
-                milliseconds = int.tryParse(rawValue) ?? 2000;
-              }
-
-              // Validate ranges
-              if (milliseconds < 100) {
-                milliseconds = 100;
-              } else if (milliseconds > 10000) {
-                milliseconds = 10000;
-              }
-
-              pulseDuration = Duration(milliseconds: milliseconds);
-            } catch (e) {
-              pulseDuration = const Duration(milliseconds: 2000);
-            }
-          }
-
           Duration? fadeInDuration;
           if (cmdObj['fade_in_duration'] != null) {
             try {

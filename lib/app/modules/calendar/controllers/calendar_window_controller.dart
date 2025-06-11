@@ -24,7 +24,14 @@ class CalendarWindowController extends GetxController
   KioskWindowType get windowType => KioskWindowType.custom;
 
   CalendarController get calendarController {
-    _calendarController ??= Get.find<CalendarController>();
+    if (_calendarController == null) {
+      try {
+        _calendarController = Get.find<CalendarController>();
+      } catch (e) {
+        print('⚠️ CalendarController not found, creating new instance: $e');
+        _calendarController = Get.put(CalendarController(), permanent: true);
+      }
+    }
     return _calendarController!;
   }
 
@@ -32,15 +39,28 @@ class CalendarWindowController extends GetxController
   void onInit() {
     super.onInit();
 
-    // Ensure calendar controller is registered
-    if (!Get.isRegistered<CalendarController>()) {
-      Get.put(CalendarController(), permanent: true);
+    try {
+      // Ensure calendar controller is registered
+      if (!Get.isRegistered<CalendarController>()) {
+        print('📅 Registering new CalendarController');
+        Get.put(CalendarController(), permanent: true);
+      } else {
+        print('📅 CalendarController already registered');
+      }
+
+      // Force initialization of calendar controller to ensure it's working
+      final _ = calendarController;
+
+      // Automatically show calendar content when window controller is created
+      calendarController.showCalendar();
+
+      // Register this controller with the window manager
+      Get.find<WindowManagerService>().registerWindow(this);
+
+      print('📅 Calendar window controller initialized for: $windowName');
+    } catch (e) {
+      print('❌ Error initializing calendar window controller: $e');
     }
-
-    // Register this controller with the window manager
-    Get.find<WindowManagerService>().registerWindow(this);
-
-    print('📅 Calendar window controller initialized for: $windowName');
   }
 
   @override

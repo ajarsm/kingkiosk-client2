@@ -5,6 +5,7 @@ import 'package:window_manager/window_manager.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 import 'dart:io' show exit;
 import '../../services/app_lifecycle_service.dart';
+import '../../services/storage_service.dart';
 import '../../services/sip_service.dart';
 import '../../services/mqtt_service_consolidated.dart';
 
@@ -153,6 +154,18 @@ class PlatformUtils {
         await mqttService.disconnect();
       } catch (e) {
         print('Error disconnecting MQTT: $e');
+      }
+    }
+
+    // Release storage service application lock
+    if (Get.isRegistered<StorageService>()) {
+      try {
+        final storageService = Get.find<StorageService>();
+        print('Releasing storage service application lock before exit');
+        await storageService.releaseApplicationLock();
+        print('Storage service lock released');
+      } catch (e) {
+        print('Error releasing storage service lock: $e');
       }
     }
 

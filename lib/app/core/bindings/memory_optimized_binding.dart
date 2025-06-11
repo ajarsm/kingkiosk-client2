@@ -44,9 +44,15 @@ class MemoryOptimizedBinding extends Bindings {
 
     // 1. Storage Service - Required immediately for settings/config
     print('📦 Loading Storage service...');
-    final storageService = StorageService();
-    await storageService.init();
-    Get.put<StorageService>(storageService, permanent: true);
+    try {
+      final storageService = StorageService();
+      await storageService.init();
+      Get.put<StorageService>(storageService, permanent: true);
+      print('✅ Storage service initialized successfully');
+    } catch (e) {
+      print('❌ Failed to initialize storage service: $e');
+      rethrow; // This will prevent the app from continuing with broken storage
+    }
 
     // 2. Theme Service - Required for UI theming
     print('🎨 Loading Theme service...');
@@ -70,8 +76,9 @@ class MemoryOptimizedBinding extends Bindings {
     print('🟢 [Init] TTS service initialized and ready');
 
     // 6. MQTT Service - Core communication service (if enabled)
+    final storageServiceRef = Get.find<StorageService>();
     final mqttEnabled =
-        storageService.read<bool>(AppConstants.keyMqttEnabled) ?? false;
+        storageServiceRef.read<bool>(AppConstants.keyMqttEnabled) ?? false;
 
     if (mqttEnabled) {
       print('📡 Loading MQTT service (enabled in settings)...');
@@ -81,7 +88,7 @@ class MemoryOptimizedBinding extends Bindings {
       Get.put<PlatformSensorService>(sensorService, permanent: true);
 
       final sensorServiceRef = Get.find<PlatformSensorService>();
-      final mqttService = MqttService(storageService, sensorServiceRef);
+      final mqttService = MqttService(storageServiceRef, sensorServiceRef);
       await mqttService.init();
       Get.put<MqttService>(mqttService, permanent: true);
       print('✅ MQTT service initialized successfully');
@@ -100,8 +107,8 @@ class MemoryOptimizedBinding extends Bindings {
 
     print('⚡ Setting up lazy loading for optional services...');
 
-    // App State Controller - Lazy load
-    Get.lazyPut<AppStateController>(() => AppStateController(), fenix: true);
+    // App State Controller - Required immediately by widgets
+    Get.put<AppStateController>(AppStateController(), permanent: true);
 
     // App Lifecycle Service - Lazy load
     Get.lazyPut<AppLifecycleService>(() {
@@ -169,15 +176,15 @@ class MemoryOptimizedBinding extends Bindings {
         fenix: true);
 
     // SIP Service - Conditional lazy loading based on settings
-    _conditionallyLoadSipService(storageService);
+    _conditionallyLoadSipService(storageServiceRef);
 
     // Media Device Service - Always load for device enumeration (required for camera/audio)
     _loadMediaDeviceService();
     // AI Assistant - Lazy load with delayed initialization
-    _conditionallyLoadAiAssistant(storageService);
+    _conditionallyLoadAiAssistant(storageServiceRef);
 
     // Person Detection Service - Conditional lazy loading based on settings
-    _conditionallyLoadPersonDetection(storageService);
+    _conditionallyLoadPersonDetection(storageServiceRef);
 
     print('✅ Memory-optimized binding initialization complete');
     print('🔹 Core services loaded: ${_getCoreServiceCount()}');

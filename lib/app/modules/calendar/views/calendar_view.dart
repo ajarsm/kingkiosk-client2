@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:table_calendar/table_calendar.dart';
 import '../controllers/calendar_controller.dart';
+import '../models/calendar_event.dart';
 
 /// GetX-based Calendar View Widget
 /// Reactive calendar widget that responds to MQTT commands
@@ -19,15 +20,17 @@ class CalendarView extends GetView<CalendarController> {
                   elevation: 4,
                   child: Padding(
                     padding: const EdgeInsets.all(16.0),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildCalendarHeader(),
-                        const SizedBox(height: 16),
-                        _buildCalendar(),
-                        const SizedBox(height: 16),
-                        _buildCalendarFooter(),
-                      ],
+                    child: SingleChildScrollView(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildCalendarHeader(),
+                          const SizedBox(height: 16),
+                          _buildCalendar(),
+                          const SizedBox(height: 16),
+                          _buildCalendarFooter(),
+                        ],
+                      ),
                     ),
                   ),
                 )
@@ -62,11 +65,6 @@ class CalendarView extends GetView<CalendarController> {
                   onPressed: _toggleCalendarFormat,
                   tooltip: 'Toggle Format',
                 )),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: controller.hideCalendar,
-              tooltip: 'Hide Calendar',
-            ),
           ],
         ),
       ],
@@ -75,7 +73,7 @@ class CalendarView extends GetView<CalendarController> {
 
   /// Build the main calendar widget
   Widget _buildCalendar() {
-    return Obx(() => TableCalendar<DateTime>(
+    return Obx(() => TableCalendar<CalendarEvent>(
           firstDay: CalendarController.kFirstDay,
           lastDay: CalendarController.kLastDay,
           focusedDay: controller.focusedDay.value,
@@ -122,18 +120,101 @@ class CalendarView extends GetView<CalendarController> {
             if (events.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                'Events: ${events.length}',
+                'Events (${events.length}):',
                 style: TextStyle(
                   color: Get.theme.colorScheme.primary,
                   fontWeight: FontWeight.w500,
                 ),
               ),
+              const SizedBox(height: 4),
+              ...events
+                  .map((event) => Container(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Get.theme.colorScheme.primaryContainer
+                              .withValues(alpha: 0.3),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: Get.theme.colorScheme.primary
+                                .withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Text(
+                                          event.title,
+                                          style: const TextStyle(
+                                            fontWeight: FontWeight.bold,
+                                            fontSize: 14,
+                                          ),
+                                        ),
+                                      ),
+                                      Tooltip(
+                                        message:
+                                            'Event ID: ${event.id}\nUse this ID for MQTT commands',
+                                        child: Container(
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 6, vertical: 2),
+                                          decoration: BoxDecoration(
+                                            color: Get
+                                                .theme.colorScheme.secondary
+                                                .withValues(alpha: 0.8),
+                                            borderRadius:
+                                                BorderRadius.circular(4),
+                                          ),
+                                          child: Text(
+                                            'ID: ${event.id.substring(0, 8)}',
+                                            style: TextStyle(
+                                              fontSize: 10,
+                                              fontWeight: FontWeight.w500,
+                                              color: Get.theme.colorScheme
+                                                  .onSecondary,
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  if (event.description != null &&
+                                      event.description!.isNotEmpty)
+                                    Text(
+                                      event.description!,
+                                      style: TextStyle(
+                                        fontSize: 12,
+                                        color: Get.theme.colorScheme.onSurface
+                                            .withValues(alpha: 0.7),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              onPressed: () =>
+                                  controller.removeEventById(event.id),
+                              icon: const Icon(Icons.close, size: 16),
+                              tooltip: 'Remove this event',
+                              constraints: const BoxConstraints.tightFor(
+                                  width: 32, height: 32),
+                              padding: EdgeInsets.zero,
+                            ),
+                          ],
+                        ),
+                      ))
+                  .toList(),
             ],
             const SizedBox(height: 8),
             Row(
               children: [
                 ElevatedButton.icon(
-                  onPressed: () => controller.addEvent(selectedDay),
+                  onPressed: () => _showAddEventDialog(selectedDay),
                   icon: const Icon(Icons.add, size: 16),
                   label: const Text('Add Event'),
                   style: ElevatedButton.styleFrom(
@@ -145,8 +226,8 @@ class CalendarView extends GetView<CalendarController> {
                 if (events.isNotEmpty)
                   ElevatedButton.icon(
                     onPressed: () => controller.removeEvent(selectedDay),
-                    icon: const Icon(Icons.remove, size: 16),
-                    label: const Text('Remove Event'),
+                    icon: const Icon(Icons.clear_all, size: 16),
+                    label: const Text('Clear All'),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red,
                       foregroundColor: Colors.white,
@@ -194,7 +275,7 @@ class CalendarView extends GetView<CalendarController> {
   }
 
   /// Get calendar builders for custom day widgets
-  CalendarBuilders<DateTime> _getCalendarBuilders() {
+  CalendarBuilders<CalendarEvent> _getCalendarBuilders() {
     return CalendarBuilders(
       markerBuilder: (context, date, events) {
         if (events.isNotEmpty) {
@@ -239,6 +320,61 @@ class CalendarView extends GetView<CalendarController> {
   String _formatDate(DateTime date) {
     return '${date.day}/${date.month}/${date.year}';
   }
+
+  /// Show dialog to add a new event
+  void _showAddEventDialog(DateTime selectedDay) {
+    final titleController = TextEditingController();
+    final descriptionController = TextEditingController();
+
+    Get.dialog(
+      AlertDialog(
+        title: Text('Add Event for ${_formatDate(selectedDay)}'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: titleController,
+              decoration: const InputDecoration(
+                labelText: 'Event Title *',
+                border: OutlineInputBorder(),
+              ),
+              autofocus: true,
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: descriptionController,
+              decoration: const InputDecoration(
+                labelText: 'Description (optional)',
+                border: OutlineInputBorder(),
+              ),
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final title = titleController.text.trim();
+              if (title.isNotEmpty) {
+                final description = descriptionController.text.trim();
+                controller.addEvent(
+                  selectedDay,
+                  title,
+                  description.isEmpty ? null : description,
+                );
+                Get.back();
+              }
+            },
+            child: const Text('Add Event'),
+          ),
+        ],
+      ),
+    );
+  }
 }
 
 /// Compact Calendar Widget for overlay/popup use
@@ -269,7 +405,7 @@ class CompactCalendarView extends GetView<CalendarController> {
             ),
             const SizedBox(height: 16),
             Flexible(
-              child: Obx(() => TableCalendar<DateTime>(
+              child: Obx(() => TableCalendar<CalendarEvent>(
                     firstDay: CalendarController.kFirstDay,
                     lastDay: CalendarController.kLastDay,
                     focusedDay: controller.focusedDay.value,

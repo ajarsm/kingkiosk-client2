@@ -1,6 +1,5 @@
 import 'package:get/get.dart';
 import '../controllers/settings_controller_compat.dart';
-import '../controllers/settings_controller.dart';
 
 class SettingsCompatBinding extends Bindings {
   @override
