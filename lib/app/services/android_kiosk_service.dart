@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+import 'storage_service.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 /// Android-specific kiosk mode service
@@ -13,7 +13,7 @@ class AndroidKioskService extends GetxService {
   );
 
   // Storage for persistent kiosk state
-  late final GetStorage _storage;
+  late final StorageService _storage;
   static const String _kioskStateKey = 'kiosk_mode_enabled';
   static const String _kioskConfigKey = 'kiosk_config';
 
@@ -42,8 +42,7 @@ class AndroidKioskService extends GetxService {
   /// Initialize storage for persistent state
   Future<void> _initializeStorage() async {
     try {
-      _storage = GetStorage('kiosk_service');
-      await _storage.initStorage;
+      _storage = Get.find<StorageService>();
       print('🔒 Kiosk storage initialized');
     } catch (e) {
       print('🔒 Failed to initialize kiosk storage: $e');
@@ -74,7 +73,7 @@ class AndroidKioskService extends GetxService {
         } else {
           print('❌ Failed to auto-restore kiosk mode');
           // Clear the saved state if restoration failed
-          await _storage.remove(_kioskStateKey);
+          _storage.remove(_kioskStateKey);
         }
 
         _isRestoring.value = false;
@@ -143,8 +142,8 @@ class AndroidKioskService extends GetxService {
         _isHomeAppSet.value = true;
 
         // Save kiosk state persistently
-        await _storage.write(_kioskStateKey, true);
-        await _storage.write(_kioskConfigKey, {
+        _storage.write(_kioskStateKey, true);
+        _storage.write(_kioskConfigKey, {
           'enabledAt': DateTime.now().toIso8601String(),
           'autoRestore': true,
         });
@@ -178,8 +177,8 @@ class AndroidKioskService extends GetxService {
       await _performComprehensiveCleanup();
 
       // Step 3: Clear persistent state
-      await _storage.remove(_kioskStateKey);
-      await _storage.remove(_kioskConfigKey);
+      _storage.remove(_kioskStateKey);
+      _storage.remove(_kioskConfigKey);
 
       // Step 4: Update local state
       _isKioskModeActive.value = false;
@@ -370,8 +369,8 @@ class AndroidKioskService extends GetxService {
       await _performComprehensiveCleanup();
 
       // Clear all persistent state
-      await _storage.remove(_kioskStateKey);
-      await _storage.remove(_kioskConfigKey);
+      _storage.remove(_kioskStateKey);
+      _storage.remove(_kioskConfigKey);
 
       // Reset all observable states
       _isKioskModeActive.value = false;

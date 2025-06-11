@@ -175,10 +175,15 @@ class _AppHaloWrapperState extends State<AppHaloWrapper>
 
   @override
   Widget build(BuildContext context) {
+    print('🔍 AppHaloWrapper build() called');
+
     return Obx(() {
+      print('🔍 AppHaloWrapper Obx() rebuild triggered');
+
       try {
         // Get the current halo configuration
         final bool enabled = widget.controller.enabled.value;
+        print('🔍 AppHaloWrapper halo enabled: $enabled');
 
         if (!enabled) {
           return widget.child;
@@ -220,16 +225,16 @@ class _AppHaloWrapperState extends State<AppHaloWrapper>
           print('⚠️ Error calculating opacity: $e, using default 0.7');
         }
 
-        // Apply a Stack with CustomPaint for the halo effect
+        // Overlay the FloatingCalendarWindow above the app UI
         return Material(
-          // This Material widget doesn't create another Scaffold/ScaffoldMessenger
           type: MaterialType.transparency,
           child: Stack(
-            textDirection:
-                TextDirection.ltr, // Explicitly provide text direction
-            alignment: Alignment.center, // Use non-directional alignment
+            textDirection: TextDirection.ltr,
+            alignment: Alignment.center,
             children: [
+              // Main app UI
               widget.child,
+              // Halo effect overlay
               Positioned.fill(
                 child: IgnorePointer(
                   child: CustomPaint(

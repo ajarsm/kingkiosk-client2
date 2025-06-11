@@ -365,7 +365,7 @@ class _WebViewTileState extends State<WebViewTile>
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(32),
           ),
-          color: Colors.red.shade50.withOpacity(0.95),
+          color: Colors.red.shade50.withValues(alpha: 0.95),
           child: AnimatedContainer(
             duration: Duration(milliseconds: 400),
             curve: Curves.easeInOut,

@@ -1,7 +1,6 @@
 import 'dart:async';
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
-import '../../../services/notification_system.dart';
+import '../../../../notification_system/notification_system.dart';
 
 /// Controller for auto-hiding toolbar to replace StatefulWidget state management
 class AutoHidingToolbarController extends GetxController {
@@ -14,8 +13,13 @@ class AutoHidingToolbarController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _notificationService = Get.find<NotificationService>();
-    _setupNotificationListener();
+    try {
+      _notificationService = Get.find<NotificationService>();
+      _setupNotificationListener();
+    } catch (e) {
+      // Handle case where NotificationService might not be available
+      print('Warning: NotificationService not found: $e');
+    }
   }
 
   @override
@@ -44,8 +48,13 @@ class AutoHidingToolbarController extends GetxController {
   /// Hide the toolbar reactively
   void hideToolbar() {
     // When hiding toolbar, also close notification center if it's open
-    if (_notificationService.isNotificationCenterOpen) {
-      _notificationService.toggleNotificationCenter();
+    try {
+      if (_notificationService.isNotificationCenterOpen) {
+        _notificationService.toggleNotificationCenter();
+      }
+    } catch (e) {
+      // Handle case where notification service is not available
+      print('Warning: Could not access notification service: $e');
     }
     isVisible.value = false; // Reactive update instead of setState
   }

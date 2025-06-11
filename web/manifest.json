@@ -31,5 +31,11 @@
             "type": "image/png",
             "purpose": "maskable"
         }
-    ]
+    ],
+    "permissions": [
+        "storage"
+    ],
+    "storage": {
+        "estimate": true
+    }
 }

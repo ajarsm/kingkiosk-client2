@@ -12,7 +12,9 @@ dependencies:
   flutter:
     sdk: flutter
   get: ^4.6.1
-  get_storage: ^2.1.1
+  path_provider: ^2.0.15  # For finding storage directory
+  crypto: ^3.0.3  # For encryption
+  universal_html: ^2.2.4  # For web localStorage support
   flutter_inappwebview: ^6.1.5
   media_kit: ^1.2.0               # Core media playback
   media_kit_video: ^1.2.5         # Video playback support
@@ -34,8 +36,6 @@ dependencies:
   permission_handler: ^12.0.0+1
   package_info_plus: ^8.1.0
   image_gallery_saver_plus: ^4.0.1
-  path_provider: ^2.0.15  # For audio caching
-  crypto: ^3.0.3  # For URL hashing in audio caching
   sip_ua: ^1.0.1
   flutter_webrtc: ^0.12.12+hotfix.1  # Version compatible with sip_ua
   animated_analog_clock: ^0.2.1  # Animated analog clock widget for kiosk display
@@ -47,6 +47,7 @@ dependencies:
   image: ^4.3.0  # For image preprocessing (replacement for tflite_flutter_helper)
   flutter_tts: ^4.2.0  # Text-to-Speech support for all platforms
   open_weather_client: ^2.4.1  # Weather data from OpenWeatherMap API
+  table_calendar: ^3.1.2  # Calendar widget for date selection and display
 
 dev_dependencies:
   flutter_test:

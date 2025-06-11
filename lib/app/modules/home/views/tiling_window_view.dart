@@ -29,6 +29,7 @@ import '../controllers/web_window_controller.dart';
 import '../../../services/ai_assistant_service.dart';
 import 'package:king_kiosk/notification_system/notification_system.dart';
 import '../../../widgets/window_halo_wrapper.dart';
+import '../widgets/calendar_widget.dart';
 
 class TilingWindowView extends StatefulWidget {
   const TilingWindowView({Key? key}) : super(key: key);
@@ -340,6 +341,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Icon(Icons.security, size: 16);
       case TileType.weather:
         return Icon(Icons.wb_sunny, size: 16);
+      case TileType.calendar:
+        return Icon(Icons.calendar_today, size: 16);
     }
   }
 
@@ -439,6 +442,12 @@ class TilingWindowViewState extends State<TilingWindowView> {
         content = WeatherWidget(
           windowId: tile.id,
           windowName: tile.name,
+        );
+        break;
+      case TileType.calendar:
+        content = CalendarWidget(
+          windowId: tile.id,
+          showControls: false, // Controls are handled by the title bar
         );
         break;
     }
@@ -1251,15 +1260,30 @@ class TilingWindowViewState extends State<TilingWindowView> {
               builder: (context) => AlertDialog(
                 title: Text('Unlock Kiosk'),
                 content: Builder(
-                  builder: (context) {
-                    late SettingsLockPinPad pinPad;
-                    pinPad = SettingsLockPinPad(
-                      onPinEntered: (pin) {
-                        if (pin == settingsController.settingsPin.value) {
-                          settingsController.unlockSettings();
-                          Navigator.of(context).pop(true);
-                        } else {
-                          pinPad.showError('Incorrect PIN');
+                  builder: (dialogContext) {
+                    final GlobalKey<SettingsLockPinPadState> pinPadKey =
+                        GlobalKey<SettingsLockPinPadState>();
+                    final pinPad = SettingsLockPinPad(
+                      key: pinPadKey,
+                      onPinEntered: (pin) async {
+                        try {
+                          final isCorrect =
+                              await settingsController.verifySettingsPin(pin);
+
+                          if (isCorrect) {
+                            settingsController.unlockSettings();
+                            // Use Navigator.pop in a safe way
+                            if (Navigator.canPop(dialogContext)) {
+                              Navigator.of(dialogContext).pop(true);
+                            }
+                          } else {
+                            // Show error using the pin pad's showError method
+                            pinPadKey.currentState?.showError('Incorrect PIN');
+                          }
+                        } catch (e) {
+                          print('Error verifying PIN: $e');
+                          pinPadKey.currentState
+                              ?.showError('Verification error');
                         }
                       },
                       pinLength: 4,
@@ -1270,18 +1294,33 @@ class TilingWindowViewState extends State<TilingWindowView> {
               ),
             );
             if (result == true) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Unlocked!',
-                    style: TextStyle(
-                      color: Get.isDarkMode ? Colors.black : Colors.white,
+              // Use mounted check if available or use a safer approach with Get.snackbar
+              try {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Unlocked!',
+                        style: TextStyle(
+                          color: Get.isDarkMode ? Colors.black : Colors.white,
+                        ),
+                      ),
+                      backgroundColor:
+                          Get.isDarkMode ? Colors.white : Colors.black,
+                      behavior: SnackBarBehavior.floating,
                     ),
-                  ),
+                  );
+                }
+              } catch (e) {
+                // Fallback to Get.snackbar which is safer
+                Get.snackbar(
+                  'Success',
+                  'Unlocked!',
+                  snackPosition: SnackPosition.BOTTOM,
                   backgroundColor: Get.isDarkMode ? Colors.white : Colors.black,
-                  behavior: SnackBarBehavior.floating,
-                ),
-              );
+                  colorText: Get.isDarkMode ? Colors.black : Colors.white,
+                );
+              }
             }
           } else {
             settingsController.lockSettings();
@@ -1313,13 +1352,25 @@ class TilingWindowViewState extends State<TilingWindowView> {
             title: Text('Enter PIN to Access Settings'),
             content: Builder(
               builder: (context) {
-                late SettingsLockPinPad pinPad;
-                pinPad = SettingsLockPinPad(
-                  onPinEntered: (pin) {
-                    if (pin == settingsController.settingsPin.value) {
-                      Navigator.of(context).pop(true);
-                    } else {
-                      pinPad.showError('Incorrect PIN');
+                final GlobalKey<SettingsLockPinPadState> pinPadKey =
+                    GlobalKey<SettingsLockPinPadState>();
+                final pinPad = SettingsLockPinPad(
+                  key: pinPadKey,
+                  onPinEntered: (pin) async {
+                    try {
+                      final isCorrect =
+                          await settingsController.verifySettingsPin(pin);
+
+                      if (isCorrect) {
+                        if (Navigator.canPop(context)) {
+                          Navigator.of(context).pop(true);
+                        }
+                      } else {
+                        pinPadKey.currentState?.showError('Incorrect PIN');
+                      }
+                    } catch (e) {
+                      print('Error verifying PIN: $e');
+                      pinPadKey.currentState?.showError('Verification error');
                     }
                   },
                   pinLength: 4,
@@ -1349,13 +1400,25 @@ class TilingWindowViewState extends State<TilingWindowView> {
             title: Text('Enter PIN to Exit Application'),
             content: Builder(
               builder: (context) {
-                late SettingsLockPinPad pinPad;
-                pinPad = SettingsLockPinPad(
-                  onPinEntered: (pin) {
-                    if (pin == settingsController.settingsPin.value) {
-                      Navigator.of(context).pop(true);
-                    } else {
-                      pinPad.showError('Incorrect PIN');
+                final GlobalKey<SettingsLockPinPadState> pinPadKey =
+                    GlobalKey<SettingsLockPinPadState>();
+                final pinPad = SettingsLockPinPad(
+                  key: pinPadKey,
+                  onPinEntered: (pin) async {
+                    try {
+                      final isCorrect =
+                          await settingsController.verifySettingsPin(pin);
+
+                      if (isCorrect) {
+                        if (Navigator.canPop(context)) {
+                          Navigator.of(context).pop(true);
+                        }
+                      } else {
+                        pinPadKey.currentState?.showError('Incorrect PIN');
+                      }
+                    } catch (e) {
+                      print('Error verifying PIN: $e');
+                      pinPadKey.currentState?.showError('Verification error');
                     }
                   },
                   pinLength: 4,

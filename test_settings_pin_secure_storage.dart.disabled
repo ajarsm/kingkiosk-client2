@@ -1,0 +1,86 @@
+import 'package:flutter_test/flutter_test.dart';
+import 'package:get/get.dart';
+import 'lib/app/services/storage_service.dart';
+import 'lib/app/services/secure_storage_service.dart';
+import 'lib/app/modules/settings/controllers/settings_controller.dart';
+
+void main() {
+  group('Settings PIN Secure Storage Tests', () {
+    late StorageService storageService;
+    late SecureStorageService secureStorageService;
+    late SettingsController settingsController;
+
+    setUp(() async {
+      // Initialize GetX for testing
+      Get.testMode = true;
+
+      // Create mock services
+      secureStorageService = SecureStorageService();
+      await secureStorageService.init();
+
+      storageService = StorageService();
+      await storageService.init();
+
+      // Register services with GetX
+      Get.put<SecureStorageService>(secureStorageService);
+      Get.put<StorageService>(storageService);
+
+      // Create settings controller
+      settingsController = SettingsController();
+    });
+
+    tearDown(() async {
+      await Get.reset();
+    });
+
+    test('should save PIN to secure storage', () async {
+      const testPin = '9876';
+
+      // Set PIN using settings controller
+      await settingsController.setSettingsPin(testPin);
+
+      // Verify PIN is stored in secure storage
+      final storedPin = await secureStorageService.getSettingsPin();
+      expect(storedPin, equals(testPin));
+    });
+
+    test('should load PIN from secure storage', () async {
+      const testPin = '5432';
+
+      // Store PIN directly in secure storage
+      await secureStorageService.saveSettingsPin(testPin);
+
+      // Load PIN using settings controller
+      final loadedPin = await storageService.readSecure<String>('settingsPin');
+      expect(loadedPin, equals(testPin));
+    });
+
+    test('should migrate PIN from regular to secure storage', () async {
+      const testPin = '1111';
+
+      // Simulate old PIN in regular storage
+      storageService.write('settingsPin', testPin);
+
+      // Trigger migration (this should happen automatically in init)
+      // Migration logic has been removed as all storage is now secure by default
+
+      // Verify PIN is now in secure storage
+      final securePin = await secureStorageService.getSettingsPin();
+      expect(securePin, equals(testPin));
+    });
+
+    test('should use default PIN when no PIN is stored', () async {
+      // Ensure no PIN is stored
+      await secureStorageService.deleteAll();
+
+      // Initialize new settings controller
+      final newController = SettingsController();
+
+      // Wait for async loading to complete
+      await Future.delayed(Duration(milliseconds: 100));
+
+      // Should use default PIN
+      expect(newController.settingsPin.value, equals('1234'));
+    });
+  });
+}

@@ -12,6 +12,7 @@ enum TileType {
   clock, // Added clock widget type
   alarmo, // Added Alarmo dialpad type
   weather, // Added weather widget type
+  calendar, // Added calendar widget type
 }
 
 /// Represents a window tile in the tiling window manager

@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:window_manager/window_manager.dart';
+import 'storage_service.dart';
 
 /// macOS-specific kiosk mode service
 /// Handles fullscreen mode, dock/menu hiding, and system restrictions
@@ -11,7 +11,7 @@ class MacOSKioskService extends GetxService {
     'com.ki.king_kiosk/macos_kiosk',
   );
 
-  late final GetStorage _storage;
+  late final StorageService _storage;
   static const String _kioskStateKey = 'macos_kiosk_enabled';
 
   final RxBool _isKioskModeActive = false.obs;
@@ -34,8 +34,7 @@ class MacOSKioskService extends GetxService {
   }
 
   Future<void> _initializeStorage() async {
-    _storage = GetStorage('macos_kiosk_service');
-    await _storage.initStorage;
+    _storage = Get.find<StorageService>();
   }
 
   /// Enable macOS kiosk mode
@@ -64,7 +63,7 @@ class MacOSKioskService extends GetxService {
       _isDockHidden.value = true;
       _isMenuBarHidden.value = true;
 
-      await _storage.write(_kioskStateKey, true);
+      _storage.write(_kioskStateKey, true);
 
       return true;
     } catch (e) {
@@ -99,7 +98,7 @@ class MacOSKioskService extends GetxService {
       _isDockHidden.value = false;
       _isMenuBarHidden.value = false;
 
-      await _storage.write(_kioskStateKey, false);
+      _storage.write(_kioskStateKey, false);
 
       return true;
     } catch (e) {

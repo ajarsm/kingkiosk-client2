@@ -27,7 +27,7 @@ void main() {
       await tester.pumpWidget(
         GetMaterialApp(
           home: Scaffold(
-            body: AlarmoWidget(windowName: 'test_alarm'),
+            body: AlarmoWidget(windowId: 'test_alarm'),
           ),
         ),
       );

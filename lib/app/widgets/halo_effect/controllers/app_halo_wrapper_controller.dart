@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../../../controllers/halo_effect_controller.dart';
+import '../halo_effect_overlay.dart';
 
 class AppHaloWrapperController extends GetxController
     with GetSingleTickerProviderStateMixin {

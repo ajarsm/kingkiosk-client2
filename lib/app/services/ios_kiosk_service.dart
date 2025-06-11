@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
+import 'storage_service.dart';
 
 /// iOS-specific kiosk mode service
 /// Limited to fullscreen and guided access prompts due to iOS security
@@ -11,7 +11,7 @@ class IOSKioskService extends GetxService {
     'com.ki.king_kiosk/ios_kiosk',
   );
 
-  late final GetStorage _storage;
+  late final StorageService _storage;
   static const String _kioskStateKey = 'ios_kiosk_enabled';
 
   final RxBool _isKioskModeActive = false.obs;
@@ -34,8 +34,7 @@ class IOSKioskService extends GetxService {
   }
 
   Future<void> _initializeStorage() async {
-    _storage = GetStorage('ios_kiosk_service');
-    await _storage.initStorage;
+    _storage = Get.find<StorageService>();
   }
 
   /// Enable iOS kiosk mode (limited capabilities)
@@ -63,7 +62,7 @@ class IOSKioskService extends GetxService {
       _isStatusBarHidden.value = true;
       _isGuidedAccessPrompted.value = true;
 
-      await _storage.write(_kioskStateKey, true);
+      _storage.write(_kioskStateKey, true);
 
       return true;
     } catch (e) {
@@ -91,7 +90,7 @@ class IOSKioskService extends GetxService {
       _isStatusBarHidden.value = false;
       _isGuidedAccessPrompted.value = false;
 
-      await _storage.write(_kioskStateKey, false);
+      _storage.write(_kioskStateKey, false);
 
       return true;
     } catch (e) {

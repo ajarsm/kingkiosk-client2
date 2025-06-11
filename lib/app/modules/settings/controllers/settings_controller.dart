@@ -31,6 +31,7 @@ class SettingsController extends GetxController {
     }
     return _mqttService;
   }
+
   // Getter for SipService
   SipService? get sipService {
     if (_sipService == null) {
@@ -49,11 +50,11 @@ class SettingsController extends GetxController {
   }
 
   Timer? _serviceCheckTimer;
-  
+
   void _scheduleServiceCheck() {
     // Avoid multiple timers
     if (_serviceCheckTimer?.isActive == true) return;
-      _serviceCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _serviceCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
       try {
         final service = Get.find<SipService>();
         _sipService = service;
@@ -62,7 +63,7 @@ class SettingsController extends GetxController {
       } catch (_) {
         // Service still not available
       }
-      
+
       // Stop checking after 30 seconds to avoid infinite polling
       if (timer.tick > 30) {
         timer.cancel();
@@ -195,11 +196,12 @@ class SettingsController extends GetxController {
       _sipService = null;
     }
 
-    // Load settings PIN from storage
-    settingsPin.value = _storageService.read<String>('settingsPin') ?? '1234';
-
     // Safely load settings on the next event loop
     Future.microtask(() async {
+      // Load settings PIN from secure storage
+      final pin = await _storageService.readSecure<String>('settingsPin');
+      settingsPin.value = pin ?? '1234';
+
       await _loadSettingsWithHostname();
       _initControllerValues();
 
@@ -226,6 +228,7 @@ class SettingsController extends GetxController {
       });
     }
   }
+
   @override
   void onClose() {
     // Dispose text controllers
@@ -265,12 +268,11 @@ class SettingsController extends GetxController {
     mqttBrokerPort.value =
         _storageService.read<int>(AppConstants.keyMqttBrokerPort) ??
             AppConstants.defaultMqttBrokerPort;
-    mqttUsername.value =
-        _storageService.read<String>(AppConstants.keyMqttUsername) ?? '';
-    mqttPassword.value =
-        _storageService.read<String>(AppConstants.keyMqttPassword) ?? '';
     mqttHaDiscovery.value =
         _storageService.read<bool>(AppConstants.keyMqttHaDiscovery) ?? false;
+
+    // Load MQTT credentials from secure storage if available, fallback to regular storage
+    await _loadMqttCredentials();
 
     // Load SIP settings
     sipEnabled.value =
@@ -316,6 +318,33 @@ class SettingsController extends GetxController {
 
     // Load hardware acceleration settings
     loadHardwareAccelerationSettings();
+  }
+
+  /// Load MQTT credentials from secure storage
+  Future<void> _loadMqttCredentials() async {
+    try {
+      print('🔑 Loading MQTT credentials from secure storage...');
+
+      // Load MQTT credentials from secure storage via storage service
+      final username =
+          await _storageService.readSecure<String>('secure_mqtt_username');
+      final password =
+          await _storageService.readSecure<String>('secure_mqtt_password');
+
+      mqttUsername.value = username ?? '';
+      mqttPassword.value = password ?? '';
+
+      print('✅ MQTT credentials loaded from secure storage');
+      print(
+          '🔑 Username: ${username?.isNotEmpty == true ? "[SET]" : "[EMPTY]"}');
+      print(
+          '🔑 Password: ${password?.isNotEmpty == true ? "[SET]" : "[EMPTY]"}');
+    } catch (e) {
+      print('❌ Error loading MQTT credentials from secure storage: $e');
+      // Set defaults on error
+      mqttUsername.value = '';
+      mqttPassword.value = '';
+    }
   }
 
   Future<String> _getHostname() async {
@@ -380,6 +409,7 @@ class SettingsController extends GetxController {
       print('MQTT is already connected, skipping auto-connect');
     }
   }
+
   void _initMqttStatus() {
     // Initialize MQTT connection status with retry logic for timing issues
     if (mqttService != null) {
@@ -389,7 +419,8 @@ class SettingsController extends GetxController {
       // Listen to connection status changes
       ever(mqttService!.isConnected, (bool connected) {
         mqttConnected.value = connected;
-        print('🔄 MQTT connection status updated in settings controller: $connected');
+        print(
+            '🔄 MQTT connection status updated in settings controller: $connected');
       });
 
       // Add retry logic for timing synchronization issues
@@ -399,10 +430,11 @@ class SettingsController extends GetxController {
           timer.cancel(); // Stop checking after 10 seconds
           return;
         }
-        
+
         final currentServiceStatus = mqttService!.isConnected.value;
         if (currentServiceStatus != mqttConnected.value) {
-          print('🔄 MQTT status sync correction: service=$currentServiceStatus, controller=${mqttConnected.value}');
+          print(
+              '🔄 MQTT status sync correction: service=$currentServiceStatus, controller=${mqttConnected.value}');
           mqttConnected.value = currentServiceStatus;
         }
       });
@@ -413,7 +445,7 @@ class SettingsController extends GetxController {
           timer.cancel(); // Stop trying after 10 seconds
           return;
         }
-          try {
+        try {
           if (Get.isRegistered<MqttService>()) {
             _mqttService = Get.find<MqttService>();
             print('🔄 Found MQTT service on retry, initializing status');
@@ -497,24 +529,37 @@ class SettingsController extends GetxController {
     );
   }
 
-  void saveMqttSettings() {
+  void saveMqttSettings() async {
     // Get values from text controllers
     mqttBrokerUrl.value = mqttBrokerUrlController.text;
     mqttUsername.value = mqttUsernameController.text;
     mqttPassword.value = mqttPasswordController.text;
     deviceName.value = deviceNameController.text;
 
-    // Save MQTT settings
+    // Save non-sensitive MQTT settings to regular storage
     _storageService.write(AppConstants.keyMqttEnabled, mqttEnabled.value);
     _storageService.write(AppConstants.keyMqttBrokerUrl, mqttBrokerUrl.value);
     _storageService.write(AppConstants.keyMqttBrokerPort, mqttBrokerPort.value);
-    _storageService.write(AppConstants.keyMqttUsername, mqttUsername.value);
-    _storageService.write(AppConstants.keyMqttPassword, mqttPassword.value);
     _storageService.write(AppConstants.keyDeviceName, deviceName.value);
     _storageService.write(
         AppConstants.keyMqttHaDiscovery, mqttHaDiscovery.value);
 
-    // Force flush for Windows persistence
+    // Save sensitive MQTT credentials to secure storage
+    try {
+      print('🔑 Saving MQTT credentials to secure storage...');
+      print(
+          '🔑 Username: ${mqttUsername.value.isNotEmpty ? "[SET]" : "[EMPTY]"}');
+      print(
+          '🔑 Password: ${mqttPassword.value.isNotEmpty ? "[SET]" : "[EMPTY]"}');
+
+      await _storageService.writeSecure('mqttUsername', mqttUsername.value);
+      await _storageService.writeSecure('mqttPassword', mqttPassword.value);
+      print('✅ MQTT credentials saved to secure storage');
+    } catch (e) {
+      print('❌ Error saving MQTT credentials to secure storage: $e');
+    }
+
+    // Force flush for persistence
     _storageService.flush();
 
     Get.snackbar(
@@ -620,10 +665,29 @@ class SettingsController extends GetxController {
     }
   }
 
-  void setSettingsPin(String pin) {
+  Future<void> setSettingsPin(String pin) async {
     settingsPin.value = pin;
-    _storageService.write('settingsPin', pin);
-    _storageService.flush(); // Force flush for Windows persistence
+    await _storageService.writeSecure('settingsPin', pin);
+    // No need to flush for secure storage
+  }
+
+  /// Verify if the provided PIN matches the stored settings PIN
+  Future<bool> verifySettingsPin(String pin) async {
+    // First check if the current reactive value matches (fast path)
+    if (settingsPin.value == pin) {
+      return true;
+    }
+
+    // If not, re-read from secure storage to ensure we have the latest value
+    final storedPin = await _storageService.readSecure<String>('settingsPin');
+    final actualPin = storedPin ?? '1234';
+
+    // Update the reactive value if it was stale
+    if (settingsPin.value != actualPin) {
+      settingsPin.value = actualPin;
+    }
+
+    return actualPin == pin;
   }
 
   void connectMqtt() {
@@ -825,6 +889,19 @@ class SettingsController extends GetxController {
     mqttPassword.value = '';
     mqttHaDiscovery.value = false;
 
+    // Clear MQTT credentials from secure storage
+    Future.microtask(() async {
+      if (_storageService.secureStorage != null) {
+        try {
+          await _storageService.secureStorage!.saveMqttUsername('');
+          await _storageService.secureStorage!.saveMqttPassword('');
+          print('✅ MQTT credentials cleared from secure storage');
+        } catch (e) {
+          print('❌ Error clearing MQTT credentials from secure storage: $e');
+        }
+      }
+    });
+
     // Reset SIP
     sipEnabled.value = false;
     sipServerHost.value = AppConstants.defaultSipServerHost;
@@ -912,18 +989,30 @@ class SettingsController extends GetxController {
     _storageService.flush(); // Force flush for Windows persistence
   }
 
-  void saveMqttUsername(String username) {
+  void saveMqttUsername(String username) async {
     mqttUsername.value = username;
     mqttUsernameController.text = username;
-    _storageService.write(AppConstants.keyMqttUsername, username);
-    _storageService.flush(); // Force flush for Windows persistence
+
+    // Save to secure storage
+    try {
+      await _storageService.writeSecure('secure_mqtt_username', username);
+      print('✅ MQTT username saved to secure storage');
+    } catch (e) {
+      print('❌ Failed to save MQTT username to secure storage: $e');
+    }
   }
 
-  void saveMqttPassword(String password) {
+  void saveMqttPassword(String password) async {
     mqttPassword.value = password;
     mqttPasswordController.text = password;
-    _storageService.write(AppConstants.keyMqttPassword, password);
-    _storageService.flush(); // Force flush for Windows persistence
+
+    // Save to secure storage
+    try {
+      await _storageService.writeSecure('secure_mqtt_password', password);
+      print('✅ MQTT password saved to secure storage');
+    } catch (e) {
+      print('❌ Failed to save MQTT password to secure storage: $e');
+    }
   }
 
   void saveSipServerHost(String host) {
@@ -973,6 +1062,7 @@ class SettingsController extends GetxController {
   void saveAiProviderHost(String host) {
     aiProviderHost.value = host;
     aiProviderHostController.text = host;
-    _storageService.write(AppConstants.keyAiProviderHost, host);    _storageService.flush(); // Force flush for Windows persistence
+    _storageService.write(AppConstants.keyAiProviderHost, host);
+    _storageService.flush(); // Force flush for Windows persistence
   }
 }

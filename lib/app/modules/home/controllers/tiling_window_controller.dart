@@ -22,6 +22,7 @@ import 'pdf_window_controller.dart'; // Add import for PDF controller
 import 'clock_window_controller.dart'; // Add import for clock controller
 import 'alarmo_window_controller.dart'; // Add import for alarmo controller
 import 'weather_window_controller.dart'; // Add import for weather controller
+import '../../calendar/controllers/calendar_window_controller.dart'; // Add import for calendar controller
 
 class TilingWindowController extends GetxController {
   // Constants for storage keys
@@ -196,6 +197,9 @@ class TilingWindowController extends GetxController {
             break;
           case 'weather':
             type = TileType.weather;
+            break;
+          case 'calendar':
+            type = TileType.calendar;
             break;
           default:
             type = TileType.webView;
@@ -938,6 +942,85 @@ class TilingWindowController extends GetxController {
     Get.find<WindowManagerService>().registerWindow(controller);
 
     print('Added Weather tile: ${newTile.name} with ID: ${newTile.id}');
+  }
+
+  /// Creates a calendar window tile
+  void addCalendarTile(String name, {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: 'calendar_${tiles.length}',
+      name: name,
+      type: TileType.calendar,
+      url: '', // Calendar tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 500), // Rectangular size for calendar
+      metadata: config, // Store calendar configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value =
+        newTile; // Register CalendarWindowController for MQTT control
+    final controller = Get.put(
+      CalendarWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      // Handle calendar-specific configuration
+      print('📅 Calendar configuration: $config');
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Show the calendar window by default when created
+    controller.showWindow();
+
+    // Save window state after adding tile
+    _saveWindowState();
+    print('Added Calendar tile: ${newTile.name} with ID: ${newTile.id}');
+  }
+
+  /// Creates a calendar window tile with a custom ID
+  void addCalendarTileWithId(String id, String name,
+      {Map<String, dynamic>? config}) {
+    final newTile = WindowTile(
+      id: id,
+      name: name,
+      type: TileType.calendar,
+      url: '', // Calendar tiles don't need URLs
+      position: const Offset(50, 50),
+      size: Size(400, 500), // Rectangular size for calendar
+      metadata: config, // Store calendar configuration
+    );
+
+    tiles.add(newTile);
+    if (tilingMode.value) {
+      _layout.addTile(newTile, targetTile: selectedTile.value);
+      _layout.applyLayout(_containerBounds);
+    }
+    selectedTile.value =
+        newTile; // Register CalendarWindowController for calendar control
+    final controller = Get.put(
+      CalendarWindowController(windowName: newTile.id),
+      tag: newTile.id,
+    );
+
+    // Apply initial configuration if provided
+    if (config != null) {
+      // Handle calendar-specific configuration
+      print('📅 Calendar configuration: $config');
+    }
+
+    Get.find<WindowManagerService>().registerWindow(controller);
+
+    // Show the calendar window by default when created
+    controller.showWindow();
+
+    print('Added Calendar tile: ${newTile.name} with ID: ${newTile.id}');
   }
 
   /// Selects a tile and brings it to the front

@@ -1496,6 +1496,41 @@ class MqttService extends GetxService {
       return;
     }
 
+    // --- calendar command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'calendar') {
+      final action = cmdObj['action']?.toString().toLowerCase();
+      final name = cmdObj['name']?.toString() ?? 'Calendar';
+      final String? windowId = cmdObj['window_id']?.toString();
+
+      try {
+        final controller = Get.find<TilingWindowController>();
+
+        if (action == 'show' || action == 'create') {
+          // Create or show calendar tile
+          if (windowId != null && windowId.isNotEmpty) {
+            controller.addCalendarTileWithId(windowId, name);
+          } else {
+            controller.addCalendarTile(name);
+          }
+          print('📅 [MQTT] Created Calendar widget: $name' +
+              (windowId != null ? ', id=$windowId' : ''));
+        } else if (action == 'hide' && windowId != null) {
+          // Hide specific calendar tile
+          final tile = controller.tiles.firstWhere(
+              (tile) => tile.id == windowId,
+              orElse: () =>
+                  throw Exception('Calendar tile not found: $windowId'));
+          controller.closeTile(tile);
+          print('📅 [MQTT] Removed Calendar widget: $windowId');
+        } else {
+          print('❌ [MQTT] Unknown calendar action: $action');
+        }
+      } catch (e) {
+        print('❌ Error processing calendar command: $e');
+      }
+      return;
+    }
+
     // ...existing fallback string command logic...
     print('🎯 Unknown command received: "$command"');
     return;
@@ -1692,142 +1727,6 @@ class MqttService extends GetxService {
     print('MQTT DEBUG: Published discovery config for $name');
   }
 
-  /// Set up object detection discovery sensors for Home Assistant
-  void _setupObjectDetectionDiscovery() {
-    if (!isConnected.value || !haDiscovery.value) return;
-
-    try {
-      final deviceNameStr = deviceName.value;
-
-      // 1. Object Detection Sensor (comprehensive detection data)
-      print('MQTT DEBUG: Setting up object detection sensor');
-      final objectDetectionTopic =
-          'homeassistant/sensor/${deviceNameStr}_object_detection/config';
-      final objectDetectionConfig = {
-        "name": "${deviceNameStr} Object Detection",
-        "unique_id": "${deviceNameStr}_object_detection",
-        "state_topic": "kingkiosk/${deviceNameStr}/object_detection",
-        "value_template": "{{ value_json.any_object_detected }}",
-        "icon": "mdi:eye",
-        "json_attributes_topic": "kingkiosk/${deviceNameStr}/object_detection",
-        "json_attributes_template": jsonEncode({
-          "person_present": "{{ value_json.person_present }}",
-          "person_confidence": "{{ value_json.person_confidence }}",
-          "total_objects": "{{ value_json.total_objects }}",
-          "object_counts": "{{ value_json.object_counts }}",
-          "object_confidences": "{{ value_json.object_confidences }}",
-          "frames_processed": "{{ value_json.frames_processed }}",
-          "timestamp": "{{ value_json.timestamp }}"
-        }),
-        "device": {
-          "identifiers": ["${deviceNameStr}"],
-          "name": deviceNameStr,
-          "model": "King Kiosk",
-          "manufacturer": "King Kiosk"
-        },
-        "availability_topic": "kingkiosk/${deviceNameStr}/status",
-        "payload_available": "online",
-        "payload_not_available": "offline"
-      };
-
-      publishJsonToTopic(objectDetectionTopic, objectDetectionConfig,
-          retain: true);
-      print('MQTT DEBUG: Published object detection discovery config');
-
-      // 2. Person Presence Binary Sensor
-      print('MQTT DEBUG: Setting up person presence binary sensor');
-      final personPresenceTopic =
-          'homeassistant/binary_sensor/${deviceNameStr}_person_presence/config';
-      final personPresenceConfig = {
-        "name": "${deviceNameStr} Person Presence",
-        "unique_id": "${deviceNameStr}_person_presence",
-        "state_topic": "kingkiosk/${deviceNameStr}/person_presence",
-        "value_template": "{{ 'ON' if value_json.person_present else 'OFF' }}",
-        "device_class": "motion",
-        "icon": "mdi:human",
-        "json_attributes_topic": "kingkiosk/${deviceNameStr}/person_presence",
-        "json_attributes_template": jsonEncode({
-          "confidence": "{{ value_json.confidence }}",
-          "frames_processed": "{{ value_json.frames_processed }}",
-          "timestamp": "{{ value_json.timestamp }}"
-        }),
-        "device": {
-          "identifiers": ["${deviceNameStr}"],
-          "name": deviceNameStr,
-          "model": "King Kiosk",
-          "manufacturer": "King Kiosk"
-        },
-        "availability_topic": "kingkiosk/${deviceNameStr}/status",
-        "payload_available": "online",
-        "payload_not_available": "offline"
-      };
-
-      publishJsonToTopic(personPresenceTopic, personPresenceConfig,
-          retain: true);
-      print('MQTT DEBUG: Published person presence discovery config');
-
-      // 3. Object Count Sensor
-      print('MQTT DEBUG: Setting up object count sensor');
-      final objectCountTopic =
-          'homeassistant/sensor/${deviceNameStr}_object_count/config';
-      final objectCountConfig = {
-        "name": "${deviceNameStr} Object Count",
-        "unique_id": "${deviceNameStr}_object_count",
-        "state_topic": "kingkiosk/${deviceNameStr}/object_detection",
-        "value_template": "{{ value_json.total_objects }}",
-        "icon": "mdi:counter",
-        "unit_of_measurement": "objects",
-        "json_attributes_topic": "kingkiosk/${deviceNameStr}/object_detection",
-        "json_attributes_template": jsonEncode({
-          "object_counts": "{{ value_json.object_counts }}",
-          "detected_objects": "{{ value_json.detected_objects }}"
-        }),
-        "device": {
-          "identifiers": ["${deviceNameStr}"],
-          "name": deviceNameStr,
-          "model": "King Kiosk",
-          "manufacturer": "King Kiosk"
-        },
-        "availability_topic": "kingkiosk/${deviceNameStr}/status",
-        "payload_available": "online",
-        "payload_not_available": "offline"
-      };
-
-      publishJsonToTopic(objectCountTopic, objectCountConfig, retain: true);
-      print('MQTT DEBUG: Published object count discovery config');
-
-      // 4. Person Confidence Sensor
-      print('MQTT DEBUG: Setting up person confidence sensor');
-      final personConfidenceTopic =
-          'homeassistant/sensor/${deviceNameStr}_person_confidence/config';
-      final personConfidenceConfig = {
-        "name": "${deviceNameStr} Person Confidence",
-        "unique_id": "${deviceNameStr}_person_confidence",
-        "state_topic": "kingkiosk/${deviceNameStr}/person_presence",
-        "value_template": "{{ (value_json.confidence * 100) | round(1) }}",
-        "icon": "mdi:percent",
-        "unit_of_measurement": "%",
-        "device": {
-          "identifiers": ["${deviceNameStr}"],
-          "name": deviceNameStr,
-          "model": "King Kiosk",
-          "manufacturer": "King Kiosk"
-        },
-        "availability_topic": "kingkiosk/${deviceNameStr}/status",
-        "payload_available": "online",
-        "payload_not_available": "offline"
-      };
-
-      publishJsonToTopic(personConfidenceTopic, personConfidenceConfig,
-          retain: true);
-      print('MQTT DEBUG: Published person confidence discovery config');
-
-      print('MQTT DEBUG: Object detection discovery setup complete');
-    } catch (e) {
-      print('MQTT DEBUG: Error setting up object detection discovery: $e');
-    }
-  }
-
   /// Publish sensor values with detailed debug info
   void _publishSensorValuesWithDebug() {
     if (!isConnected.value) return;
@@ -1850,7 +1749,6 @@ class MqttService extends GetxService {
 
       // Publish battery level
       _publishDirectValueWithDebug('battery', batteryLevel.toString());
-
       // Publish battery status
       _publishDirectValueWithDebug('battery_status', batteryState);
 
@@ -2943,12 +2841,12 @@ class MqttService extends GetxService {
             } catch (e) {
               print(
                   '⚠️ Invalid color int value: $colorValue, defaulting to red');
-              color = Color(0xFFFF0000);
+              color = Color(0xFFFF0000); // Pure red color
             }
           } else {
             print(
                 '🌟 [MQTT] Unsupported color format: ${colorValue.runtimeType}, using default red');
-            color = Color(0xFFFF0000);
+            color = Color(0xFFFF0000); // Pure red color
           }
 
           // Extract optional parameters with validation (similar to main halo effect logic)

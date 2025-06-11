@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:screenshot/screenshot.dart';
 
@@ -22,12 +21,11 @@ import 'package:king_kiosk/notification_system/models/notification_models.dart';
 void main() async {
   // Ensure Flutter is initialized
   WidgetsFlutterBinding.ensureInitialized();
-  // Initialize GetStorage for persistent settings
-  print('🔧 Initializing GetStorage...');
-  await GetStorage.init(); // Single default container for everything
-  print('✅ GetStorage initialization complete');
 
-  // Initialize MediaKit for media playback
+  // Note: Isar storage initialization moved to MemoryOptimizedBinding
+  print('🔧 Initializing application...');
+
+  // Initialize MediaKit for media playbook
   MediaKit.ensureInitialized();
 
   // Initialize AudioService first to ensure sounds work

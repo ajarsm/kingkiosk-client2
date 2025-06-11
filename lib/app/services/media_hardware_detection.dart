@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:get_storage/get_storage.dart';
+import 'storage_service.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 
 /// Service to detect and manage hardware acceleration compatibility issues
@@ -38,7 +38,7 @@ class MediaHardwareDetectionService extends GetxService {
   ];
 
   // Cache to avoid repeated detections
-  final _storage = GetStorage();
+  final _storage = StorageService();
   static const String _storageKey = 'mediakit_hardware_acceleration';
 
   /// Initialize the service
@@ -143,7 +143,7 @@ class MediaHardwareDetectionService extends GetxService {
 
   /// Save the current hardware acceleration setting
   Future<void> saveSettings() async {
-    await _storage.write(_storageKey, isHardwareAccelerationEnabled.value);
+    _storage.write(_storageKey, isHardwareAccelerationEnabled.value);
     print(
         '🎬 Saved hardware acceleration setting: ${isHardwareAccelerationEnabled.value ? 'enabled' : 'disabled'}');
   }

@@ -1,5 +1,4 @@
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import '../../services/storage_service.dart';
 import '../../services/platform_sensor_service.dart';
 import '../../services/theme_service.dart';
@@ -25,6 +24,9 @@ import '../../services/person_detection_service.dart';
 import '../../services/media_device_service.dart';
 import '../../services/tts_service.dart';
 import '../../core/utils/app_constants.dart';
+import '../../modules/calendar/controllers/calendar_controller.dart';
+import '../../modules/calendar/controllers/calendar_window_controller.dart';
+import '../../modules/home/controllers/tiling_window_controller.dart';
 
 /// Memory-optimized binding that loads only essential services at startup
 /// and uses lazy loading for optional services
@@ -32,8 +34,6 @@ class MemoryOptimizedBinding extends Bindings {
   @override
   void dependencies() async {
     print('🚀 Initializing memory-optimized binding...');
-    // Initialize GetStorage first
-    await GetStorage.init();
 
     // Initialize ServiceInitializer for handling async service initialization
     Get.put<ServiceInitializer>(ServiceInitializer(), permanent: true);
@@ -158,6 +158,16 @@ class MemoryOptimizedBinding extends Bindings {
         fenix: true);
     Get.lazyPut<WindowHaloController>(() => WindowHaloController(),
         fenix: true);
+
+    // Calendar Controllers - Lazy load
+    Get.lazyPut<CalendarController>(() => CalendarController(), fenix: true);
+    Get.lazyPut<CalendarWindowController>(() => CalendarWindowController(),
+        fenix: true);
+
+    // Home Module Controllers - Lazy load
+    Get.lazyPut<TilingWindowController>(() => TilingWindowController(),
+        fenix: true);
+
     // SIP Service - Conditional lazy loading based on settings
     _conditionallyLoadSipService(storageService);
 
@@ -224,21 +234,21 @@ class MemoryOptimizedBinding extends Bindings {
 
   /// Conditionally load Person Detection service with proper dependencies
   void _conditionallyLoadPersonDetection(StorageService storageService) {
+    // Always register PersonDetectionService, but only initialize when enabled
+    print('👤 Registering PersonDetectionService (lazy loading)');
+
+    Get.lazyPut<PersonDetectionService>(() {
+      final personDetectionService = PersonDetectionService();
+      // Note: init() is async, handle when service is accessed
+      return personDetectionService;
+    }, fenix: true);
+
     final personDetectionEnabled =
         storageService.read<bool>(AppConstants.keyPersonDetectionEnabled) ??
             false;
 
     if (personDetectionEnabled) {
-      print(
-          '👤 Person detection enabled - setting up lazy loading for PersonDetectionService');
-
-      // Note: WebRTC services no longer needed - using direct video track capture
-
-      Get.lazyPut<PersonDetectionService>(() {
-        final personDetectionService = PersonDetectionService();
-        // Note: init() is async, handle when service is accessed
-        return personDetectionService;
-      }, fenix: true);
+      print('👤 Person detection enabled - starting service initialization');
 
       // Trigger immediate access to start the service since it's enabled
       Future.delayed(Duration(seconds: 2), () {
@@ -253,7 +263,7 @@ class MemoryOptimizedBinding extends Bindings {
       });
     } else {
       print(
-          '⏭️ Person detection disabled in settings, skipping PersonDetectionService');
+          '⏭️ Person detection disabled in settings but service is registered for later use');
     }
   }
 

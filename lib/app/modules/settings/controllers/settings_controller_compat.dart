@@ -23,15 +23,23 @@ class SettingsControllerFixed extends SettingsController {
     // Load person detection setting from storage
     personDetectionEnabled.value = Get.find<StorageService>()
             .read<bool>(AppConstants.keyPersonDetectionEnabled) ??
-        false;
-
-    // Listen for changes and sync with PersonDetectionService
+        false; // Listen for changes, sync with PersonDetectionService and save to storage
     ever(personDetectionEnabled, (bool enabled) {
       try {
         final personDetectionService = Get.find<PersonDetectionService>();
         personDetectionService.isEnabled.value = enabled;
       } catch (e) {
         print('PersonDetectionService not available for sync: $e');
+      }
+
+      // Save to storage whenever the value changes
+      try {
+        final storageService = Get.find<StorageService>();
+        storageService.write(AppConstants.keyPersonDetectionEnabled, enabled);
+        storageService.flush();
+        print('✅ Person detection setting saved: $enabled');
+      } catch (e) {
+        print('❌ Error saving person detection setting: $e');
       }
     });
   }
@@ -72,9 +80,25 @@ class SettingsControllerFixed extends SettingsController {
     mqttUsername.value = username;
     mqttUsernameController.text = username;
 
-    // Add the missing storage write operation
+    // Save to secure storage if available, fallback to regular storage
     final storageService = Get.find<StorageService>();
-    storageService.write(AppConstants.keyMqttUsername, username);
+    Future.microtask(() async {
+      if (storageService.secureStorage != null) {
+        try {
+          await storageService.secureStorage!.saveMqttUsername(username);
+          // Remove from regular storage if it exists
+          storageService.remove(AppConstants.keyMqttUsername);
+          print('✅ MQTT username saved to secure storage');
+        } catch (e) {
+          print('❌ Failed to save MQTT username to secure storage: $e');
+          // Fallback to regular storage
+          storageService.write(AppConstants.keyMqttUsername, username);
+        }
+      } else {
+        // Fallback to regular storage
+        storageService.write(AppConstants.keyMqttUsername, username);
+      }
+    });
   }
 
   void saveMqttPassword(String password) {
@@ -83,9 +107,25 @@ class SettingsControllerFixed extends SettingsController {
     mqttPassword.value = password;
     mqttPasswordController.text = password;
 
-    // Add the missing storage write operation
+    // Save to secure storage if available, fallback to regular storage
     final storageService = Get.find<StorageService>();
-    storageService.write(AppConstants.keyMqttPassword, password);
+    Future.microtask(() async {
+      if (storageService.secureStorage != null) {
+        try {
+          await storageService.secureStorage!.saveMqttPassword(password);
+          // Remove from regular storage if it exists
+          storageService.remove(AppConstants.keyMqttPassword);
+          print('✅ MQTT password saved to secure storage');
+        } catch (e) {
+          print('❌ Failed to save MQTT password to secure storage: $e');
+          // Fallback to regular storage
+          storageService.write(AppConstants.keyMqttPassword, password);
+        }
+      } else {
+        // Fallback to regular storage
+        storageService.write(AppConstants.keyMqttPassword, password);
+      }
+    });
   }
 
   void saveDeviceName(String name) {
@@ -125,10 +165,11 @@ class SettingsControllerFixed extends SettingsController {
   }
 
   // Additional methods required to fix compilation errors
-  void setSettingsPin(String pin) {
+  @override
+  Future<void> setSettingsPin(String pin) async {
     settingsPin.value = pin;
-    // Store the PIN in persistent storage
-    Get.find<StorageService>().write('settingsPin', pin);
+    // Store the PIN in secure storage
+    await Get.find<StorageService>().writeSecure('settingsPin', pin);
   }
 
   Future<void> resetAllSettings() async {

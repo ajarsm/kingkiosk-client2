@@ -20,6 +20,10 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
 
+  <!-- Security headers for web secure storage -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' 'unsafe-inline' 'unsafe-eval' data: blob:; connect-src 'self' ws: wss: http: https:;">
+  <meta http-equiv="Permissions-Policy" content="camera=*, microphone=*, geolocation=*">
+
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black">
@@ -30,6 +34,9 @@
   <link rel="icon" type="image/png" href="favicon.png"/>
   <title>king_kiosk</title>
   <link rel="manifest" href="manifest.json">
+  
+  <!-- Web secure storage configuration -->
+  <script src="secure_storage_config.js"></script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

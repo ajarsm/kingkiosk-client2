@@ -19,6 +19,44 @@ class MockStorageService extends GetxService implements StorageService {
   T? read<T>(String key) => _storage[key] as T?;
 
   @override
+  void write<T>(String key, T value) => _storage[key] = value;
+
+  @override
+  void remove(String key) => _storage.remove(key);
+
+  @override
+  void erase() => _storage.clear();
+
+  @override
+  Future<String?> readSecure(String key) async => _storage[key] as String?;
+
+  @override
+  Future<void> writeSecure(String key, String value) async => _storage[key] = value;
+
+  @override
+  Future<void> deleteSecure(String key) async => _storage.remove(key);
+
+  @override
+  Future<Map<String, String>> getMqttCredentialsSecure() async {
+    return {
+      'broker': _storage['mqttBroker'] ?? '',
+      'username': _storage['mqttUsername'] ?? '',
+      'password': _storage['mqttPassword'] ?? '',
+    };
+  }
+
+  @override
+  Future<void> saveMqttCredentialsSecure(String broker, String username, String password) async {
+    _storage['mqttBroker'] = broker;
+    _storage['mqttUsername'] = username;
+    _storage['mqttPassword'] = password;
+  }
+  }
+
+  @override
+  T? read<T>(String key) => _storage[key] as T?;
+
+  @override
   void write(String key, dynamic value) => _storage[key] = value;
 
   @override

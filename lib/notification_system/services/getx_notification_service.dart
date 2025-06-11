@@ -2,17 +2,16 @@
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:uuid/uuid.dart';
 import 'package:media_kit/media_kit.dart';
 import '../models/notification_models.dart';
-import '../models/notification_config.dart';
 import '../utils/html_sanitizer.dart';
 import '../utils/platform_helper.dart';
 import '../widgets/notification_toast.dart';
 import 'notification_service.dart';
 import '../../app/core/utils/audio_utils.dart';
 import '../../app/services/audio_service.dart';
+import '../../app/services/storage_service.dart';
 
 class GetXNotificationService extends GetxController
     implements NotificationService {
@@ -29,8 +28,8 @@ class GetXNotificationService extends GetxController
   static const String _notificationsKey = 'notification_system_notifications';
   static const String _configKey = 'notification_system_config';
 
-  // Storage instance - use default container for simplicity
-  final _storage = GetStorage();
+  // Storage instance - use the unified storage service
+  StorageService get _storage => Get.find<StorageService>();
 
   // Constructor with optional initialization
   GetXNotificationService() {
@@ -42,7 +41,7 @@ class GetXNotificationService extends GetxController
   }
   // Static initialization method - call this before using the service
   static Future<void> init() async {
-    // No need to initialize separate storage - using default container
+    // Storage is handled by the unified StorageService
 
     // Make sure AudioService is initialized before notifications arrive
     try {
@@ -232,22 +231,21 @@ class GetXNotificationService extends GetxController
     _isNotificationCenterOpen.value = !_isNotificationCenterOpen.value;
   }
 
-  // Persistence methods using GetStorage
+  // Persistence methods using StorageService
   @override
   Future<void> loadFromStorage() async {
     try {
       // Load configuration
-      final configData = _storage.read(_configKey);
+      final configData = _storage.read<Map<String, dynamic>>(_configKey);
       if (configData != null) {
-        final configMap = Map<String, dynamic>.from(configData);
         _config.value = NotificationConfig(
-          tier: NotificationTier.values[configMap['tier']],
-          maxNotifications: configMap['maxNotifications'],
+          tier: NotificationTier.values[configData['tier']],
+          maxNotifications: configData['maxNotifications'],
         );
       }
 
       // Load notifications
-      final notificationsData = _storage.read(_notificationsKey);
+      final notificationsData = _storage.read<List<dynamic>>(_notificationsKey);
       if (notificationsData != null) {
         final notificationsList =
             List<Map<String, dynamic>>.from(notificationsData);

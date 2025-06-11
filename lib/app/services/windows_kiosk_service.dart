@@ -1,8 +1,8 @@
 import 'dart:io';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:get_storage/get_storage.dart';
 import 'package:window_manager/window_manager.dart';
+import 'storage_service.dart';
 
 /// Windows-specific kiosk mode service
 /// Handles fullscreen mode, taskbar hiding, and system restrictions
@@ -11,7 +11,7 @@ class WindowsKioskService extends GetxService {
     'com.ki.king_kiosk/windows_kiosk',
   );
 
-  late final GetStorage _storage;
+  late final StorageService _storage;
   static const String _kioskStateKey = 'windows_kiosk_enabled';
 
   final RxBool _isKioskModeActive = false.obs;
@@ -32,8 +32,7 @@ class WindowsKioskService extends GetxService {
   }
 
   Future<void> _initializeStorage() async {
-    _storage = GetStorage('windows_kiosk_service');
-    await _storage.initStorage;
+    _storage = Get.find<StorageService>();
   }
 
   /// Enable Windows kiosk mode
@@ -58,7 +57,7 @@ class WindowsKioskService extends GetxService {
       _isFullscreen.value = true;
       _isTaskbarHidden.value = true;
 
-      await _storage.write(_kioskStateKey, true);
+      _storage.write(_kioskStateKey, true);
 
       return true;
     } catch (e) {
@@ -89,7 +88,7 @@ class WindowsKioskService extends GetxService {
       _isFullscreen.value = false;
       _isTaskbarHidden.value = false;
 
-      await _storage.write(_kioskStateKey, false);
+      _storage.write(_kioskStateKey, false);
 
       return true;
     } catch (e) {
