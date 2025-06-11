@@ -16,7 +16,6 @@ import '../core/utils/app_constants.dart';
 import 'background_media_service.dart';
 import '../services/window_manager_service.dart';
 import '../modules/home/controllers/tiling_window_controller.dart';
-import '../modules/calendar/controllers/calendar_controller.dart';
 import 'mqtt_notification_handler.dart';
 import 'media_recovery_service.dart';
 import 'tts_service.dart';
@@ -34,61 +33,6 @@ import '../modules/settings/controllers/settings_controller_compat.dart';
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
 class MqttService extends GetxService {
-  // Utility: Parse a color to hex string
-  // (moved below, keep only one definition)
-  /// Subscribe to a custom MQTT topic
-  void subscribe(String topic, Function(String, String) onMessage) {
-    print('Subscribing to topic: $topic');
-    _client?.subscribe(topic, MqttQos.atLeastOnce);
-    _client?.updates
-        ?.listen((List<MqttReceivedMessage<MqttMessage?>>? messages) {
-      if (messages == null || messages.isEmpty) return;
-      for (final message in messages) {
-        if (message.payload is MqttPublishMessage) {
-          final publishMessage = message.payload as MqttPublishMessage;
-          final payloadString = MqttPublishPayload.bytesToStringAsString(
-            publishMessage.payload.message,
-          );
-          onMessage(message.topic, payloadString);
-        }
-      }
-    });
-  }
-
-  /// Publish Home Assistant MQTT Discovery config for windows diagnostic entity
-  void publishWindowsDiscoveryConfig({String? friendlyNameOverride}) {
-    final deviceNameStr = deviceName.value;
-    final deviceFriendlyName = friendlyNameOverride ?? deviceNameStr;
-    final discoveryTopic =
-        'homeassistant/sensor/${deviceNameStr}_windows/config';
-    final stateTopic = 'kiosk/$deviceNameStr/diagnostics/windows';
-    final availabilityTopic = 'kingkiosk/$deviceNameStr/status';
-    final payload = {
-      "name": "Kiosk Windows",
-      "unique_id": "${deviceNameStr}_windows",
-      "state_topic": stateTopic,
-      "icon": "mdi:window-restore",
-      "entity_category": "diagnostic",
-      "device_class": "none",
-      "value_template": "{{ value_json.windows | length }}",
-      "json_attributes_topic": stateTopic,
-      "availability_topic": availabilityTopic,
-      "payload_available": "online",
-      "payload_not_available": "offline",
-      "device": {
-        "identifiers": ["kiosk_$deviceNameStr"],
-        "name": deviceFriendlyName,
-        "model": "Flutter GetX Kiosk",
-        "manufacturer": "KingKiosk"
-      }
-    };
-    print(
-        'MQTT DEBUG: Discovery payload for windows: \\${jsonEncode(payload)}');
-    print('MQTT DEBUG: Publishing to topic: $discoveryTopic');
-    publishJsonToTopic(discoveryTopic, payload, retain: true);
-    print('MQTT DEBUG: Published discovery config for windows');
-  }
-
   // Required dependencies
   final StorageService _storageService;
   final PlatformSensorService _sensorService;
@@ -104,187 +48,9 @@ class MqttService extends GetxService {
 
   // Stats update timer
   Timer? _statsUpdateTimer;
+
   // Update interval - 30 seconds for more responsive updates
   final int _updateIntervalSeconds = 30;
-
-  // Batch script management
-  bool _batchScriptRunning = false;
-  String? _currentBatchId;
-  // Timer? _batchTimeoutTimer; // Unused, commented out
-  // Utility: Parse a hex string to color with robust error handling
-  Color _hexToColor(String hexString) {
-    if (hexString.isEmpty) {
-      print('⚠️ Empty color string, defaulting to red');
-      return Color(0xFFFF0000);
-    }
-    switch (hexString.toLowerCase()) {
-      case 'red':
-        return Color(0xFFFF0000);
-      case 'green':
-        return Color(0xFF4CAF50);
-      case 'blue':
-        return Color(0xFF2196F3);
-      case 'yellow':
-        return Color(0xFFFFEB3B);
-      case 'orange':
-        return Color(0xFFFF9800);
-      case 'purple':
-        return Color(0xFF9C27B0);
-      case 'pink':
-        return Color(0xFFE91E63);
-      case 'cyan':
-        return Color(0xFF00BCD4);
-      case 'teal':
-        return Color(0xFF009688);
-      case 'amber':
-        return Color(0xFFFFC107);
-      case 'lime':
-        return Color(0xFFCDDC39);
-      case 'indigo':
-        return Color(0xFF3F51B5);
-      case 'white':
-        return Color(0xFFFFFFFF);
-      case 'black':
-        return Color(0xFF000000);
-      case 'grey':
-      case 'gray':
-        return Color(0xFF9E9E9E);
-    }
-    try {
-      String hexCode = hexString.replaceAll('#', '').trim();
-      if (hexCode.length == 3) {
-        hexCode = hexCode.split('').map((c) => '$c$c').join('');
-      }
-      if (hexCode.length != 6 && hexCode.length != 8) {
-        print(
-            '⚠️ Invalid hex color length: [33m${hexCode.length}[0m, defaulting to red');
-        return Color(0xFFFF0000);
-      }
-      final colorValue =
-          int.tryParse(hexCode.length == 6 ? '0xFF$hexCode' : '0x$hexCode');
-      if (colorValue == null) {
-        print('⚠️ Failed to parse hex color: $hexString, defaulting to red');
-        return Color(0xFFFF0000);
-      }
-      return Color(colorValue);
-    } catch (e) {
-      print('⚠️ Error parsing hex color "$hexString": $e, defaulting to red');
-      return Color(0xFFFF0000);
-    }
-  }
-
-  // Utility: Parse a color to hex string
-  String _colorToHex(Color color) {
-    return '#${color.value.toRadixString(16).padLeft(8, '0').substring(2).toUpperCase()}';
-  }
-
-  // Batch script management: process a managed batch (fully implemented)
-  Future<void> _processManagedBatch(dynamic cmdObj) async {
-    // Parse commands array
-    final List<dynamic>? commands = cmdObj['commands'] as List<dynamic>?;
-    if (commands == null || commands.isEmpty) {
-      print('[BATCH] No commands provided in batch');
-      batchStatus.value = 'idle';
-      return;
-    }
-
-    _batchScriptRunning = true;
-    _batchKillRequested = false;
-    _currentBatchId = DateTime.now().millisecondsSinceEpoch.toString();
-    batchStatus.value = 'running';
-    batchProgress.value = 0;
-    batchTotal.value = commands.length;
-
-    print('[BATCH] Starting batch script with ${commands.length} commands');
-
-    for (int i = 0; i < commands.length; i++) {
-      if (_batchKillRequested) {
-        print('[BATCH] Batch kill requested, stopping at command $i');
-        batchStatus.value = 'killed';
-        break;
-      }
-
-      final dynamic command = commands[i];
-      batchProgress.value = i + 1;
-
-      print('[BATCH] Executing command ${i + 1}/${commands.length}: $command');
-
-      try {
-        // Simulate command processing: if it's a wait, actually wait
-        if (command is Map &&
-            command['command']?.toString().toLowerCase() == 'wait') {
-          final seconds =
-              double.tryParse(command['seconds']?.toString() ?? '1') ?? 1.0;
-          final ms = (seconds * 1000).clamp(0, 300000).toInt();
-          print('[BATCH] Waiting for $seconds seconds');
-          int waited = 0;
-          // Wait in small increments to allow kill check
-          while (waited < ms && !_batchKillRequested) {
-            final chunk = (ms - waited) > 200 ? 200 : (ms - waited);
-            await Future.delayed(Duration(milliseconds: chunk));
-            waited += chunk;
-          }
-          if (_batchKillRequested) {
-            print('[BATCH] Batch killed during wait');
-            batchStatus.value = 'killed';
-            break;
-          }
-        } else if (command is Map && command['command'] != null) {
-          // Recursively process as a single command (simulate by calling _processCommand)
-          _processCommand(jsonEncode(command));
-        } else if (command is String) {
-          // If it's a string, treat as a simple command
-          _processCommand(command);
-        } else {
-          print('[BATCH] Unknown command format: $command');
-        }
-      } catch (e, st) {
-        print('[BATCH] Error processing command $i: $e\n$st');
-        // Optionally, you could break or continue on error
-      }
-    }
-
-    if (_batchKillRequested) {
-      print('[BATCH] Batch script was killed');
-      batchStatus.value = 'killed';
-    } else {
-      print('[BATCH] Batch script completed');
-      batchStatus.value = 'idle';
-    }
-    _batchScriptRunning = false;
-    _currentBatchId = null;
-    _batchKillRequested = false;
-    batchProgress.value = 0;
-    batchTotal.value = 0;
-  }
-
-  // Batch script management: kill batch script (stub)
-  Map<String, dynamic> _killBatchScript() {
-    // TODO: Implement batch kill logic
-    if (_batchScriptRunning) {
-      _batchKillRequested = true;
-      _batchScriptRunning = false;
-      final killedId = _currentBatchId;
-      _currentBatchId = null;
-      batchStatus.value = 'killed';
-      return {
-        'success': true,
-        'message': 'Batch script killed',
-        'killed_batch_id': killedId,
-      };
-    } else {
-      return {
-        'success': false,
-        'message': 'No batch script running',
-        'killed_batch_id': null,
-      };
-    }
-  }
-
-  bool _batchKillRequested = false;
-  final RxString batchStatus = 'idle'.obs; // idle, running, killed
-  final RxInt batchProgress = 0.obs; // Current command index
-  final RxInt batchTotal = 0.obs; // Total commands in batch
 
   // Constructor
   MqttService(this._storageService, this._sensorService);
@@ -294,7 +60,7 @@ class MqttService extends GetxService {
     // Subscribe to window command topics
     final device = deviceName.value;
     final topic = 'kiosk/$device/window/+/command';
-    this.subscribe(topic, (String topic, String payload) {
+    subscribe(topic, (String topic, String payload) {
       // Parse window name from topic
       final parts = topic.split('/');
       final windowName = parts.length > 3 ? parts[3] : null;
@@ -345,7 +111,7 @@ class MqttService extends GetxService {
         }
 
         // Republish configs
-        this.publishWindowsDiscoveryConfig();
+        publishWindowsDiscoveryConfig();
         // Object detection discovery will be republished when _setupHomeAssistantDiscoveryWithDebug() is called
       }
     });
@@ -828,29 +594,92 @@ class MqttService extends GetxService {
     if (cmdObj is Map &&
         (cmdObj['commands'] is List ||
             cmdObj['command']?.toString().toLowerCase() == 'batch')) {
-      // Check if another batch script is already running
-      if (_batchScriptRunning) {
-        final errorMsg =
-            'Cannot start new batch script: another batch script is already running (ID: $_currentBatchId)';
-        print('❌ [MQTT] $errorMsg');
+      // Support both batch format styles: {commands: [...]} and {command: 'batch', commands: [...]}
+      print('🎯 Processing batch command');
+      final List commandList = cmdObj['commands'] as List;
+      print('🎯 Processing batch of ${commandList.length} commands');
 
-        // Publish error to response topic if specified
-        if (cmdObj['response_topic'] != null) {
-          publishJsonToTopic(
-              cmdObj['response_topic'],
-              {
-                'success': false,
-                'error': errorMsg,
-                'current_batch_id': _currentBatchId,
-                'batch_status': batchStatus.value,
-              },
-              retain: false);
+      // Separate TTS commands for optimized batch processing
+      final List<Map<String, dynamic>> ttsCommands = [];
+      final List<dynamic> otherCommands = [];
+
+      for (final cmd in commandList) {
+        if (cmd is Map) {
+          final command = cmd['command']?.toString().toLowerCase();
+          if (command == 'tts' || command == 'speak' || command == 'say') {
+            ttsCommands.add(Map<String, dynamic>.from(cmd));
+          } else {
+            otherCommands.add(cmd);
+          }
         }
-        return;
+      } // Process TTS commands as a batch if any exist
+      if (ttsCommands.isNotEmpty) {
+        try {
+          // Check if TTS service is available and initialized before using it
+          if (!Get.isRegistered<TtsService>()) {
+            print(
+                '⚠️ [MQTT] TTS service not yet registered, skipping TTS commands');
+            return;
+          }
+
+          final ttsService = Get.find<TtsService>();
+          if (!ttsService.isInitialized.value) {
+            print(
+                '⚠️ [MQTT] TTS service not yet initialized, skipping TTS commands');
+            return;
+          }
+
+          print(
+              '🔊 [MQTT] Processing ${ttsCommands.length} TTS commands as optimized batch');
+          final results = await ttsService.handleBatchMqttCommands(ttsCommands);
+
+          // Publish individual results to response topics if specified
+          for (int i = 0; i < results.length && i < ttsCommands.length; i++) {
+            final result = results[i];
+            final cmd = ttsCommands[i];
+
+            print('🔊 [MQTT] Batch TTS command result: $result');
+
+            if (cmd['response_topic'] != null) {
+              publishJsonToTopic(cmd['response_topic'], result, retain: false);
+            }
+          }
+        } catch (e) {
+          print('❌ [MQTT] Error processing TTS batch: $e');
+          // Publish error to response topics if specified
+          for (final cmd in ttsCommands) {
+            if (cmd['response_topic'] != null) {
+              publishJsonToTopic(
+                  cmd['response_topic'],
+                  {
+                    'success': false,
+                    'error': 'TTS batch processing failed: $e'
+                  },
+                  retain: false);
+            }
+          }
+        }
       }
 
-      // Start managed batch processing
-      await _processManagedBatch(cmdObj);
+      // Process other commands individually
+      for (final cmd in otherCommands) {
+        if (cmd is Map) {
+          try {
+            // Check specifically for notify command to use optimized path
+            if (cmd['command']?.toString().toLowerCase() == 'notify') {
+              MqttNotificationHandler.processNotifyCommand(cmd);
+              continue;
+            }
+
+            // Process each other command in the batch
+            final cmdString = jsonEncode(cmd);
+            print('🎯 Processing batch command: $cmdString');
+            _processCommand(cmdString);
+          } catch (e) {
+            print('❌ Error processing batch command: $e');
+          }
+        }
+      }
       return;
     }
 
@@ -1665,151 +1494,39 @@ class MqttService extends GetxService {
         print('❌ Error creating Weather widget: $e');
       }
       return;
-    } // --- calendar command ---
+    }
+
+    // --- calendar command ---
     if (cmdObj['command']?.toString().toLowerCase() == 'calendar') {
       final action = cmdObj['action']?.toString().toLowerCase();
       final name = cmdObj['name']?.toString() ?? 'Calendar';
       final String? windowId = cmdObj['window_id']?.toString();
 
       try {
-        // Handle calendar widget management (show/hide)
-        if (action == 'show' || action == 'create' || action == 'hide') {
-          final controller = Get.find<TilingWindowController>();
+        final controller = Get.find<TilingWindowController>();
 
-          if (action == 'show' || action == 'create') {
-            // Create or show calendar tile
-            if (windowId != null && windowId.isNotEmpty) {
-              controller.addCalendarTileWithId(windowId, name);
-            } else {
-              controller.addCalendarTile(name);
-            }
-            print('📅 [MQTT] Created Calendar widget: $name' +
-                (windowId != null ? ', id=$windowId' : ''));
-          } else if (action == 'hide' && windowId != null) {
-            // Hide specific calendar tile
-            final tile = controller.tiles.firstWhere(
-                (tile) => tile.id == windowId,
-                orElse: () =>
-                    throw Exception('Calendar tile not found: $windowId'));
-            controller.closeTile(tile);
-            print('📅 [MQTT] Removed Calendar widget: $windowId');
+        if (action == 'show' || action == 'create') {
+          // Create or show calendar tile
+          if (windowId != null && windowId.isNotEmpty) {
+            controller.addCalendarTileWithId(windowId, name);
+          } else {
+            controller.addCalendarTile(name);
           }
-        } // Handle calendar event management
-        else if (action == 'add_event' ||
-            action == 'remove_event' ||
-            action == 'clear_events' ||
-            action == 'go_to_date' ||
-            action == 'format') {
-          try {
-            final calendarController = Get.find<CalendarController>();
-            calendarController
-                .handleMqttCalendarCommand(Map<String, dynamic>.from(cmdObj));
-            print('📅 [MQTT] Calendar event command processed: $action');
-          } catch (e) {
-            print(
-                '❌ [MQTT] CalendarController not found, attempting to register...');
-            // Try to register calendar controller if not found
-            final calendarController = Get.put(CalendarController());
-            calendarController
-                .handleMqttCalendarCommand(Map<String, dynamic>.from(cmdObj));
-            print(
-                '📅 [MQTT] Calendar event command processed after registration: $action');
-          }
+          print('📅 [MQTT] Created Calendar widget: $name' +
+              (windowId != null ? ', id=$windowId' : ''));
+        } else if (action == 'hide' && windowId != null) {
+          // Hide specific calendar tile
+          final tile = controller.tiles.firstWhere(
+              (tile) => tile.id == windowId,
+              orElse: () =>
+                  throw Exception('Calendar tile not found: $windowId'));
+          controller.closeTile(tile);
+          print('📅 [MQTT] Removed Calendar widget: $windowId');
         } else {
           print('❌ [MQTT] Unknown calendar action: $action');
         }
       } catch (e) {
         print('❌ Error processing calendar command: $e');
-      }
-      return;
-    }
-
-    // --- kill_batch_script command to stop running batch script ---
-    if (cmdObj['command']?.toString().toLowerCase() == 'kill_batch_script') {
-      final result = _killBatchScript();
-      print('🛑 [MQTT] Kill batch script result: $result');
-
-      // Publish result to response topic if specified
-      if (cmdObj['response_topic'] != null) {
-        publishJsonToTopic(
-            cmdObj['response_topic'],
-            {
-              'success': result['success'],
-              'message': result['message'],
-              'killed_batch_id': result['killed_batch_id'],
-              'command': 'kill_batch_script',
-              'timestamp': DateTime.now().toIso8601String(),
-            },
-            retain: false);
-      }
-      return;
-    }
-
-    // --- batch_status command to check current batch status ---
-    if (cmdObj['command']?.toString().toLowerCase() == 'batch_status') {
-      final status = {
-        'success': true,
-        'batch_running': _batchScriptRunning,
-        'batch_id': _currentBatchId,
-        'status': batchStatus.value,
-        'progress': batchProgress.value,
-        'total': batchTotal.value,
-        'kill_requested': _batchKillRequested,
-        'command': 'batch_status',
-        'timestamp': DateTime.now().toIso8601String(),
-      };
-
-      print('📊 [MQTT] Batch status: $status');
-
-      // Publish status to response topic if specified
-      if (cmdObj['response_topic'] != null) {
-        publishJsonToTopic(cmdObj['response_topic'], status, retain: false);
-      }
-      return;
-    }
-
-    // --- wait command for batch script delays ---
-    if (cmdObj['command']?.toString().toLowerCase() == 'wait') {
-      final seconds = double.tryParse(cmdObj['seconds']?.toString() ?? '1');
-      if (seconds != null && seconds > 0 && seconds <= 300) {
-        // Max 5 minutes
-        print('⏱️ [MQTT] Wait command: pausing script for ${seconds} seconds');
-
-        // Use Future.delayed to pause without blocking other operations
-        await Future.delayed(Duration(milliseconds: (seconds * 1000).round()));
-
-        print('✅ [MQTT] Wait completed after ${seconds} seconds');
-
-        // Optionally publish completion to response topic
-        if (cmdObj['response_topic'] != null) {
-          publishJsonToTopic(
-              cmdObj['response_topic'],
-              {
-                'success': true,
-                'waited_seconds': seconds,
-                'command': 'wait',
-                'timestamp': DateTime.now().toIso8601String(),
-              },
-              retain: false);
-        }
-      } else {
-        final errorMsg = seconds == null
-            ? 'Invalid wait seconds value: ${cmdObj['seconds']}'
-            : 'Wait seconds must be between 0 and 300, got: $seconds';
-        print('❌ [MQTT] $errorMsg');
-
-        // Publish error to response topic if specified
-        if (cmdObj['response_topic'] != null) {
-          publishJsonToTopic(
-              cmdObj['response_topic'],
-              {
-                'success': false,
-                'error': errorMsg,
-                'command': 'wait',
-                'timestamp': DateTime.now().toIso8601String(),
-              },
-              retain: false);
-        }
       }
       return;
     }
@@ -3094,166 +2811,460 @@ class MqttService extends GetxService {
     print(
         '🌟 [MQTT] Processing window-specific halo effect for window: $windowId');
 
-    // Check if the effect should be enabled or disabled
-    final bool enabled =
-        cmdObj['enabled'] != null ? cmdObj['enabled'] == true : true;
+    try {
+      // Check if the effect should be enabled or disabled
+      final bool enabled =
+          cmdObj['enabled'] != null ? cmdObj['enabled'] == true : true;
 
-    if (enabled) {
-      // Get the color with improved validation (reusing existing _hexToColor method)
-      Color color;
-      final dynamic colorValue = cmdObj['color'];
-      if (colorValue == null) {
-        print(
-            '🌟 [MQTT] No color provided in window halo effect command, using default red');
-        color = Color(0xFFFF0000); // Pure red color
-      } else if (colorValue is String) {
-        final String colorStr = colorValue.trim();
-        color = _hexToColor(colorStr);
-      } else if (colorValue is int) {
-        if (colorValue < 0 || colorValue > 0xFFFFFFFF) {
+      if (enabled) {
+        try {
+          // Get the color with improved validation (reusing existing _hexToColor method)
+          Color color;
+          final dynamic colorValue = cmdObj['color'];
+
+          if (colorValue == null) {
+            print(
+                '🌟 [MQTT] No color provided in window halo effect command, using default red');
+            color = Color(0xFFFF0000); // Pure red color
+          } else if (colorValue is String) {
+            final String colorStr = colorValue.trim();
+            color = _hexToColor(colorStr);
+          } else if (colorValue is int) {
+            try {
+              if (colorValue < 0 || colorValue > 0xFFFFFFFF) {
+                print(
+                    '⚠️ Color int value out of range: $colorValue, defaulting to red');
+                color = Color(0xFFFF0000);
+              } else {
+                color = Color(colorValue);
+              }
+            } catch (e) {
+              print(
+                  '⚠️ Invalid color int value: $colorValue, defaulting to red');
+              color = Color(0xFFFF0000); // Pure red color
+            }
+          } else {
+            print(
+                '🌟 [MQTT] Unsupported color format: ${colorValue.runtimeType}, using default red');
+            color = Color(0xFFFF0000); // Pure red color
+          }
+
+          // Extract optional parameters with validation (similar to main halo effect logic)
+          double? width;
+          if (cmdObj['width'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['width'];
+
+              if (rawValue is int) {
+                width = rawValue.toDouble();
+              } else if (rawValue is double) {
+                width = rawValue;
+              } else if (rawValue is String) {
+                width = double.tryParse(rawValue);
+              }
+
+              // Validate ranges
+              if (width != null) {
+                if (width <= 0) {
+                  width = 1.0;
+                } else if (width > 200) {
+                  width = 200.0;
+                }
+              }
+            } catch (e) {
+              width = null; // Use default
+            }
+          }
+
+          double? intensity;
+          if (cmdObj['intensity'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['intensity'];
+
+              if (rawValue is int) {
+                intensity = rawValue.toDouble();
+              } else if (rawValue is double) {
+                intensity = rawValue;
+              } else if (rawValue is String) {
+                intensity = double.tryParse(rawValue);
+              }
+
+              // Validate ranges
+              if (intensity != null) {
+                if (intensity < 0) {
+                  intensity = 0.0;
+                } else if (intensity > 1.0) {
+                  intensity = 1.0;
+                }
+              }
+            } catch (e) {
+              intensity = null; // Use default
+            }
+          }
+
+          // Animation parameters
+          final String pulseModeStr =
+              cmdObj['pulse_mode']?.toString().toLowerCase() ?? 'none';
+          HaloPulseMode pulseMode = HaloPulseMode.none;
+
+          try {
+            switch (pulseModeStr) {
+              case 'gentle':
+                pulseMode = HaloPulseMode.gentle;
+                break;
+              case 'moderate':
+                pulseMode = HaloPulseMode.moderate;
+                break;
+              case 'alert':
+                pulseMode = HaloPulseMode.alert;
+                break;
+              default:
+                pulseMode = HaloPulseMode.none;
+            }
+          } catch (e) {
+            pulseMode = HaloPulseMode.none;
+          }
+
+          // Get animation durations
+          Duration? pulseDuration;
+          if (cmdObj['pulse_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['pulse_duration'];
+              int milliseconds = 2000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 2000;
+              }
+
+              // Validate ranges
+              if (milliseconds < 100) {
+                milliseconds = 100;
+              } else if (milliseconds > 10000) {
+                milliseconds = 10000;
+              }
+
+              pulseDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              pulseDuration = const Duration(milliseconds: 2000);
+            }
+          }
+
+          Duration? fadeInDuration;
+          if (cmdObj['fade_in_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_in_duration'];
+              int milliseconds = 800; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 800;
+              }
+
+              // Validate ranges
+              if (milliseconds < 50) {
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                milliseconds = 5000;
+              }
+
+              fadeInDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              fadeInDuration = const Duration(milliseconds: 800);
+            }
+          }
+
+          Duration? fadeOutDuration;
+          if (cmdObj['fade_out_duration'] != null) {
+            try {
+              final dynamic rawValue = cmdObj['fade_out_duration'];
+              int milliseconds = 1000; // Default value
+
+              if (rawValue is int) {
+                milliseconds = rawValue;
+              } else if (rawValue is double) {
+                milliseconds = rawValue.toInt();
+              } else if (rawValue is String) {
+                milliseconds = int.tryParse(rawValue) ?? 1000;
+              }
+
+              // Validate ranges
+              if (milliseconds < 50) {
+                milliseconds = 50;
+              } else if (milliseconds > 5000) {
+                milliseconds = 5000;
+              }
+
+              fadeOutDuration = Duration(milliseconds: milliseconds);
+            } catch (e) {
+              fadeOutDuration = const Duration(milliseconds: 1000);
+            }
+          }
+
+          // Make color safe
+          final safeColor = Color(color.value);
+
+          // Apply halo effect to the specific window
+          windowHaloController.enableHaloForWindow(
+            windowId: windowId,
+            color: safeColor,
+            width: width,
+            intensity: intensity,
+            pulseMode: pulseMode,
+            pulseDuration: pulseDuration,
+            fadeInDuration: fadeInDuration,
+            fadeOutDuration: fadeOutDuration,
+          );
+
           print(
-              '⚠️ Color int value out of range: $colorValue, defaulting to red');
-          color = Color(0xFFFF0000);
-        } else {
-          color = Color(colorValue);
+              '🌟 [MQTT] Enabled halo effect for window $windowId with color: ${_colorToHex(safeColor)}, pulse mode: $pulseMode');
+        } catch (e) {
+          print('❌ Error processing window halo effect parameters: $e');
+
+          // Fall back to simple red halo effect
+          try {
+            windowHaloController.enableHaloForWindow(
+              windowId: windowId,
+              color: Color(0xFFFF0000), // Pure red color
+              pulseMode: HaloPulseMode.none,
+            );
+            print(
+                '🌟 [MQTT] Enabled fallback window halo effect for window: $windowId');
+          } catch (fallbackError) {
+            print('❌ Fallback window halo effect failed: $fallbackError');
+          }
         }
       } else {
+        // Disable the halo effect for this window
+        windowHaloController.disableHaloForWindow(windowId);
+        print('🌟 [MQTT] Disabled halo effect for window: $windowId');
+      }
+
+      // Send confirmation message if requested
+      if (cmdObj['confirm'] == true) {
+        try {
+          final confirmTopic =
+              'kingkiosk/${deviceName.value}/window/$windowId/halo_effect/status';
+          final builder = MqttClientPayloadBuilder();
+          builder.addString(jsonEncode({
+            'status': 'success',
+            'window_id': windowId,
+            'enabled': enabled,
+            'timestamp': DateTime.now().toIso8601String(),
+          }));
+          _client?.publishMessage(
+              confirmTopic, MqttQos.atLeastOnce, builder.payload!);
+          print('🌟 [MQTT] Sent window halo effect confirmation message');
+        } catch (e) {
+          print('❌ Error sending window confirmation message: $e');
+        }
+      }
+    } catch (e) {
+      print('❌ Error processing window halo effect command: $e');
+    }
+  }
+
+  /// Parse a hex string to color with robust error handling
+  Color _hexToColor(String hexString) {
+    // Handle null or empty strings
+    if (hexString.isEmpty) {
+      print('⚠️ Empty color string, defaulting to red');
+      return Color(0xFFFF0000); // Pure red
+    }
+
+    // First check if it's a named color - using direct Color values instead of MaterialColor
+    switch (hexString.toLowerCase()) {
+      case 'red':
+        return Color(0xFFFF0000); // Red
+      case 'green':
+        return Color(0xFF4CAF50); // Green
+      case 'blue':
+        return Color(0xFF2196F3); // Blue
+      case 'yellow':
+        return Color(0xFFFFEB3B); // Yellow
+      case 'orange':
+        return Color(0xFFFF9800); // Orange
+      case 'purple':
+        return Color(0xFF9C27B0); // Purple
+      case 'pink':
+        return Color(0xFFE91E63); // Pink
+      case 'cyan':
+        return Color(0xFF00BCD4); // Cyan
+      case 'teal':
+        return Color(0xFF009688); // Teal
+      case 'amber':
+        return Color(0xFFFFC107); // Amber
+      case 'lime':
+        return Color(0xFFCDDC39); // Lime
+      case 'indigo':
+        return Color(0xFF3F51B5); // Indigo
+      case 'white':
+        return Color(0xFFFFFFFF); // White
+      case 'black':
+        return Color(0xFF000000); // Black
+      case 'grey':
+      case 'gray':
+        return Color(0xFF9E9E9E); // Grey
+    }
+
+    try {
+      // Clean the hex code
+      String hexCode = hexString.replaceAll('#', '').trim();
+
+      // Handle different hex formats
+      if (hexCode.length == 3) {
+        // Convert 3-digit hex to 6-digit (RGB to RRGGBB)
+        hexCode = hexCode.split('').map((c) => '$c$c').join('');
+      }
+
+      // Ensure valid length
+      if (hexCode.length != 6 && hexCode.length != 8) {
         print(
-            '🌟 [MQTT] Unsupported color format: ${colorValue.runtimeType}, using default red');
-        color = Color(0xFFFF0000); // Pure red color
+            '⚠️ Invalid hex color length: ${hexCode.length}, defaulting to red');
+        return Color(0xFFFF0000); // Pure red color
       }
 
-      // Extract optional parameters with validation (similar to main halo effect logic)
-      double? width;
-      if (cmdObj['width'] != null) {
-        final dynamic rawValue = cmdObj['width'];
-        if (rawValue is int) {
-          width = rawValue.toDouble();
-        } else if (rawValue is double) {
-          width = rawValue;
-        } else if (rawValue is String) {
-          width = double.tryParse(rawValue);
-        }
-        if (width != null) {
-          if (width <= 0) {
-            width = 1.0;
-          } else if (width > 200) {
-            width = 200.0;
-          }
-        }
+      // Add alpha if needed (making it AARRGGBB)
+      final colorValue =
+          int.tryParse(hexCode.length == 6 ? '0xFF$hexCode' : '0x$hexCode');
+
+      // Check if parsing was successful
+      if (colorValue == null) {
+        print('⚠️ Failed to parse hex color: $hexString, defaulting to red');
+        return Color(0xFFFF0000); // Pure red color
       }
 
-      double? intensity;
-      if (cmdObj['intensity'] != null) {
-        final dynamic rawValue = cmdObj['intensity'];
-        if (rawValue is int) {
-          intensity = rawValue.toDouble();
-        } else if (rawValue is double) {
-          intensity = rawValue;
-        } else if (rawValue is String) {
-          intensity = double.tryParse(rawValue);
-        }
-        if (intensity != null) {
-          if (intensity < 0) {
-            intensity = 0.0;
-          } else if (intensity > 1.0) {
-            intensity = 1.0;
-          }
-        }
-      }
+      return Color(colorValue);
+    } catch (e) {
+      print('⚠️ Error parsing hex color "$hexString": $e, defaulting to red');
+      return Color(0xFFFF0000); // Pure red color
+    }
+  }
 
-      // Animation parameters
-      HaloPulseMode pulseMode = HaloPulseMode.none;
-      Duration? pulseDuration;
-      if (cmdObj['pulse_duration'] != null) {
-        final dynamic rawValue = cmdObj['pulse_duration'];
-        int milliseconds = 2000; // Default value
-        if (rawValue is int) {
-          milliseconds = rawValue;
-        } else if (rawValue is double) {
-          milliseconds = rawValue.toInt();
-        } else if (rawValue is String) {
-          milliseconds = int.tryParse(rawValue) ?? 2000;
-        }
-        if (milliseconds < 100) {
-          milliseconds = 100;
-        } else if (milliseconds > 10000) {
-          milliseconds = 10000;
-        }
-        pulseDuration = Duration(milliseconds: milliseconds);
-      }
-      Duration? fadeInDuration;
-      if (cmdObj['fade_in_duration'] != null) {
-        final dynamic rawValue = cmdObj['fade_in_duration'];
-        int milliseconds = 800; // Default value
-        if (rawValue is int) {
-          milliseconds = rawValue;
-        } else if (rawValue is double) {
-          milliseconds = rawValue.toInt();
-        } else if (rawValue is String) {
-          milliseconds = int.tryParse(rawValue) ?? 800;
-        }
-        if (milliseconds < 50) {
-          milliseconds = 50;
-        } else if (milliseconds > 5000) {
-          milliseconds = 5000;
-        }
-        fadeInDuration = Duration(milliseconds: milliseconds);
-      }
-      Duration? fadeOutDuration;
-      if (cmdObj['fade_out_duration'] != null) {
-        final dynamic rawValue = cmdObj['fade_out_duration'];
-        int milliseconds = 1000; // Default value
-        if (rawValue is int) {
-          milliseconds = rawValue;
-        } else if (rawValue is double) {
-          milliseconds = rawValue.toInt();
-        } else if (rawValue is String) {
-          milliseconds = int.tryParse(rawValue) ?? 1000;
-        }
-        if (milliseconds < 50) {
-          milliseconds = 50;
-        } else if (milliseconds > 5000) {
-          milliseconds = 5000;
-        }
-        fadeOutDuration = Duration(milliseconds: milliseconds);
-      }
+  /// Parse a color to hex string
+  String _colorToHex(Color color) {
+    return '#${color.value.toRadixString(16).substring(2).toUpperCase()}';
+  }
 
-      // Make color safe
-      final safeColor = Color(color.value);
-      // Apply halo effect to the specific window
-      windowHaloController.enableHaloForWindow(
-        windowId: windowId,
-        color: safeColor,
-        width: width,
-        intensity: intensity,
-        pulseMode: pulseMode,
-        pulseDuration: pulseDuration,
-        fadeInDuration: fadeInDuration,
-        fadeOutDuration: fadeOutDuration,
-      );
-      print(
-          '🌟 [MQTT] Enabled halo effect for window $windowId with color: ${_colorToHex(safeColor)}, pulse mode: $pulseMode');
-    } else {
-      // Disable the halo effect for this window
-      windowHaloController.disableHaloForWindow(windowId);
-      print('🌟 [MQTT] Disabled halo effect for window: $windowId');
+  /// Check if MQTT service is connected
+  bool isConnectedToBroker() {
+    return isConnected.value;
+  }
+
+  /// Get current update interval
+  int getUpdateInterval() {
+    return _updateIntervalSeconds;
+  }
+
+  /// Force a manual reconnection to the MQTT broker
+  Future<bool> forceReconnect() async {
+    print('⚙️ Force reconnecting to MQTT broker...');
+
+    if (_client == null) {
+      print('❌ Cannot reconnect: MQTT client is null');
+      return false;
     }
 
-    // Send confirmation message if requested
-    if (cmdObj['confirm'] == true) {
-      final confirmTopic =
-          'kingkiosk/${deviceName.value}/window/$windowId/halo_effect/status';
-      final builder = MqttClientPayloadBuilder();
-      builder.addString(jsonEncode({
-        'status': 'success',
-        'window_id': windowId,
-        'enabled': enabled,
-        'timestamp': DateTime.now().toIso8601String(),
-      }));
-      _client?.publishMessage(
-          confirmTopic, MqttQos.atLeastOnce, builder.payload!);
-      print('🌟 [MQTT] Sent window halo effect confirmation message');
+    try {
+      // Disconnect but keep client settings
+      print('⚙️ Disconnecting from broker...');
+      _client!.disconnect();
+      isConnected.value = false;
+
+      // Wait a moment
+      await Future.delayed(Duration(milliseconds: 1000));
+
+      // Reconnect using existing client settings
+      print('⚙️ Attempting to reconnect...');
+      await _client!.connect();
+
+      // Check if reconnection was successful
+      if (_client!.connectionStatus!.state == MqttConnectionState.connected) {
+        print('✅ MQTT Reconnected successfully');
+        isConnected.value = true;
+
+        // Resubscribe to topics
+        print('⚙️ Resubscribing to topics...');
+        _subscribeToCommands();
+
+        // Republish online status
+        publishStatus('online');
+
+        return true;
+      } else {
+        print(
+            '❌ MQTT Reconnection failed: ${_client!.connectionStatus!.state}');
+        isConnected.value = false;
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error during MQTT reconnection: $e');
+      isConnected.value = false;
+      return false;
     }
+  }
+
+  /// Subscribe to a custom MQTT topic
+  void subscribe(String topic, Function(String, String) onMessage) {
+    if (!isConnected.value || _client == null) return;
+
+    try {
+      print('Subscribing to topic: $topic');
+      _client!.subscribe(topic, MqttQos.atLeastOnce);
+      _client!.updates!
+          .listen((List<MqttReceivedMessage<MqttMessage?>>? messages) {
+        if (messages == null || messages.isEmpty) return;
+        for (final message in messages) {
+          if (message.payload is MqttPublishMessage) {
+            final publishMessage = message.payload as MqttPublishMessage;
+            final payloadString = MqttPublishPayload.bytesToStringAsString(
+              publishMessage.payload.message,
+            );
+            onMessage(message.topic, payloadString);
+          }
+        }
+      });
+    } catch (e) {
+      print('Error subscribing to $topic: $e');
+    }
+  }
+
+  /// Publish Home Assistant MQTT Discovery config for windows diagnostic entity
+  void publishWindowsDiscoveryConfig({String? friendlyNameOverride}) {
+    final deviceNameStr = deviceName.value;
+    final deviceFriendlyName = friendlyNameOverride ?? deviceNameStr;
+    final discoveryTopic =
+        'homeassistant/sensor/${deviceNameStr}_windows/config';
+    final stateTopic = 'kiosk/$deviceNameStr/diagnostics/windows';
+    final availabilityTopic = 'kingkiosk/$deviceNameStr/status';
+    final payload = {
+      "name": "Kiosk Windows",
+      "unique_id": "${deviceNameStr}_windows",
+      "state_topic": stateTopic,
+      "icon": "mdi:window-restore",
+      "entity_category": "diagnostic",
+      "device_class": "none",
+      "value_template": "{{ value_json.windows | length }}",
+      "json_attributes_topic": stateTopic,
+      "availability_topic": availabilityTopic,
+      "payload_available": "online",
+      "payload_not_available": "offline",
+      "device": {
+        "identifiers": ["kiosk_$deviceNameStr"],
+        "name": deviceFriendlyName,
+        "model": "Flutter GetX Kiosk",
+        "manufacturer": "KingKiosk"
+      }
+    };
+    print('MQTT DEBUG: Discovery payload for windows: ${jsonEncode(payload)}');
+    print('MQTT DEBUG: Publishing to topic: $discoveryTopic');
+    publishJsonToTopic(discoveryTopic, payload, retain: true);
+    print('MQTT DEBUG: Published discovery config for windows');
   }
 }

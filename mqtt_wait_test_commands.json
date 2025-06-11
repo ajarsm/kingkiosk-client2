@@ -1,0 +1,205 @@
+{
+  "name": "MQTT Wait Command Test Examples",
+  "description": "Collection of test commands for the new MQTT wait functionality",
+  
+  "single_wait": {
+    "command": "wait",
+    "seconds": 5,
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  },
+  
+  "fractional_wait": {
+    "command": "wait", 
+    "seconds": 2.5,
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  },
+  
+  "invalid_wait_too_long": {
+    "command": "wait",
+    "seconds": 500,
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  },
+  
+  "invalid_wait_negative": {
+    "command": "wait",
+    "seconds": -1,
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  },
+  
+  "simple_batch_with_waits": {
+    "command": "batch",
+    "commands": [
+      {
+        "command": "tts",
+        "text": "Starting sequence"
+      },
+      {
+        "command": "wait",
+        "seconds": 2
+      },
+      {
+        "command": "tts", 
+        "text": "Middle of sequence"
+      },
+      {
+        "command": "wait",
+        "seconds": 1.5
+      },
+      {
+        "command": "tts",
+        "text": "End of sequence"
+      }
+    ]
+  },
+  
+  "media_slideshow_with_waits": {
+    "command": "batch",
+    "commands": [
+      {
+        "command": "tts",
+        "text": "Starting slideshow presentation"
+      },
+      {
+        "command": "wait",
+        "seconds": 3
+      },
+      {
+        "command": "open_browser",
+        "url": "https://example.com/slide1.html",
+        "window_id": "slideshow"
+      },
+      {
+        "command": "wait",
+        "seconds": 10
+      },
+      {
+        "command": "open_browser", 
+        "url": "https://example.com/slide2.html",
+        "window_id": "slideshow"
+      },
+      {
+        "command": "wait",
+        "seconds": 10
+      },
+      {
+        "command": "open_browser",
+        "url": "https://example.com/slide3.html", 
+        "window_id": "slideshow"
+      },
+      {
+        "command": "wait",
+        "seconds": 10
+      },
+      {
+        "command": "tts",
+        "text": "Slideshow presentation completed"
+      }
+    ]
+  },
+  
+  "sequential_media_with_waits": {
+    "command": "batch",
+    "commands": [
+      {
+        "command": "play_media",
+        "type": "video",
+        "url": "https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_1mb.mp4",
+        "window_id": "media1"
+      },
+      {
+        "command": "wait",
+        "seconds": 15
+      },
+      {
+        "command": "close_window",
+        "window_id": "media1"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "play_media",
+        "type": "video", 
+        "url": "https://sample-videos.com/zip/10/mp4/SampleVideo_1280x720_2mb.mp4",
+        "window_id": "media2"
+      },
+      {
+        "command": "wait",
+        "seconds": 20
+      },
+      {
+        "command": "tts",
+        "text": "All videos have finished playing"
+      }
+    ]
+  },
+  
+  "countdown_with_waits": {
+    "command": "batch",
+    "commands": [
+      {
+        "command": "tts",
+        "text": "Starting countdown from 5"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "5"
+      },
+      {
+        "command": "wait", 
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "4"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "3"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "2"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "1"
+      },
+      {
+        "command": "wait",
+        "seconds": 1
+      },
+      {
+        "command": "tts",
+        "text": "Go!"
+      }
+    ]
+  },
+  
+  "kill_batch_test": {
+    "command": "kill_batch",
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  },
+  
+  "kill_batch_script_test": {
+    "command": "kill_batch_script",
+    "response_topic": "kingkiosk/rajofficemac/test/response"
+  }
+}
