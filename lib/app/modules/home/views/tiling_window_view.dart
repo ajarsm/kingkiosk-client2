@@ -13,11 +13,9 @@ import '../../../data/models/window_tile_v2.dart';
 import '../../../modules/settings/controllers/settings_controller_compat.dart';
 import '../../../routes/app_pages.dart';
 import '../../../services/ai_assistant_service.dart';
-import '../../../services/navigation_service.dart';
+import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/platform_sensor_service.dart';
 import '../../../services/window_manager_service.dart';
-import '../../../widgets/system_info_dashboard.dart';
-import '../../../widgets/settings_lock_pin_pad.dart';
 import '../controllers/tiling_window_controller.dart';
 import '../controllers/web_window_controller.dart';
 import '../widgets/auto_hide_title_bar.dart';
@@ -506,10 +504,9 @@ class TilingWindowViewState extends State<TilingWindowView> {
   // ---------------------------------------------------------------------------
   Widget _buildToolbar(BuildContext context, bool locked) =>
       _buildBottomToolbar(locked);
-
   Widget _buildBottomToolbar(bool locked) {
     return Container(
-      height: 50,
+      height: 70,
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.8),
         boxShadow: [
@@ -521,18 +518,58 @@ class TilingWindowViewState extends State<TilingWindowView> {
         ],
       ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
+          // 1. Add button (leftmost)
           _buildToolbarButton(
             icon: Icons.add,
             label: 'Add',
             onPressed: locked
                 ? null
                 : () {
-                    // Add your implementation here
+                    // TODO: Implement add window functionality
+                    Get.snackbar(
+                      'Add Window',
+                      'Add window functionality to be implemented',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.blue,
+                      colorText: Colors.white,
+                    );
                   },
             locked: locked,
           ),
+
+          // 2. Window mode toggle (immediately to the right of Add)
+          _buildToolbarButton(
+            icon: Icons.view_quilt,
+            label: 'Tiling',
+            onPressed: locked
+                ? null
+                : () {
+                    // TODO: Implement window mode toggle
+                    Get.snackbar(
+                      'Window Mode',
+                      'Toggle between tiling and floating modes',
+                      snackPosition: SnackPosition.BOTTOM,
+                      backgroundColor: Colors.orange,
+                      colorText: Colors.white,
+                    );
+                  },
+            locked: locked,
+          ),
+
+          // 3. Spacer
+          const Spacer(),
+
+          // 4. Enlarged lock button (center)
+          _buildEnlargedLockButton(locked),
+
+          // 5. Spacer
+          const Spacer(),
+
+          // 6. Status lights with text (between lock and settings)
+          _buildStatusIndicatorSection(),
+
+          // 7. Settings button (second from right)
           _buildToolbarButton(
             icon: Icons.settings,
             label: 'Settings',
@@ -542,6 +579,210 @@ class TilingWindowViewState extends State<TilingWindowView> {
                     Get.toNamed(Routes.SETTINGS);
                   },
             locked: locked,
+          ),
+
+          // 8. Exit button (rightmost)
+          _buildToolbarButton(
+            icon: Icons.exit_to_app,
+            label: 'Exit',
+            onPressed: locked
+                ? null
+                : () {
+                    _showExitConfirmDialog();
+                  },
+            locked: locked,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEnlargedLockButton(bool locked) {
+    final lockColor = locked ? Colors.red : Colors.green;
+    final lockIcon = locked ? Icons.lock : Icons.lock_open;
+    final lockLabel = locked ? 'Locked' : 'Unlocked';
+
+    return InkWell(
+      onTap: () {
+        if (locked) {
+          // Show PIN dialog to unlock
+          settingsController.showSettingsPinDialog(
+            onSuccess: () {
+              settingsController.unlockSettings();
+            },
+          );
+        } else {
+          // Lock immediately
+          settingsController.lockSettings();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: lockColor.withOpacity(0.2),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: lockColor.withOpacity(0.5), width: 2),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              lockIcon,
+              color: lockColor,
+              size: 28, // Enlarged icon
+            ),
+            const SizedBox(height: 2),
+            Text(
+              lockLabel,
+              style: TextStyle(
+                color: lockColor,
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusIndicatorSection() {
+    return Obx(() {
+      // Get MQTT service connection status safely
+      MqttService? mqttService;
+      try {
+        mqttService = Get.find<MqttService>();
+      } catch (e) {
+        // MQTT service not available
+      }
+
+      final mqttEnabled = settingsController.mqttEnabled.value;
+      final mqttConnected = mqttService?.isConnected.value ?? false;
+
+      // Check SIP connection status
+      final sipEnabled = settingsController.sipEnabled.value;
+      final sipRegistered = settingsController.sipRegistered.value;
+
+      List<Widget> indicators = [];
+
+      // MQTT Status Light with Text
+      if (mqttEnabled) {
+        indicators.add(
+          Tooltip(
+            message: 'MQTT: ${mqttConnected ? 'Connected' : 'Disconnected'}',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: mqttConnected ? Colors.green : Colors.red,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (mqttConnected ? Colors.green : Colors.red)
+                            .withOpacity(0.5),
+                        blurRadius: 3,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'MQTT',
+                  style: TextStyle(
+                    color: mqttConnected ? Colors.green : Colors.red,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // SIP Status Light with Text
+      if (sipEnabled) {
+        if (indicators.isNotEmpty) {
+          indicators.add(const SizedBox(width: 12));
+        }
+        indicators.add(
+          Tooltip(
+            message: 'SIP: ${sipRegistered ? 'Registered' : 'Not Registered'}',
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: sipRegistered ? Colors.green : Colors.orange,
+                    boxShadow: [
+                      BoxShadow(
+                        color: (sipRegistered ? Colors.green : Colors.orange)
+                            .withOpacity(0.5),
+                        blurRadius: 3,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  'SIP',
+                  style: TextStyle(
+                    color: sipRegistered ? Colors.green : Colors.orange,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: indicators,
+        ),
+      );
+    });
+  }
+
+  void _showExitConfirmDialog() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('Exit Application'),
+        content: const Text('Are you sure you want to exit King Kiosk?'),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () async {
+              Get.back();
+              try {
+                await PlatformUtils.exitApplication();
+              } catch (e) {
+                Get.snackbar(
+                  'Exit Error',
+                  'Failed to exit application: $e',
+                  snackPosition: SnackPosition.BOTTOM,
+                  backgroundColor: Colors.red,
+                  colorText: Colors.white,
+                );
+              }
+            },
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('Exit'),
           ),
         ],
       ),
@@ -559,14 +800,14 @@ class TilingWindowViewState extends State<TilingWindowView> {
       child: Opacity(
         opacity: locked ? 0.4 : 1.0,
         child: Container(
-          height: 46,
-          constraints: const BoxConstraints(minHeight: 46),
+          height: 50,
+          constraints: const BoxConstraints(minHeight: 50),
           padding: const EdgeInsets.symmetric(horizontal: 12),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(height: 1),
+              const SizedBox(height: 2),
               Text(
                 label,
                 style: const TextStyle(color: Colors.white, fontSize: 10),
