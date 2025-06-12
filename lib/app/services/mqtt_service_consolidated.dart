@@ -1474,10 +1474,74 @@ class MqttService extends GetxService {
 
       return;
     } // --- provision command for remote settings configuration ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'get_config') {
+      _processGetConfigCommand(cmdObj);
+      return;
+    }
     if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
       _processProvisionCommand(cmdObj);
       return;
-    } // --- TTS (Text-to-Speech) command handling ---
+    }
+    // --- TTS (Text-to-Speech) command handling ---
+    /// Process get_config command to return all current settings
+    void _processGetConfigCommand(Map<dynamic, dynamic> cmdObj) async {
+      print('🛠️ [MQTT] Processing get_config command');
+      try {
+        final storageService = Get.find<StorageService>();
+        final config = <String, dynamic>{};
+
+        // List of all provisionable keys (add more as needed)
+        final keys = [
+          AppConstants.keyIsDarkMode,
+          AppConstants.keyKioskMode,
+          AppConstants.keyShowSystemInfo,
+          AppConstants.keyKioskStartUrl,
+          AppConstants.keyPersonDetectionEnabled,
+          AppConstants.keyMqttEnabled,
+          AppConstants.keyMqttBrokerUrl,
+          AppConstants.keyMqttBrokerPort,
+          AppConstants.keyMqttUsername,
+          AppConstants.keyMqttPassword,
+          AppConstants.keyDeviceName,
+          AppConstants.keyMqttHaDiscovery,
+          AppConstants.keySipEnabled,
+          AppConstants.keySipServerHost,
+          AppConstants.keySipProtocol,
+          AppConstants.keySelectedAudioInput,
+          AppConstants.keySelectedVideoInput,
+          AppConstants.keySelectedAudioOutput,
+          AppConstants.keyWyomingHost,
+          AppConstants.keyWyomingPort,
+          AppConstants.keyWyomingEnabled,
+          AppConstants.keyAiProviderHost,
+          AppConstants.keyAiEnabled,
+          AppConstants.keyLatestScreenshot,
+          AppConstants.keyWebsocketUrl,
+          AppConstants.keyMediaServerUrl,
+        ];
+
+        for (final key in keys) {
+          config[key] = storageService.read(key);
+        }
+
+        final response = {
+          'command': 'get_config',
+          'status': 'success',
+          'device_name': deviceName.value,
+          'config': config,
+          'timestamp': DateTime.now().toIso8601String(),
+        };
+
+        // Publish to response topic if specified, else use default
+        String? responseTopic = cmdObj['response_topic']?.toString();
+        responseTopic ??= 'kingkiosk/${deviceName.value}/config/response';
+        publishJsonToTopic(responseTopic, response, retain: false);
+        print('🛠️ [MQTT] Sent current config to $responseTopic');
+      } catch (e) {
+        print('❌ [MQTT] Error processing get_config command: $e');
+      }
+    }
+
     if (cmdObj['command']?.toString().toLowerCase() == 'tts' ||
         cmdObj['command']?.toString().toLowerCase() == 'speak' ||
         cmdObj['command']?.toString().toLowerCase() == 'say') {
@@ -2753,8 +2817,116 @@ class MqttService extends GetxService {
             controller?.settingsPin.value = stringValue;
             return true;
           }
+          break; // Person Detection settings
+        case 'persondetectionenabled':
+        case 'person_detection_enabled':
+        case 'persondetection':
+        case 'person_detection':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(
+                AppConstants.keyPersonDetectionEnabled, boolValue);
+            // Update controller if it's the SettingsControllerFixed type
+            if (controller is SettingsControllerFixed) {
+              controller.personDetectionEnabled.value = boolValue;
+            }
+
+            // Also update the PersonDetectionService if available
+            try {
+              final personDetectionService = Get.find<PersonDetectionService>();
+              personDetectionService.isEnabled.value = boolValue;
+              print(
+                  '✅ [MQTT] PersonDetectionService state updated to: $boolValue');
+            } catch (e) {
+              print(
+                  '⚠️ [MQTT] PersonDetectionService not available for sync: $e');
+            }
+            return true;
+          }
           break;
 
+        // Wyoming Satellite settings
+        case 'wyominghost':
+        case 'wyoming_host':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keyWyomingHost, stringValue);
+            // Update controller if it has Wyoming settings
+            try {
+              final method =
+                  controller?.runtimeType.toString().contains('wyomingHost');
+              if (method == true) {
+                // Dynamic update if controller supports it
+                print('✅ [MQTT] Wyoming host updated to: $stringValue');
+              }
+            } catch (e) {
+              print('⚠️ [MQTT] Wyoming host controller update failed: $e');
+            }
+            return true;
+          }
+          break;
+
+        case 'wyomingport':
+        case 'wyoming_port':
+          final intValue = _parseInt(value);
+          if (intValue != null && intValue > 0 && intValue <= 65535) {
+            storageService.write(AppConstants.keyWyomingPort, intValue);
+            return true;
+          }
+          break;
+
+        case 'wyomingenabled':
+        case 'wyoming_enabled':
+          final boolValue = _parseBool(value);
+          if (boolValue != null) {
+            storageService.write(AppConstants.keyWyomingEnabled, boolValue);
+            return true;
+          }
+          break;
+
+        // Media Device settings
+        case 'selectedaudioinput':
+        case 'selected_audio_input':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keySelectedAudioInput, stringValue);
+          return true;
+
+        case 'selectedvideoinput':
+        case 'selected_video_input':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keySelectedVideoInput, stringValue);
+          return true;
+
+        case 'selectedaudiooutput':
+        case 'selected_audio_output':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(
+              AppConstants.keySelectedAudioOutput, stringValue);
+          return true;
+
+        // Screenshot settings
+        case 'latestscreenshot':
+        case 'latest_screenshot':
+          final stringValue = value?.toString() ?? '';
+          storageService.write(AppConstants.keyLatestScreenshot, stringValue);
+          return true; // WebSocket and Media Server settings (storage only)
+        case 'websocketurl':
+        case 'websocket_url':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keyWebsocketUrl, stringValue);
+            return true;
+          }
+          break;
+
+        case 'mediaserverurl':
+        case 'media_server_url':
+          final stringValue = value?.toString();
+          if (stringValue != null && stringValue.isNotEmpty) {
+            storageService.write(AppConstants.keyMediaServerUrl, stringValue);
+            return true;
+          }
+          break;
         default:
           print('⚠️ [MQTT] Unknown setting key: $key');
           return false;
