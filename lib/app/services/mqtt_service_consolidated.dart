@@ -1814,9 +1814,112 @@ class MqttService extends GetxService {
       return;
     }
 
-    // ...existing fallback string command logic...
-    print('🎯 Unknown command received: "$command"');
-    return;
+    // --- Background control commands ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'set_background') {
+      final type = cmdObj['type']?.toString(); // 'default', 'image', 'webview'
+      final imagePath =
+          cmdObj['image_path']?.toString() ?? cmdObj['image_url']?.toString();
+      final webUrl = cmdObj['web_url']?.toString() ?? cmdObj['url']?.toString();
+
+      try {
+        final settingsController = Get.find<SettingsControllerFixed>();
+
+        if (type != null && ['default', 'image', 'webview'].contains(type)) {
+          settingsController.setBackgroundType(type);
+          print('[MQTT] Set background type to: $type');
+
+          if (type == 'image' && imagePath != null && imagePath.isNotEmpty) {
+            settingsController.setBackgroundImagePath(imagePath);
+            print('[MQTT] Set background image path to: $imagePath');
+          } else if (type == 'webview' && webUrl != null && webUrl.isNotEmpty) {
+            settingsController.setBackgroundWebUrl(webUrl);
+            print('[MQTT] Set background web URL to: $webUrl');
+          }
+
+          // Publish success response if response_topic is provided
+          if (cmdObj['response_topic'] != null) {
+            publishJsonToTopic(
+                cmdObj['response_topic'],
+                {
+                  'success': true,
+                  'message': 'Background settings updated',
+                  'type': type,
+                  'image_path': imagePath,
+                  'web_url': webUrl,
+                },
+                retain: false);
+          }
+        } else {
+          final errorMsg =
+              'Invalid background type. Must be: default, image, or webview';
+          print('[MQTT] $errorMsg');
+
+          if (cmdObj['response_topic'] != null) {
+            publishJsonToTopic(
+                cmdObj['response_topic'],
+                {
+                  'success': false,
+                  'error': errorMsg,
+                  'provided_type': type,
+                },
+                retain: false);
+          }
+        }
+      } catch (e) {
+        print('[MQTT] Error setting background: $e');
+
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(
+              cmdObj['response_topic'],
+              {
+                'success': false,
+                'error': 'Error setting background: $e',
+              },
+              retain: false);
+        }
+      }
+      return;
+    }
+
+    // --- Get background status command ---
+    if (cmdObj['command']?.toString().toLowerCase() == 'get_background') {
+      try {
+        final settingsController = Get.find<SettingsControllerFixed>();
+        final backgroundInfo = {
+          'type': settingsController.backgroundType.value,
+          'image_path': settingsController.backgroundImagePath.value,
+          'web_url': settingsController.backgroundWebUrl.value,
+        };
+
+        print('[MQTT] Background status requested');
+
+        // Publish to response topic if provided, otherwise to default status topic
+        final responseTopic = cmdObj['response_topic']?.toString() ??
+            'kiosk/${deviceName.value}/status/background';
+        publishJsonToTopic(
+            responseTopic,
+            {
+              'success': true,
+              'background': backgroundInfo,
+            },
+            retain: false);
+      } catch (e) {
+        print('[MQTT] Error getting background status: $e');
+
+        if (cmdObj['response_topic'] != null) {
+          publishJsonToTopic(
+              cmdObj['response_topic'],
+              {
+                'success': false,
+                'error': 'Error getting background status: $e',
+              },
+              retain: false);
+        }
+      }
+      return;
+    }
+
+    // ...existing code...
   }
 
   /// Publish a direct value to a sensor topic without wrapping it in JSON

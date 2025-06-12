@@ -16,6 +16,11 @@ class SettingsControllerFixed extends SettingsController {
   // Person Detection settings
   final RxBool personDetectionEnabled = false.obs;
 
+  // Background settings
+  final RxString backgroundType = 'default'.obs; // default, image, webview
+  final RxString backgroundImagePath = ''.obs;
+  final RxString backgroundWebUrl = ''.obs;
+
   @override
   void onInit() {
     super.onInit();
@@ -23,7 +28,34 @@ class SettingsControllerFixed extends SettingsController {
     // Load person detection setting from storage
     personDetectionEnabled.value = Get.find<StorageService>()
             .read<bool>(AppConstants.keyPersonDetectionEnabled) ??
-        false; // Listen for changes, sync with PersonDetectionService and save to storage
+        false;
+
+    // Load background settings from storage
+    final storageService = Get.find<StorageService>();
+    backgroundType.value =
+        storageService.read<String>('backgroundType') ?? 'default';
+    backgroundImagePath.value =
+        storageService.read<String>('backgroundImagePath') ?? '';
+    backgroundWebUrl.value =
+        storageService.read<String>('backgroundWebUrl') ?? '';
+
+    // Listen for changes and save to storage
+    ever(backgroundType, (String type) {
+      storageService.write('backgroundType', type);
+      print('✅ Background type saved: $type');
+    });
+
+    ever(backgroundImagePath, (String path) {
+      storageService.write('backgroundImagePath', path);
+      print('✅ Background image path saved: $path');
+    });
+
+    ever(backgroundWebUrl, (String url) {
+      storageService.write('backgroundWebUrl', url);
+      print('✅ Background web URL saved: $url');
+    });
+
+    // Listen for changes, sync with PersonDetectionService and save to storage
     ever(personDetectionEnabled, (bool enabled) {
       try {
         final personDetectionService = Get.find<PersonDetectionService>();
@@ -568,5 +600,20 @@ class SettingsControllerFixed extends SettingsController {
         mqttConnected.value = actualStatus;
       }
     }
+  }
+
+  // Background settings methods
+  void setBackgroundType(String type) {
+    if (['default', 'image', 'webview'].contains(type)) {
+      backgroundType.value = type;
+    }
+  }
+
+  void setBackgroundImagePath(String path) {
+    backgroundImagePath.value = path;
+  }
+
+  void setBackgroundWebUrl(String url) {
+    backgroundWebUrl.value = url;
   }
 }

@@ -45,6 +45,7 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               _buildThemeToggle(),
               _buildKioskModeToggle(),
               _buildSystemInfoToggle(),
+              _buildBackgroundSettings(),
             ],
           ), // Web URLs
           _buildSection(
@@ -276,6 +277,97 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                 controller.showSystemInfo.value;
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildBackgroundSettings() {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.wallpaper),
+                SizedBox(width: 8),
+                Text('Root Window Background',
+                    style:
+                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            Divider(),
+            Obx(() => DropdownButton<String>(
+                  value: controller.backgroundType.value,
+                  items: [
+                    DropdownMenuItem(value: 'default', child: Text('Default')),
+                    DropdownMenuItem(value: 'image', child: Text('Image')),
+                    DropdownMenuItem(value: 'webview', child: Text('WebView')),
+                  ],
+                  onChanged: (value) {
+                    if (value != null) controller.setBackgroundType(value);
+                  },
+                )),
+            Obx(() {
+              if (controller.backgroundType.value == 'image') {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(height: 12),
+                    TextField(
+                      controller: TextEditingController(
+                          text: controller.backgroundImagePath.value),
+                      decoration: InputDecoration(
+                        labelText: 'Image URL',
+                        hintText: 'Enter image URL',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.image),
+                      ),
+                      onChanged: (value) =>
+                          controller.setBackgroundImagePath(value),
+                    ),
+                    SizedBox(height: 8),
+                    controller.backgroundImagePath.value.isNotEmpty
+                        ? Image.network(
+                            controller.backgroundImagePath.value,
+                            height: 80,
+                            fit: BoxFit.contain,
+                            errorBuilder: (context, error, stackTrace) => Text(
+                                'Could not load image',
+                                style: TextStyle(color: Colors.red)),
+                          )
+                        : SizedBox.shrink(),
+                  ],
+                );
+              } else if (controller.backgroundType.value == 'webview') {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(height: 12),
+                    TextField(
+                      controller: TextEditingController(
+                          text: controller.backgroundWebUrl.value),
+                      decoration: InputDecoration(
+                        labelText: 'WebView URL',
+                        hintText: 'Enter web page URL',
+                        border: OutlineInputBorder(),
+                        suffixIcon: Icon(Icons.public),
+                      ),
+                      onChanged: (value) =>
+                          controller.setBackgroundWebUrl(value),
+                    ),
+                  ],
+                );
+              } else {
+                return SizedBox.shrink();
+              }
+            }),
+          ],
+        ),
       ),
     );
   }
