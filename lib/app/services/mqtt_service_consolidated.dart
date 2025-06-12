@@ -1474,16 +1474,6 @@ class MqttService extends GetxService {
 
       return;
     } // --- provision command for remote settings configuration ---
-    if (cmdObj['command']?.toString().toLowerCase() == 'get_config') {
-      _processGetConfigCommand(cmdObj);
-      return;
-    }
-    if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
-      _processProvisionCommand(cmdObj);
-      return;
-    }
-    // --- TTS (Text-to-Speech) command handling ---
-    /// Process get_config command to return all current settings
     void _processGetConfigCommand(Map<dynamic, dynamic> cmdObj) async {
       print('🛠️ [MQTT] Processing get_config command');
       try {
@@ -1541,6 +1531,17 @@ class MqttService extends GetxService {
         print('❌ [MQTT] Error processing get_config command: $e');
       }
     }
+
+    if (cmdObj['command']?.toString().toLowerCase() == 'get_config') {
+      _processGetConfigCommand(cmdObj);
+      return;
+    }
+    if (cmdObj['command']?.toString().toLowerCase() == 'provision') {
+      _processProvisionCommand(cmdObj);
+      return;
+    }
+    // --- TTS (Text-to-Speech) command handling ---
+    /// Process get_config command to return all current settings
 
     if (cmdObj['command']?.toString().toLowerCase() == 'tts' ||
         cmdObj['command']?.toString().toLowerCase() == 'speak' ||
