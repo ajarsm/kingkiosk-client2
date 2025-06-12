@@ -235,13 +235,10 @@ class TilingWindowViewState extends State<TilingWindowView> {
       if (path.isNotEmpty) {
         return Positioned.fill(
           child: Center(
-            child: Opacity(
-              opacity: 0.18,
-              child: FractionallySizedBox(
-                widthFactor: 0.7,
-                heightFactor: 0.7,
-                child: _buildImageWidget(path),
-              ),
+            child: FractionallySizedBox(
+              widthFactor: 0.7,
+              heightFactor: 0.7,
+              child: _buildImageWidget(path),
             ),
           ),
         );
@@ -250,32 +247,29 @@ class TilingWindowViewState extends State<TilingWindowView> {
       final url = settingsController.backgroundWebUrl.value;
       if (url.isNotEmpty) {
         return Positioned.fill(
-          child: Opacity(
-            opacity: 0.3,
-            child: IgnorePointer(
-              child: InAppWebView(
-                initialUrlRequest: URLRequest(url: WebUri(url)),
-                initialSettings: InAppWebViewSettings(
-                  javaScriptEnabled: true,
-                  mediaPlaybackRequiresUserGesture: false,
-                  allowsInlineMediaPlayback: true,
-                  disableContextMenu: true,
-                  supportZoom: false,
-                  transparentBackground: true,
-                  disableHorizontalScroll: true,
-                  disableVerticalScroll: true,
-                  allowsBackForwardNavigationGestures: false,
-                  allowsLinkPreview: false,
-                  isFraudulentWebsiteWarningEnabled: false,
-                  clearCache: false,
-                ),
-                onLoadStart: (_, __) =>
-                    debugPrint('🌐 Background webview started loading'),
-                onLoadStop: (_, __) =>
-                    debugPrint('✅ Background webview finished loading'),
-                onLoadError: (_, __, ___, message) =>
-                    debugPrint('❌ Background webview load error: $message'),
+          child: IgnorePointer(
+            child: InAppWebView(
+              initialUrlRequest: URLRequest(url: WebUri(url)),
+              initialSettings: InAppWebViewSettings(
+                javaScriptEnabled: true,
+                mediaPlaybackRequiresUserGesture: false,
+                allowsInlineMediaPlayback: true,
+                disableContextMenu: true,
+                supportZoom: false,
+                transparentBackground: true,
+                disableHorizontalScroll: true,
+                disableVerticalScroll: true,
+                allowsBackForwardNavigationGestures: false,
+                allowsLinkPreview: false,
+                isFraudulentWebsiteWarningEnabled: false,
+                clearCache: false,
               ),
+              onLoadStart: (_, __) =>
+                  debugPrint('🌐 Background webview started loading'),
+              onLoadStop: (_, __) =>
+                  debugPrint('✅ Background webview finished loading'),
+              onLoadError: (_, __, ___, message) =>
+                  debugPrint('❌ Background webview load error: $message'),
             ),
           ),
         );
