@@ -10,6 +10,7 @@ import '../../../data/models/window_tile_v2.dart';
 import '../../../data/models/tiling_layout.dart';
 import '../widgets/media_tile.dart';
 import '../widgets/webview_tile_manager.dart'; // Add WebViewTileManager import
+import '../widgets/youtube_player_tile.dart'; // Add YouTubePlayerManager import
 import '../../../services/storage_service.dart';
 import '../../../services/window_manager_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
@@ -1228,8 +1229,10 @@ class TilingWindowController extends GetxController {
     if (index >= 0) {
       // Stop media/web/audio playback and dispose controller if needed
       if (tile.type == TileType.audio ||
+          tile.type == TileType.audioVisualizer ||
           tile.type == TileType.media ||
-          tile.type == TileType.webView) {
+          tile.type == TileType.webView ||
+          tile.type == TileType.youtube) {
         final wm = Get.find<WindowManagerService>();
         final controller = wm.getWindow(tile.id);
         if (controller != null) {
@@ -1247,14 +1250,24 @@ class TilingWindowController extends GetxController {
                 print('Error removing WebViewTile from manager: $e');
               }
             }
+            // For YouTube tiles, also remove from the YouTubePlayerManager
+            if (tile.type == TileType.youtube) {
+              try {
+                YouTubePlayerManager().removeYouTubePlayer(tile.id);
+                print(
+                    '🎬 Removed YouTubePlayerTile from manager for window: ${tile.id}');
+              } catch (e) {
+                print('Error removing YouTubePlayerTile from manager: $e');
+              }
+            }
           } catch (e) {
             print('Error disposing window controller: $e');
           }
-        }
-
-        // Always try to clean up the MediaPlayerManager for media/audio tiles
+        } // Always try to clean up the MediaPlayerManager for media/audio tiles
         // even if the controller wasn't present or failed
-        if (tile.type == TileType.audio || tile.type == TileType.media) {
+        if (tile.type == TileType.audio ||
+            tile.type == TileType.audioVisualizer ||
+            tile.type == TileType.media) {
           try {
             // Use a brief delay to allow other disposal operations to complete
             Future.delayed(Duration(milliseconds: 100), () {

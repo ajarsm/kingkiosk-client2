@@ -34,6 +34,62 @@ import '../modules/settings/controllers/settings_controller_compat.dart';
 /// MQTT service with proper statistics reporting (consolidated from multiple versions)
 /// Fixed to properly report all sensor values to Home Assistant
 class MqttService extends GetxService {
+  /// Helper function to strip JavaScript-style comments from JSON strings
+  /// This allows users to include comments in their MQTT JSON payloads for better readability
+  String _stripJsonComments(String jsonString) {
+    // More sophisticated comment removal that preserves URLs
+    // Only remove // comments that are not inside quoted strings
+
+    List<String> lines = jsonString.split('\n');
+    List<String> cleanedLines = [];
+
+    for (String line in lines) {
+      String cleanedLine = _removeLineComment(line);
+      cleanedLines.add(cleanedLine);
+    }
+
+    String result = cleanedLines.join('\n');
+
+    // Remove multi-line comments (/* comment */)
+    // Use a more careful regex that handles nested comments and strings
+    result = result.replaceAll(RegExp(r'/\*[\s\S]*?\*/'), '');
+
+    // Clean up any trailing commas that might be left after comment removal
+    result = result.replaceAll(RegExp(r',(\s*[}\]])'), r'$1');
+
+    return result.trim();
+  }
+
+  /// Remove line comments while preserving URLs in quoted strings
+  String _removeLineComment(String line) {
+    bool inString = false;
+    bool escapeNext = false;
+
+    for (int i = 0; i < line.length - 1; i++) {
+      if (escapeNext) {
+        escapeNext = false;
+        continue;
+      }
+
+      if (line[i] == '\\') {
+        escapeNext = true;
+        continue;
+      }
+
+      if (line[i] == '"') {
+        inString = !inString;
+        continue;
+      }
+
+      // Only remove // comments if we're not inside a quoted string
+      if (!inString && line[i] == '/' && line[i + 1] == '/') {
+        return line.substring(0, i).trimRight();
+      }
+    }
+
+    return line;
+  }
+
   // Utility: Parse a color to hex string
   // (moved below, keep only one definition)
   /// Subscribe to a custom MQTT topic
@@ -157,7 +213,7 @@ class MqttService extends GetxService {
       }
       if (hexCode.length != 6 && hexCode.length != 8) {
         print(
-            '⚠️ Invalid hex color length: [33m${hexCode.length}[0m, defaulting to red');
+            '⚠️ Invalid hex color length: [33m${hexCode.length}[0m, defaulting to red');
         return Color(0xFFFF0000);
       }
       final colorValue =
@@ -213,16 +269,18 @@ class MqttService extends GetxService {
         // Simulate command processing: if it's a wait, actually wait
         if (command is Map &&
             command['command']?.toString().toLowerCase() == 'wait') {
+          // Perform wait in increments to allow kill checks
           final seconds =
               double.tryParse(command['seconds']?.toString() ?? '1') ?? 1.0;
-          final ms = (seconds * 1000).clamp(0, 300000).toInt();
+          final int totalMs = (seconds * 1000).clamp(0, 300000).toInt();
           print('[BATCH] Waiting for $seconds seconds');
-          int waited = 0;
-          // Wait in small increments to allow kill check
-          while (waited < ms && !_batchKillRequested) {
-            final chunk = (ms - waited) > 200 ? 200 : (ms - waited);
-            await Future.delayed(Duration(milliseconds: chunk));
-            waited += chunk;
+          int elapsed = 0;
+          const int chunkMs = 200;
+          while (elapsed < totalMs && !_batchKillRequested) {
+            final int waitMs =
+                (totalMs - elapsed) >= chunkMs ? chunkMs : (totalMs - elapsed);
+            await Future.delayed(Duration(milliseconds: waitMs));
+            elapsed += waitMs;
           }
           if (_batchKillRequested) {
             print('[BATCH] Batch killed during wait');
@@ -230,11 +288,11 @@ class MqttService extends GetxService {
             break;
           }
         } else if (command is Map && command['command'] != null) {
-          // Recursively process as a single command (simulate by calling _processCommand)
-          _processCommand(jsonEncode(command));
+          // Recursively process as a single command (await async handling)
+          await _processCommand(jsonEncode(command));
         } else if (command is String) {
           // If it's a string, treat as a simple command
-          _processCommand(command);
+          await _processCommand(command);
         } else {
           print('[BATCH] Unknown command format: $command');
         }
@@ -288,67 +346,42 @@ class MqttService extends GetxService {
 
   // Constructor
   MqttService(this._storageService, this._sensorService);
+
   @override
   void onInit() {
     super.onInit();
-    // Subscribe to window command topics
     final device = deviceName.value;
     final topic = 'kiosk/$device/window/+/command';
-    this.subscribe(topic, (String topic, String payload) {
-      // Parse window name from topic
+
+    // 1️⃣ Subscribe once to per-window commands
+    subscribe(topic, (String topic, String payload) {
       final parts = topic.split('/');
-      final windowName = parts.length > 3 ? parts[3] : null;
-      if (windowName != null) {
-        try {
-          final data = json.decode(payload) as Map<String, dynamic>;
-          final action = data['action'] as String?;
-          if (action != null) {
-            final wm = Get.find<WindowManagerService>();
-            wm.handleWindowCommand(windowName, action, data);
-          }
-        } catch (e) {
-          print('Failed to parse window command payload: $e');
+      if (parts.length < 4) return;
+      final windowName = parts[3];
+
+      try {
+        final cleanPayload = _stripJsonComments(payload);
+        final data = json.decode(cleanPayload) as Map<String, dynamic>;
+        final action = data['action'] as String?;
+        if (action != null) {
+          final wm = Get.find<WindowManagerService>();
+          wm.handleWindowCommand(windowName, action, data);
         }
+      } catch (e) {
+        print('Failed to parse window command payload: $e');
       }
     });
 
-    // Ensure notification system is available
-    try {
-      Get.find<NotificationService>();
+    // 2️⃣ Warm-up NotificationService (if present)
+    if (Get.isRegistered<NotificationService>()) {
       print('✅ [MQTT] NotificationService is ready for MQTT notifications');
-    } catch (e) {
-      print('⚠️ [MQTT] NotificationService not available: $e');
-    } // Clean up old windows discovery config on startup
-    ever(isConnected, (connected) {
-      if (connected == true) {
-        final deviceNameStr = deviceName.value;
+    }
 
-        // Clean up old windows discovery config
-        final discoveryTopic =
-            'homeassistant/sensor/${deviceNameStr}_windows/config';
-        // Publish empty payload to delete old config
-        publishJsonToTopic(discoveryTopic, {}, retain: true);
-        print('MQTT DEBUG: Deleted discovery config for windows');
+    // 3️⃣ Clear legacy object-detection discovery configs
+    _clearLegacyObjectDetectionConfigs();
 
-        // Clean up old object detection discovery configs
-        final objectDetectionTopics = [
-          'homeassistant/sensor/${deviceNameStr}_object_detection/config',
-          'homeassistant/binary_sensor/${deviceNameStr}_person_presence/config',
-          'homeassistant/sensor/${deviceNameStr}_object_count/config',
-          'homeassistant/sensor/${deviceNameStr}_person_confidence/config',
-        ];
-
-        for (final topic in objectDetectionTopics) {
-          publishJsonToTopic(topic, {}, retain: true);
-          print(
-              'MQTT DEBUG: Deleted old object detection discovery config: $topic');
-        }
-
-        // Republish configs
-        this.publishWindowsDiscoveryConfig();
-        // Object detection discovery will be republished when _setupHomeAssistantDiscoveryWithDebug() is called
-      }
-    });
+    // 4️⃣ Re-publish window discovery
+    publishWindowsDiscoveryConfig();
   }
 
   // Connection callbacks
@@ -808,26 +841,73 @@ class MqttService extends GetxService {
   }
 
   /// Process received commands
-  void _processCommand(String command) async {
+  Future<void> _processCommand(String command) async {
     print('🎯 Processing command: "$command"');
-    dynamic cmdObj;
-    try {
-      cmdObj = jsonDecode(command);
-      if (cmdObj is String) {
-        print('🔄 [MQTT] Detected nested JSON string, parsing inner JSON');
-        cmdObj = jsonDecode(cmdObj);
+    // Clean and strip comments from JSON
+    var cleaned = _stripJsonComments(command);
+
+    // Debug the raw payload
+    print('📝 [MQTT] Raw payload after stripping comments: "$cleaned"');
+
+    // Check if it looks like a quoted JSON string
+    if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+      try {
+        // This could be a string-encoded JSON - decode to string first
+        final decodedString = jsonDecode(cleaned);
+        if (decodedString is String) {
+          print('🔄 [MQTT] Detected quoted JSON string, unwrapping it');
+          cleaned = decodedString;
+          print('📝 [MQTT] Unwrapped payload: "$cleaned"');
+        }
+      } catch (e) {
+        print('⚠️ [MQTT] Error unwrapping quoted string: $e');
+        // Continue with original cleaned string
       }
-    } catch (_) {
-      cmdObj = null;
     }
 
-    print('🔄 [MQTT] Parsed cmdObj: $cmdObj');
+    // Now try parsing the actual JSON command
+    dynamic cmdObj;
+    try {
+      cmdObj = jsonDecode(cleaned);
+      if (cmdObj is String) {
+        print('🔄 [MQTT] Detected nested JSON string, parsing inner JSON');
+        final nestedClean = _stripJsonComments(cmdObj);
+        cmdObj = jsonDecode(nestedClean);
+      }
+    } catch (e) {
+      print('⚠️ [MQTT] JSON decode error: $e');
+      cmdObj = null;
+    } // Enhanced logging for better debugging
+    print('🔄 [MQTT] Parsed cmdObj: $cmdObj (type: ${cmdObj?.runtimeType})');
+
+    if (cmdObj == null) {
+      print('❌ [MQTT] Failed to parse command JSON. Command will be ignored.');
+      return;
+    }
+
     if (cmdObj is Map) {
       print('🔄 [MQTT] cmdObj["command"]: ${cmdObj['command']}');
-    } // --- Handle batch commands array first ---
-    if (cmdObj is Map &&
-        (cmdObj['commands'] is List ||
-            cmdObj['command']?.toString().toLowerCase() == 'batch')) {
+    } else {
+      print('⚠️ [MQTT] cmdObj is not a Map, but ${cmdObj.runtimeType}');
+      // Try to convert to Map if it's a valid JSON string
+      if (cmdObj is String &&
+          cmdObj.trim().startsWith('{') &&
+          cmdObj.trim().endsWith('}')) {
+        try {
+          final jsonMap = jsonDecode(cmdObj) as Map<String, dynamic>;
+          print('🔄 [MQTT] Successfully converted string to Map: $jsonMap');
+          cmdObj = jsonMap;
+        } catch (e) {
+          print('❌ [MQTT] Failed to convert string to Map: $e');
+          return;
+        }
+      } else {
+        return; // Not a valid command, exit
+      }
+    }
+    // --- Handle batch commands array first ---
+    if (cmdObj['commands'] is List ||
+        cmdObj['command']?.toString().toLowerCase() == 'batch') {
       // Check if another batch script is already running
       if (_batchScriptRunning) {
         final errorMsg =
@@ -852,12 +932,9 @@ class MqttService extends GetxService {
       // Start managed batch processing
       await _processManagedBatch(cmdObj);
       return;
-    }
-
-    // --- Only handle commands that are JSON with a 'command' key ---
-    if (cmdObj is! Map || !cmdObj.containsKey('command')) {
-      print(
-          '🎯 Ignoring non-command MQTT message (cmdObj type: ${cmdObj.runtimeType})');
+    } // --- Only handle commands that are JSON with a 'command' key ---
+    if (!cmdObj.containsKey('command')) {
+      print('🎯 Ignoring non-command MQTT message (missing "command" field)');
       return;
     } // --- play_media command via {"command": "play_media", ...} ---
     if (cmdObj['command']?.toString().toLowerCase() == 'play_media') {
@@ -1195,7 +1272,7 @@ class MqttService extends GetxService {
             print('[MQTT] No media window found with ID: $windowId');
           } else {
             print(
-                '[MQTT] Window with ID $windowId is not a media window (type: [33m${win.windowType}[0m)');
+                '[MQTT] Window with ID $windowId is not a media window (type: [33m${win.windowType}[0m)');
           }
         } catch (e) {
           print(
@@ -1309,8 +1386,7 @@ class MqttService extends GetxService {
           print('[MQTT] Error setting system brightness: $e');
         }
       } else {
-        print(
-            '[MQTT] Invalid set_brightness value: [33m${cmdObj['value']}[0m');
+        print('[MQTT] Invalid set_brightness value: [33m${cmdObj['value']}[0m');
       }
       return;
     }
@@ -1474,63 +1550,6 @@ class MqttService extends GetxService {
 
       return;
     } // --- provision command for remote settings configuration ---
-    void _processGetConfigCommand(Map<dynamic, dynamic> cmdObj) async {
-      print('🛠️ [MQTT] Processing get_config command');
-      try {
-        final storageService = Get.find<StorageService>();
-        final config = <String, dynamic>{};
-
-        // List of all provisionable keys (add more as needed)
-        final keys = [
-          AppConstants.keyIsDarkMode,
-          AppConstants.keyKioskMode,
-          AppConstants.keyShowSystemInfo,
-          AppConstants.keyKioskStartUrl,
-          AppConstants.keyPersonDetectionEnabled,
-          AppConstants.keyMqttEnabled,
-          AppConstants.keyMqttBrokerUrl,
-          AppConstants.keyMqttBrokerPort,
-          AppConstants.keyMqttUsername,
-          AppConstants.keyMqttPassword,
-          AppConstants.keyDeviceName,
-          AppConstants.keyMqttHaDiscovery,
-          AppConstants.keySipEnabled,
-          AppConstants.keySipServerHost,
-          AppConstants.keySipProtocol,
-          AppConstants.keySelectedAudioInput,
-          AppConstants.keySelectedVideoInput,
-          AppConstants.keySelectedAudioOutput,
-          AppConstants.keyWyomingHost,
-          AppConstants.keyWyomingPort,
-          AppConstants.keyWyomingEnabled,
-          AppConstants.keyAiProviderHost,
-          AppConstants.keyAiEnabled,
-          AppConstants.keyLatestScreenshot,
-          AppConstants.keyWebsocketUrl,
-          AppConstants.keyMediaServerUrl,
-        ];
-
-        for (final key in keys) {
-          config[key] = storageService.read(key);
-        }
-
-        final response = {
-          'command': 'get_config',
-          'status': 'success',
-          'device_name': deviceName.value,
-          'config': config,
-          'timestamp': DateTime.now().toIso8601String(),
-        };
-
-        // Publish to response topic if specified, else use default
-        String? responseTopic = cmdObj['response_topic']?.toString();
-        responseTopic ??= 'kingkiosk/${deviceName.value}/config/response';
-        publishJsonToTopic(responseTopic, response, retain: false);
-        print('🛠️ [MQTT] Sent current config to $responseTopic');
-      } catch (e) {
-        print('❌ [MQTT] Error processing get_config command: $e');
-      }
-    }
 
     if (cmdObj['command']?.toString().toLowerCase() == 'get_config') {
       _processGetConfigCommand(cmdObj);
@@ -1541,7 +1560,6 @@ class MqttService extends GetxService {
       return;
     }
     // --- TTS (Text-to-Speech) command handling ---
-    /// Process get_config command to return all current settings
 
     if (cmdObj['command']?.toString().toLowerCase() == 'tts' ||
         cmdObj['command']?.toString().toLowerCase() == 'speak' ||
@@ -1985,6 +2003,60 @@ class MqttService extends GetxService {
     }
 
     // ...existing code...
+  }
+
+  /// Process get_config command to return all current settings
+  Future<void> _processGetConfigCommand(Map<dynamic, dynamic> cmdObj) async {
+    print('🛠️ [MQTT] Processing get_config command');
+    try {
+      final storageService = Get.find<StorageService>();
+
+      final keys = [
+        AppConstants.keyIsDarkMode,
+        AppConstants.keyKioskMode,
+        AppConstants.keyShowSystemInfo,
+        AppConstants.keyKioskStartUrl,
+        AppConstants.keyPersonDetectionEnabled,
+        AppConstants.keyMqttEnabled,
+        AppConstants.keyMqttBrokerUrl,
+        AppConstants.keyMqttBrokerPort,
+        AppConstants.keyMqttUsername,
+        AppConstants.keyMqttPassword,
+        AppConstants.keyDeviceName,
+        AppConstants.keyMqttHaDiscovery,
+        AppConstants.keySipEnabled,
+        AppConstants.keySipServerHost,
+        AppConstants.keySipProtocol,
+        AppConstants.keySelectedAudioInput,
+        AppConstants.keySelectedVideoInput,
+        AppConstants.keySelectedAudioOutput,
+        AppConstants.keyWyomingHost,
+        AppConstants.keyWyomingPort,
+        AppConstants.keyWyomingEnabled,
+        AppConstants.keyAiProviderHost,
+        AppConstants.keyAiEnabled,
+        AppConstants.keyLatestScreenshot,
+        AppConstants.keyWebsocketUrl,
+        AppConstants.keyMediaServerUrl,
+      ];
+
+      final config = {for (final k in keys) k: storageService.read(k)};
+
+      final response = {
+        'command': 'get_config',
+        'status': 'success',
+        'device_name': deviceName.value,
+        'config': config,
+        'timestamp': DateTime.now().toIso8601String(),
+      };
+
+      final respTopic = cmdObj['response_topic']?.toString() ??
+          'kingkiosk/${deviceName.value}/config/response';
+      publishJsonToTopic(respTopic, response, retain: false);
+      print('🛠️ [MQTT] Sent current config to $respTopic');
+    } catch (e) {
+      print('❌ [MQTT] Error processing get_config: $e');
+    }
   }
 
   /// Publish a direct value to a sensor topic without wrapping it in JSON
@@ -3530,6 +3602,22 @@ class MqttService extends GetxService {
       _client?.publishMessage(
           confirmTopic, MqttQos.atLeastOnce, builder.payload!);
       print('🌟 [MQTT] Sent window halo effect confirmation message');
+    }
+  }
+
+  /// Delete retained object-detection discovery topics that use an old device name
+  void _clearLegacyObjectDetectionConfigs() {
+    final dn = deviceName.value;
+    const suffixes = [
+      'object_detection',
+      'person_presence',
+      'object_count',
+      'person_confidence',
+    ];
+    for (final suff in suffixes) {
+      final topic = 'homeassistant/sensor/${dn}_$suff/config';
+      publishJsonToTopic(topic, {}, retain: true);
+      print('MQTT DEBUG: Deleted old discovery config: $topic');
     }
   }
 }

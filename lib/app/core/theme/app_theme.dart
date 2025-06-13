@@ -16,7 +16,7 @@ class AppTheme {
       elevation: 0,
       centerTitle: true,
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
@@ -37,7 +37,7 @@ class AppTheme {
       ),
       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: _primaryColor,
       unselectedLabelColor: Colors.grey,
     ),
@@ -65,7 +65,7 @@ class AppTheme {
       centerTitle: true,
       backgroundColor: Color(0xFF202020),
     ),
-    cardTheme: CardTheme(
+    cardTheme: CardThemeData(
       elevation: 2,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(8),
@@ -87,7 +87,7 @@ class AppTheme {
       ),
       contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 16),
     ),
-    tabBarTheme: TabBarTheme(
+    tabBarTheme: TabBarThemeData(
       labelColor: Colors.white,
       unselectedLabelColor: Colors.grey,
     ),

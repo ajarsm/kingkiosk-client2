@@ -28,59 +28,99 @@ class SettingsLockPinPad extends GetView<SettingsLockPinPadController> {
       onPinEntered: onPinEntered,
     ));
 
-    return Obx(() => Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (title != null)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 16.0),
-                child: Text(
-                  title!,
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-              ),
-            ShakeWidget(
-              shake: controller.shake.value,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(pinLength, (i) {
-                  final filled = i < controller.enteredPin.value.length;
-                  return Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 8),
-                    width: 20,
-                    height: 20,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: filled ? Colors.blue : Colors.grey[300],
+    return Center(
+      child: Container(
+        constraints: BoxConstraints(
+          maxWidth: 350, // Limit maximum width
+          minWidth: 280, // Ensure minimum width for usability
+        ),
+        child: Card(
+          elevation: 8,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(24.0),
+            child: Obx(() => Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (title != null)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 24.0),
+                        child: Text(
+                          title!,
+                          style:
+                              Theme.of(context).textTheme.titleLarge?.copyWith(
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    ShakeWidget(
+                      shake: controller.shake.value,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: List.generate(pinLength, (i) {
+                          final filled = i < controller.enteredPin.value.length;
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 8),
+                            width: 20,
+                            height: 20,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: filled ? Colors.blue : Colors.grey[300],
+                              border: Border.all(
+                                color: filled ? Colors.blue : Colors.grey[400]!,
+                                width: 2,
+                              ),
+                            ),
+                          );
+                        }),
+                      ),
                     ),
-                  );
-                }),
-              ),
-            ),
-            if (controller.error.value.isNotEmpty || errorMessage != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 12.0),
-                child: Text(
-                  controller.error.value.isNotEmpty
-                      ? controller.error.value
-                      : errorMessage ?? '',
-                  style: TextStyle(color: Colors.red),
-                ),
-              ),
-            Padding(
-              padding: const EdgeInsets.only(top: 24.0),
-              child: NumberPadKeyboard(
-                addDigit: controller.onDigit,
-                backspace: controller.onBackspace,
-                onEnter: controller.onEnter,
-                numberStyle: TextStyle(fontSize: 24, color: Colors.black),
-                enterButtonColor: Colors.blue[100],
-                enterButtonText: 'OK',
-                deleteColor: Colors.black,
-              ),
-            ),
-          ],
-        ));
+                    if (controller.error.value.isNotEmpty ||
+                        errorMessage != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 16.0),
+                        child: Text(
+                          controller.error.value.isNotEmpty
+                              ? controller.error.value
+                              : errorMessage ?? '',
+                          style: TextStyle(
+                            color: Colors.red,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                          textAlign: TextAlign.center,
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 32.0),
+                      child: Container(
+                        constraints: BoxConstraints(
+                          maxWidth: 280, // Constrain the number pad width
+                        ),
+                        child: NumberPadKeyboard(
+                          addDigit: controller.onDigit,
+                          backspace: controller.onBackspace,
+                          onEnter: controller.onEnter,
+                          numberStyle: TextStyle(
+                            fontSize: 24,
+                            color: Colors.black,
+                            fontWeight: FontWeight.w600,
+                          ),
+                          enterButtonColor: Colors.blue[100],
+                          enterButtonText: 'OK',
+                          deleteColor: Colors.black,
+                        ),
+                      ),
+                    ),
+                  ],
+                )),
+          ),
+        ),
+      ),
+    );
   }
 }
 

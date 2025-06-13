@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import '../controllers/audio_visualizer_tile_controller.dart';
 
-class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
+class AudioVisualizerTile extends StatefulWidget {
   final String url;
   final String? title;
 
@@ -13,29 +13,65 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
   }) : super(key: key);
 
   @override
-  String get tag => url; // Use URL as unique tag
+  State<AudioVisualizerTile> createState() => _AudioVisualizerTileState();
+}
+
+class _AudioVisualizerTileState extends State<AudioVisualizerTile> {
+  late AudioVisualizerTileController controller;
+  late String tag;
+
+  @override
+  void initState() {
+    super.initState();
+    tag = widget.url; // Use URL as unique tag
+
+    // Initialize controller with URL-specific tag
+    if (!Get.isRegistered<AudioVisualizerTileController>(tag: tag)) {
+      controller = AudioVisualizerTileController(
+        url: widget.url,
+        title: widget.title,
+      );
+      Get.put(controller, tag: tag, permanent: false);
+    } else {
+      controller = Get.find<AudioVisualizerTileController>(tag: tag);
+    }
+  }
+
+  @override
+  void dispose() {
+    // Properly dispose the controller when widget is disposed
+    try {
+      if (Get.isRegistered<AudioVisualizerTileController>(tag: tag)) {
+        // Stop and dispose the controller
+        controller.stop();
+
+        // Remove the controller from GetX
+        Get.delete<AudioVisualizerTileController>(tag: tag, force: true);
+        print(
+            '🔊 [AudioVisualizerTile] Disposed controller for URL: ${widget.url}');
+      }
+    } catch (e) {
+      print('⚠️ [AudioVisualizerTile] Error disposing controller: $e');
+    }
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    // Initialize controller with URL-specific tag
-    Get.put(AudioVisualizerTileController(
-      url: url,
-      title: title,
-    ), tag: tag);
-
-    return Obx(() => _buildContent());
+    // Use Obx to make widget reactive to controller changes
+    return Obx(() => _buildContent(controller));
   }
 
-  Widget _buildContent() {
+  Widget _buildContent(AudioVisualizerTileController controller) {
     if (controller.hasError.value) {
-      return _buildErrorWidget();
+      return _buildErrorWidget(controller);
     }
 
     if (!controller.isInitialized.value) {
       return _buildLoadingWidget();
     }
 
-    return _buildVisualizerWidget();
+    return _buildVisualizerWidget(controller);
   }
 
   Widget _buildLoadingWidget() {
@@ -67,10 +103,10 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
                 fontWeight: FontWeight.w500,
               ),
             ),
-            if (title != null) ...[
+            if (widget.title != null) ...[
               SizedBox(height: 8),
               Text(
-                title!,
+                widget.title!,
                 style: TextStyle(
                   color: Colors.white70,
                   fontSize: 14,
@@ -84,7 +120,7 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
     );
   }
 
-  Widget _buildErrorWidget() {
+  Widget _buildErrorWidget(AudioVisualizerTileController controller) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -144,7 +180,7 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
     );
   }
 
-  Widget _buildVisualizerWidget() {
+  Widget _buildVisualizerWidget(AudioVisualizerTileController controller) {
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
@@ -180,26 +216,27 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
               },
             ),
             // Frequency bars
-            Obx(() => _buildFrequencyBars()),
+            _buildFrequencyBars(controller),
             // Control overlay
-            _buildControlOverlay(),
+            _buildControlOverlay(controller),
           ],
         ),
       ),
     );
   }
 
-  Widget _buildFrequencyBars() {
-    return CustomPaint(
-      painter: FrequencyBarsPainter(
-        frequencyData: controller.frequencyData,
-        color: controller.getCurrentVisualizerColor(),
-      ),
-      size: Size.infinite,
-    );
+  Widget _buildFrequencyBars(AudioVisualizerTileController controller) {
+    return Obx(() => CustomPaint(
+          painter: FrequencyBarsPainter(
+            frequencyData: List<double>.from(
+                controller.frequencyData), // Convert RxList to List
+            color: controller.getCurrentVisualizerColor(),
+          ),
+          size: Size.infinite,
+        ));
   }
 
-  Widget _buildControlOverlay() {
+  Widget _buildControlOverlay(AudioVisualizerTileController controller) {
     return Positioned(
       bottom: 16,
       left: 16,
@@ -217,9 +254,9 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  if (title != null)
+                  if (widget.title != null)
                     Text(
-                      title!,
+                      widget.title!,
                       style: TextStyle(
                         color: Colors.white,
                         fontSize: 16,
@@ -230,12 +267,12 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
                     ),
                   SizedBox(height: 4),
                   Obx(() => Text(
-                    _formatDuration(controller.position.value),
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 12,
-                    ),
-                  )),
+                        _formatDuration(controller.position.value),
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      )),
                 ],
               ),
             ),
@@ -243,12 +280,14 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
-                  icon: Icon(
-                    controller.isPlaying ? Icons.pause : Icons.play_arrow,
-                    color: Colors.white,
-                  ),
+                  icon: Obx(() => Icon(
+                        controller.isPlaying.value
+                            ? Icons.pause
+                            : Icons.play_arrow,
+                        color: Colors.white,
+                      )),
                   onPressed: () {
-                    if (controller.isPlaying) {
+                    if (controller.isPlaying.value) {
                       controller.pause();
                     } else {
                       controller.play();
@@ -280,7 +319,7 @@ class AudioVisualizerTile extends GetView<AudioVisualizerTileController> {
 
 /// Custom painter for frequency visualization bars
 class FrequencyBarsPainter extends CustomPainter {
-  final RxList<double> frequencyData;
+  final List<double> frequencyData;
   final Color color;
 
   FrequencyBarsPainter({
@@ -327,6 +366,7 @@ class FrequencyBarsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(FrequencyBarsPainter oldDelegate) {
-    return frequencyData != oldDelegate.frequencyData || color != oldDelegate.color;
+    return frequencyData != oldDelegate.frequencyData ||
+        color != oldDelegate.color;
   }
 }

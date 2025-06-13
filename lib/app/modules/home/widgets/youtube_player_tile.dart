@@ -69,6 +69,17 @@ class YouTubePlayerManager {
           '🎬 YouTubePlayerManager - Removing player for windowId: $windowId');
       _youtubeTiles.remove(windowId);
 
+      // Clean up the GetX controller
+      try {
+        if (Get.isRegistered<YouTubePlayerTileController>(tag: windowId)) {
+          Get.delete<YouTubePlayerTileController>(tag: windowId);
+          print(
+              '🎬 YouTubePlayerManager - Disposed controller for windowId: $windowId');
+        }
+      } catch (e) {
+        print('⚠️ YouTubePlayerManager - Error disposing controller: $e');
+      }
+
       // Clean up the WebView instance
       try {
         WebViewInstanceManager().removeWebView(windowId);
@@ -114,9 +125,14 @@ class YouTubePlayerTile extends GetView<YouTubePlayerTileController> {
   }) : super(key: key);
 
   @override
+  String get tag => windowId; // Use windowId as unique tag
+
+  @override
   Widget build(BuildContext context) {
-    // Initialize controller
-    Get.put(
+    // Check if controller is already registered with this tag
+    if (!Get.isRegistered<YouTubePlayerTileController>(tag: tag)) {
+      // Register controller with unique tag based on windowId
+      Get.put(
         YouTubePlayerTileController(
           videoUrl: videoUrl,
           videoId: videoId,
@@ -126,18 +142,22 @@ class YouTubePlayerTile extends GetView<YouTubePlayerTileController> {
           showControls: showControls,
           showInfo: showInfo,
         ),
-        tag: windowId);
+        tag: tag,
+        permanent:
+            false, // Not permanent, will be removed when widget is disposed
+      );
+    }
 
-    return Obx(() => _YouTubePlayerView(
-          controller: controller,
-          videoUrl: videoUrl,
-          videoId: videoId,
-          windowId: windowId,
-          refreshKey: refreshKey,
-          autoplay: autoplay,
-          showControls: showControls,
-          showInfo: showInfo,
-        ));
+    return _YouTubePlayerView(
+      controller: controller,
+      videoUrl: videoUrl,
+      videoId: videoId,
+      windowId: windowId,
+      refreshKey: refreshKey,
+      autoplay: autoplay,
+      showControls: showControls,
+      showInfo: showInfo,
+    );
   }
 }
 
@@ -371,10 +391,14 @@ class _YouTubePlayerViewState extends State<_YouTubePlayerView>
                 action: ServerTrustAuthResponseAction.PROCEED);
           },
         ),
-        if (widget.controller.isLoading.value)
-          Center(
-            child: CircularProgressIndicator(),
-          ),
+        Obx(() {
+          if (widget.controller.isLoading.value) {
+            return Center(
+              child: CircularProgressIndicator(),
+            );
+          }
+          return SizedBox.shrink();
+        }),
       ],
     );
   }

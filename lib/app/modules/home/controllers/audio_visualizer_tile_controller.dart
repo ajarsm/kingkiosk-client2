@@ -106,6 +106,7 @@ class AudioVisualizerTileController extends GetxController
       // Set up playing state listener
       _playingSubscription =
           _playerData.player.streams.playing.listen((playing) {
+        isPlaying.value = playing; // Update reactive property
         if (playing) {
           _startVisualizerAnimation();
         } else {
@@ -146,6 +147,7 @@ class AudioVisualizerTileController extends GetxController
     });
 
     _playingSubscription = _playerData.player.streams.playing.listen((playing) {
+      isPlaying.value = playing; // Update reactive property
       if (playing) {
         _startVisualizerAnimation();
       } else {
@@ -217,38 +219,72 @@ class AudioVisualizerTileController extends GetxController
   }
 
   void _cleanup() {
+    print(
+        '🔊 [AudioVisualizerTileController] Cleaning up controller for: $url');
+
+    // Stop any ongoing playback first
+    try {
+      if (isInitialized.value && _playerData.player.state.playing) {
+        _playerData.player.stop();
+        print('🔊 [AudioVisualizerTileController] Stopped player');
+      }
+    } catch (e) {
+      print('⚠️ [AudioVisualizerTileController] Error stopping player: $e');
+    }
+
+    // Cancel timers and subscriptions
     _animationTimer?.cancel();
     _positionSubscription?.cancel();
     _playingSubscription?.cancel();
-    visualizerController.dispose();
-    colorController.dispose();
+
+    // Dispose animation controllers
+    try {
+      visualizerController.dispose();
+      colorController.dispose();
+    } catch (e) {
+      print(
+          '⚠️ [AudioVisualizerTileController] Error disposing animation controllers: $e');
+    }
 
     // Dispose player using PlayerManager
-    MediaPlayerManager().disposePlayerFor(url);
+    try {
+      final disposed = MediaPlayerManager().disposePlayerFor(url);
+      print(
+          '🔊 [AudioVisualizerTileController] Player disposed for $url: $disposed');
+    } catch (e) {
+      print('⚠️ [AudioVisualizerTileController] Error disposing player: $e');
+    }
   }
 
   // Public methods for controlling playback
   void play() {
     if (isInitialized.value) {
       _playerData.player.play();
+      // The listener will update isPlaying.value, but set it here for immediate UI response
+      isPlaying.value = true;
     }
   }
 
   void pause() {
     if (isInitialized.value) {
       _playerData.player.pause();
+      // The listener will update isPlaying.value, but set it here for immediate UI response
+      isPlaying.value = false;
     }
   }
 
   void stop() {
     if (isInitialized.value) {
       _playerData.player.stop();
+      // The listener will update isPlaying.value, but set it here for immediate UI response
+      isPlaying.value = false;
+      // Clear the frequency data when stopped
+      _stopVisualizerAnimation();
     }
   }
 
-  bool get isPlaying {
-    return isInitialized.value ? _playerData.player.state.playing : false;
-  }
+  // Changed to reactive property
+  final isPlaying = false.obs;
 
   Color getCurrentVisualizerColor() {
     final progress = colorController.value;

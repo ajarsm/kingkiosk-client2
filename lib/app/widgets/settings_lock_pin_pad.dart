@@ -1,7 +1,24 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:number_pad_keyboard/number_pad_keyboard.dart';
-import 'shake_widget.dart';
+im                    child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: 260, // Further reduced number pad width
+                      ),
+                      child: NumberPadKeyboard(
+                        addDigit: _controller.onDigit,
+                        backspace: _controller.onBackspace,
+                        onEnter: _controller.onEnter,
+                        numberStyle: TextStyle(
+                          fontSize: 20, // Reduced font size
+                          color: Colors.black,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        enterButtonColor: Colors.blue[100],
+                        enterButtonText: 'OK', // Changed from default "ENTER" to "OK"
+                        deleteColor: Colors.black,
+                      ),
+                    ),.dart';
 import 'controllers/settings_lock_pin_pad_controller.dart';
 
 export 'settings_lock_pin_pad.dart'
@@ -67,58 +84,97 @@ class SettingsLockPinPadState extends State<SettingsLockPinPad> {
         return Container(); // Return empty container if controller is disposed
       }
 
-      return Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (widget.title != null)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 16.0),
-              child: Text(
-                widget.title!,
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
+      return Center(
+        child: Container(
+          constraints: BoxConstraints(
+            maxWidth: 350, // Limit maximum width
+            minWidth: 280, // Ensure minimum width for usability
+          ),
+          child: Card(
+            elevation: 8,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
             ),
-          ShakeWidget(
-            shake: _controller.shake.value,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: List.generate(widget.pinLength, (i) {
-                final filled = i < _controller.enteredPin.value.length;
-                return Container(
-                  margin: const EdgeInsets.symmetric(horizontal: 8),
-                  width: 20,
-                  height: 20,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: filled ? Colors.blue : Colors.grey[300],
+            child: Padding(
+              padding: const EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (widget.title != null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 24.0),
+                      child: Text(
+                        widget.title!,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                              fontWeight: FontWeight.bold,
+                            ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ShakeWidget(
+                    shake: _controller.shake.value,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(widget.pinLength, (i) {
+                        final filled = i < _controller.enteredPin.value.length;
+                        return Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 8),
+                          width: 20,
+                          height: 20,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: filled ? Colors.blue : Colors.grey[300],
+                            border: Border.all(
+                              color: filled ? Colors.blue : Colors.grey[400]!,
+                              width: 2,
+                            ),
+                          ),
+                        );
+                      }),
+                    ),
                   ),
-                );
-              }),
-            ),
-          ),
-          if (_controller.error.value.isNotEmpty || widget.errorMessage != null)
-            Padding(
-              padding: const EdgeInsets.only(top: 12.0),
-              child: Text(
-                _controller.error.value.isNotEmpty
-                    ? _controller.error.value
-                    : widget.errorMessage ?? '',
-                style: TextStyle(color: Colors.red),
+                  if (_controller.error.value.isNotEmpty ||
+                      widget.errorMessage != null)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 16.0),
+                      child: Text(
+                        _controller.error.value.isNotEmpty
+                            ? _controller.error.value
+                            : widget.errorMessage ?? '',
+                        style: TextStyle(
+                          color: Colors.red,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  Padding(
+                    padding: const EdgeInsets.only(top: 32.0),
+                    child: Container(
+                      constraints: BoxConstraints(
+                        maxWidth: 280, // Constrain the number pad width
+                      ),
+                      child: NumberPadKeyboard(
+                        addDigit: _controller.onDigit,
+                        backspace: _controller.onBackspace,
+                        onEnter: _controller.onEnter,
+                        numberStyle: TextStyle(
+                          fontSize: 24,
+                          color: Colors.black,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        enterButtonColor: Colors.blue[100],
+                        enterButtonText: 'OK',
+                        deleteColor: Colors.black,
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.only(top: 24.0),
-            child: NumberPadKeyboard(
-              addDigit: _controller.onDigit,
-              backspace: _controller.onBackspace,
-              onEnter: _controller.onEnter,
-              numberStyle: TextStyle(fontSize: 24, color: Colors.black),
-              enterButtonColor: Colors.blue[100],
-              enterButtonText: 'OK',
-              deleteColor: Colors.black,
-            ),
           ),
-        ],
+        ),
       );
     });
   }

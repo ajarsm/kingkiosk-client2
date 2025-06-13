@@ -1,3 +1,5 @@
+// ignore_for_file: constant_identifier_names
+
 import 'dart:async';
 import 'dart:io';
 
@@ -68,17 +70,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
     sensorService = Get.find<PlatformSensorService>();
     settingsController = Get.find<SettingsControllerFixed>();
 
-    // Try to locate AI assistant (may not yet be registered)
-    Future<void>(() async {
-      try {
-        aiAssistantService = Get.find<AiAssistantService>();
-      } catch (_) {
-        await Future.delayed(const Duration(seconds: 3));
-        try {
-          aiAssistantService = Get.find<AiAssistantService>();
-        } catch (_) {}
-      }
-    });
+    _initAiAssistant();
 
     // Sync kiosk mode with platform utils
     kioskModeSub = settingsController.kioskMode.listen((enabled) {
@@ -88,6 +80,17 @@ class TilingWindowViewState extends State<TilingWindowView> {
     });
     if (settingsController.kioskMode.value) {
       PlatformUtils.enableKioskMode();
+    }
+  }
+
+  Future<void> _initAiAssistant() async {
+    try {
+      aiAssistantService = Get.find<AiAssistantService>();
+    } catch (_) {
+      await Future.delayed(const Duration(seconds: 3));
+      try {
+        aiAssistantService = Get.find<AiAssistantService>();
+      } catch (_) {}
     }
   }
 
@@ -116,26 +119,31 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return Stack(
           children: [
             _buildBackground(),
-            // --- windows -----------------------------------------------------
+
+            /// --- windows -----------------------------------------------------
             Obx(() => Stack(
                   children: controller.tiles
                       .map((tile) => _buildWindowTile(tile, locked))
                       .toList(),
                 )),
-            // --- translucent notifications -----------------------------------
+
+            /// --- translucent notifications -----------------------------------
             const TranslucentNotificationIndicator(
               opacity: 0.4,
               size: 28,
               padding: EdgeInsets.only(top: 20, right: 20),
             ),
-            // --- AI floating button ------------------------------------------
+
+            /// --- AI floating button ------------------------------------------
             _buildFloatingAiButton(),
-            // --- toolbar (auto-hiding) ---------------------------------------
+
+            /// --- toolbar (auto-hiding) ---------------------------------------
             _AutoHidingToolbar(
               key: _autoHidingToolbarKey,
               child: _buildToolbar(context, locked),
             ),
-            // --- grab handle --------------------------------------------------
+
+            /// --- grab handle --------------------------------------------------
             Obx(() {
               final visible =
                   _autoHidingToolbarKey.currentState?.isToolbarVisible.value ??
@@ -181,9 +189,11 @@ class TilingWindowViewState extends State<TilingWindowView> {
                 ),
               );
             }),
-            // --- notification center -----------------------------------------
+
+            /// --- notification center -----------------------------------------
             _buildNotificationCenter(),
-            // --- small AI hang-up button -------------------------------------
+
+            /// --- small AI hang-up button -------------------------------------
             if (aiAssistantService != null)
               Obx(() {
                 if (!aiAssistantService!.isAiCallActive.value) {
@@ -223,7 +233,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }
 
   // ---------------------------------------------------------------------------
-  // Background
+  // Background helpers
   // ---------------------------------------------------------------------------
   Widget _buildBackground() {
     final type = settingsController.backgroundType.value;
@@ -273,7 +283,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
         );
       }
     }
-    // default fallback
+
+    // Default fallback
     return _defaultBackground();
   }
 
@@ -440,6 +451,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   Widget _buildTileContent(WindowTile tile) {
     late final Widget content;
+
     switch (tile.type) {
       case TileType.webView:
         final wm = Get.find<WindowManagerService>();
@@ -447,15 +459,19 @@ class TilingWindowViewState extends State<TilingWindowView> {
         if (web is WebWindowController) {
           content = Obx(() {
             web.refreshCounter.value;
-            return WebViewTileManager().getWebViewTileFor(tile.id, tile.url,
-                refreshKey: web.refreshCounter.value);
+            return WebViewTileManager().getWebViewTileFor(
+              tile.id,
+              tile.url,
+              refreshKey: web.refreshCounter.value,
+            );
           });
         } else {
           content = WebViewTileManager().getWebViewTileFor(tile.id, tile.url);
         }
         break;
+
       case TileType.youtube:
-        String vid = tile.metadata?['videoId'] as String? ??
+        final vid = tile.metadata?['videoId'] as String? ??
             YouTubePlayerManager.extractVideoId(tile.url) ??
             '';
         content = YouTubePlayerManager().getYouTubePlayerTileFor(
@@ -467,6 +483,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
           showInfo: true,
         );
         break;
+
       case TileType.media:
         content = MediaTile(url: tile.url, loop: tile.loop);
         break;
@@ -506,7 +523,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
       _buildBottomToolbar(locked);
   Widget _buildBottomToolbar(bool locked) {
     return Container(
-      height: 70,
+      height: 60,
       decoration: BoxDecoration(
         color: Colors.black.withOpacity(0.8),
         boxShadow: [
@@ -519,81 +536,93 @@ class TilingWindowViewState extends State<TilingWindowView> {
       ),
       child: Row(
         children: [
-          // 1. Add button (leftmost)
-          _buildToolbarButton(
-            icon: Icons.add,
-            label: 'Add',
-            onPressed: locked
-                ? null
-                : () {
-                    // TODO: Implement add window functionality
-                    Get.snackbar(
-                      'Add Window',
-                      'Add window functionality to be implemented',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Colors.blue,
-                      colorText: Colors.white,
-                    );
-                  },
-            locked: locked,
+          // Left side buttons group
+          Expanded(
+            flex: 3,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // 1. Add button
+                _buildToolbarButton(
+                  icon: Icons.add,
+                  label: 'Add',
+                  onPressed: locked ? null : _showAddWindowDialog,
+                  locked: locked,
+                ),
+                const SizedBox(width: 16),
+                // 2. Window-mode toggle
+                Obx(
+                  () => _buildToolbarButton(
+                    icon: controller.tilingMode.value
+                        ? Icons.view_quilt
+                        : Icons.crop_free,
+                    label: controller.tilingMode.value ? 'Tiling' : 'Floating',
+                    onPressed: locked
+                        ? null
+                        : () {
+                            controller.tilingMode.value =
+                                !controller.tilingMode.value;
+                            Get.snackbar(
+                              'Window Mode',
+                              'Switched to '
+                                  '${controller.tilingMode.value ? 'Tiling' : 'Floating'} mode',
+                              snackPosition: SnackPosition.BOTTOM,
+                              backgroundColor: controller.tilingMode.value
+                                  ? Colors.blue
+                                  : Colors.purple,
+                              colorText: Colors.white,
+                              duration: const Duration(seconds: 2),
+                            );
+                          },
+                    locked: locked,
+                  ),
+                ),
+              ],
+            ),
           ),
 
-          // 2. Window mode toggle (immediately to the right of Add)
-          _buildToolbarButton(
-            icon: Icons.view_quilt,
-            label: 'Tiling',
-            onPressed: locked
-                ? null
-                : () {
-                    // TODO: Implement window mode toggle
-                    Get.snackbar(
-                      'Window Mode',
-                      'Toggle between tiling and floating modes',
-                      snackPosition: SnackPosition.BOTTOM,
-                      backgroundColor: Colors.orange,
-                      colorText: Colors.white,
-                    );
-                  },
-            locked: locked,
-          ),
-
-          // 3. Spacer
-          const Spacer(),
-
-          // 4. Enlarged lock button (center)
+          // Center lock button
           _buildEnlargedLockButton(locked),
 
-          // 5. Spacer
-          const Spacer(),
-
-          // 6. Status lights with text (between lock and settings)
-          _buildStatusIndicatorSection(),
-
-          // 7. Settings button (second from right)
-          _buildToolbarButton(
-            icon: Icons.settings,
-            label: 'Settings',
-            onPressed: locked
-                ? null
-                : () {
-                    Get.toNamed(Routes.SETTINGS);
-                  },
-            locked: locked,
-          ),
-
-          // 8. Exit button (rightmost)
-          _buildToolbarButton(
-            icon: Icons.exit_to_app,
-            label: 'Exit',
-            onPressed: locked
-                ? null
-                : () {
-                    _showExitConfirmDialog();
-                  },
-            locked: locked,
+          // Right side buttons group
+          Expanded(
+            flex: 3,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                // Status lights
+                _buildStatusIndicatorSection(),
+                const SizedBox(width: 16),
+                // Settings
+                _buildToolbarButton(
+                  icon: Icons.settings,
+                  label: 'Settings',
+                  onPressed: locked ? null : () => Get.toNamed(Routes.SETTINGS),
+                  locked: locked,
+                ),
+                const SizedBox(width: 16),
+                // Exit
+                _buildToolbarButton(
+                  icon: Icons.exit_to_app,
+                  label: 'Exit',
+                  onPressed: locked ? null : _showExitConfirmDialog,
+                  locked: locked,
+                ),
+              ],
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Toolbar utilities
+  // ---------------------------------------------------------------------------
+  void _showAddWindowDialog() {
+    Get.dialog(
+      const _AddWindowDialog(),
+      barrierDismissible: true,
     );
   }
 
@@ -602,45 +631,62 @@ class TilingWindowViewState extends State<TilingWindowView> {
     final lockIcon = locked ? Icons.lock : Icons.lock_open;
     final lockLabel = locked ? 'Locked' : 'Unlocked';
 
-    return InkWell(
-      onTap: () {
-        if (locked) {
-          // Show PIN dialog to unlock
-          settingsController.showSettingsPinDialog(
-            onSuccess: () {
-              settingsController.unlockSettings();
-            },
-          );
-        } else {
-          // Lock immediately
-          settingsController.lockSettings();
-        }
-      },
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        decoration: BoxDecoration(
-          color: lockColor.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(color: lockColor.withOpacity(0.5), width: 2),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              lockIcon,
-              color: lockColor,
-              size: 28, // Enlarged icon
+    return Transform.translate(
+      offset:
+          const Offset(0, -12), // Move button upward to protrude above toolbar
+      child: Material(
+        color: Colors.transparent,
+        elevation: 8,
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: () {
+            if (locked) {
+              settingsController.showSettingsPinDialog(
+                onSuccess: settingsController.unlockSettings,
+              );
+            } else {
+              settingsController.lockSettings();
+            }
+          },
+          borderRadius: BorderRadius.circular(16),
+          child: Container(
+            width: 64,
+            height: 64,
+            decoration: BoxDecoration(
+              color: lockColor.withOpacity(0.15),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: lockColor.withOpacity(0.6), width: 2),
+              boxShadow: [
+                BoxShadow(
+                  color: lockColor.withOpacity(0.3),
+                  blurRadius: 8,
+                  offset: const Offset(0, 4),
+                ),
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.2),
+                  blurRadius: 12,
+                  offset: const Offset(0, 6),
+                ),
+              ],
             ),
-            const SizedBox(height: 2),
-            Text(
-              lockLabel,
-              style: TextStyle(
-                color: lockColor,
-                fontSize: 12,
-                fontWeight: FontWeight.bold,
-              ),
+            alignment: Alignment.center,
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(lockIcon, color: lockColor, size: 28),
+                const SizedBox(height: 3),
+                Text(
+                  lockLabel,
+                  style: TextStyle(
+                    color: lockColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );
@@ -648,112 +694,90 @@ class TilingWindowViewState extends State<TilingWindowView> {
 
   Widget _buildStatusIndicatorSection() {
     return Obx(() {
-      // Get MQTT service connection status safely
+      // MQTT
       MqttService? mqttService;
       try {
         mqttService = Get.find<MqttService>();
-      } catch (e) {
-        // MQTT service not available
-      }
+      } catch (_) {}
 
       final mqttEnabled = settingsController.mqttEnabled.value;
       final mqttConnected = mqttService?.isConnected.value ?? false;
 
-      // Check SIP connection status
+      // SIP
       final sipEnabled = settingsController.sipEnabled.value;
       final sipRegistered = settingsController.sipRegistered.value;
 
-      List<Widget> indicators = [];
+      final List<Widget> indicators = [];
 
-      // MQTT Status Light with Text
       if (mqttEnabled) {
-        indicators.add(
-          Tooltip(
-            message: 'MQTT: ${mqttConnected ? 'Connected' : 'Disconnected'}',
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: mqttConnected ? Colors.green : Colors.red,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (mqttConnected ? Colors.green : Colors.red)
-                            .withOpacity(0.5),
-                        blurRadius: 3,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'MQTT',
-                  style: TextStyle(
-                    color: mqttConnected ? Colors.green : Colors.red,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        indicators.add(_buildStatusLight(
+          label: 'MQTT',
+          connected: mqttConnected,
+          connectedColor: Colors.green,
+          disconnectedColor: Colors.red,
+        ));
       }
 
-      // SIP Status Light with Text
       if (sipEnabled) {
-        if (indicators.isNotEmpty) {
-          indicators.add(const SizedBox(width: 12));
-        }
-        indicators.add(
-          Tooltip(
-            message: 'SIP: ${sipRegistered ? 'Registered' : 'Not Registered'}',
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: sipRegistered ? Colors.green : Colors.orange,
-                    boxShadow: [
-                      BoxShadow(
-                        color: (sipRegistered ? Colors.green : Colors.orange)
-                            .withOpacity(0.5),
-                        blurRadius: 3,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  'SIP',
-                  style: TextStyle(
-                    color: sipRegistered ? Colors.green : Colors.orange,
-                    fontSize: 9,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
+        if (indicators.isNotEmpty) indicators.add(const SizedBox(height: 2));
+        indicators.add(_buildStatusLight(
+          label: 'SIP',
+          connected: sipRegistered,
+          connectedColor: Colors.green,
+          disconnectedColor: Colors.orange,
+        ));
       }
 
       return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-        child: Row(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+        child: Column(
           mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: indicators,
         ),
       );
     });
+  }
+
+  Widget _buildStatusLight({
+    required String label,
+    required bool connected,
+    required Color connectedColor,
+    required Color disconnectedColor,
+  }) {
+    final color = connected ? connectedColor : disconnectedColor;
+    return Tooltip(
+      message: '$label: ${connected ? 'Connected' : 'Disconnected'}',
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 6,
+            height: 6,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: color,
+              boxShadow: [
+                BoxShadow(
+                  color: color.withOpacity(0.5),
+                  blurRadius: 2,
+                  spreadRadius: 1,
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 3),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 8,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showExitConfirmDialog() {
@@ -797,21 +821,36 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }) {
     return InkWell(
       onTap: locked ? null : onPressed,
+      borderRadius: BorderRadius.circular(12),
       child: Opacity(
         opacity: locked ? 0.4 : 1.0,
         child: Container(
-          height: 50,
-          constraints: const BoxConstraints(minHeight: 50),
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          height: 52,
+          width: 58,
+          margin: const EdgeInsets.symmetric(vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: Colors.white.withOpacity(0.05),
+            border: Border.all(
+              color: Colors.white.withOpacity(0.1),
+              width: 1,
+            ),
+          ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, color: Colors.white, size: 18),
-              const SizedBox(height: 2),
+              Icon(icon, color: Colors.white, size: 22),
+              const SizedBox(height: 3),
               Text(
                 label,
-                style: const TextStyle(color: Colors.white, fontSize: 10),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w500,
+                ),
                 overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
               ),
             ],
           ),
@@ -820,11 +859,8 @@ class TilingWindowViewState extends State<TilingWindowView> {
     );
   }
 
-  // (The rest of the helper dialogs / toolbar / notification-center code
-  //  is unchanged – only whitespace/commas tweaked for consistency)
-
   // ---------------------------------------------------------------------------
-  // Floating AI button (fixed bracket / parenthesis mismatch)
+  // Floating AI button
   // ---------------------------------------------------------------------------
   Widget _buildFloatingAiButton() {
     if (aiAssistantService == null) return const SizedBox.shrink();
@@ -881,7 +917,7 @@ class TilingWindowViewState extends State<TilingWindowView> {
   }
 
   // ---------------------------------------------------------------------------
-  // Notification center (unchanged)
+  // Notification center
   // ---------------------------------------------------------------------------
   Widget _buildNotificationCenter() {
     final notificationService = Get.find<NotificationService>();
@@ -890,29 +926,30 @@ class TilingWindowViewState extends State<TilingWindowView> {
         return const SizedBox.shrink();
       }
 
-      final sz = MediaQuery.of(context).size;
-      final width =
-          sz.width < 600 ? sz.width * 0.9 : (sz.width < 1200 ? 380.0 : 420.0);
+      return Builder(builder: (context) {
+        final sz = MediaQuery.of(context).size;
+        final width =
+            sz.width < 600 ? sz.width * 0.9 : (sz.width < 1200 ? 380.0 : 420.0);
+        final rightPad = PlatformUtils.isMobile ? 8.0 : 0.0;
 
-      final rightPad = PlatformUtils.isMobile ? 8.0 : 0.0;
-
-      return Positioned(
-        top: 16,
-        right: rightPad,
-        bottom: 64,
-        width: width,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () {},
-          child: NotificationCenter(),
-        ),
-      );
+        return Positioned(
+          top: 16,
+          right: rightPad,
+          bottom: 64,
+          width: width,
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTap: () {}, // absorb touches
+            child: const NotificationCenter(),
+          ),
+        );
+      });
     });
   }
 }
 
 // -----------------------------------------------------------------------------
-// Auto-hiding toolbar (unchanged – only minor formatting tweaks)
+// Auto-hiding toolbar widget
 // -----------------------------------------------------------------------------
 class _AutoHidingToolbar extends StatefulWidget {
   final Widget child;
@@ -931,6 +968,7 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
   void initState() {
     super.initState();
     _notificationService = Get.find<NotificationService>();
+
     _notificationService.notificationCenterVisibilityStream.listen((isOpen) {
       if (isOpen && !isToolbarVisible.value) showToolbar();
     });
@@ -969,11 +1007,341 @@ class _AutoHidingToolbarState extends State<_AutoHidingToolbar> {
             ignoring: !visible,
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
-              height: visible ? 50 : 0,
+              height: visible ? 60 : 0,
               curve: Curves.easeInOut,
               child: visible ? widget.child : const SizedBox.shrink(),
             ),
           );
         }),
       );
+}
+
+// -----------------------------------------------------------------------------
+// Add-Window dialog
+// -----------------------------------------------------------------------------
+class _AddWindowDialog extends StatelessWidget {
+  const _AddWindowDialog({Key? key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    final dialogController = Get.put(AddWindowDialogController());
+
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxWidth: _getDialogWidth(context),
+          maxHeight: _getDialogHeight(context),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                /// Title row
+                Row(
+                  children: [
+                    Icon(Icons.add_circle_outline,
+                        color: Theme.of(context).primaryColor, size: 28),
+                    const SizedBox(width: 12),
+                    Text(
+                      'Add New Window',
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineSmall
+                          ?.copyWith(fontWeight: FontWeight.bold),
+                    ),
+                    const Spacer(),
+                    IconButton(
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Get.back(),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+
+                /// Window-type selection
+                Text(
+                  'Window Type',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  height: 70,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: dialogController.windowTypes.length,
+                    separatorBuilder: (_, __) => const SizedBox(width: 12),
+                    itemBuilder: (_, index) {
+                      final type = dialogController.windowTypes[index];
+                      return Obx(
+                        () => _buildTypeCard(
+                          context,
+                          type,
+                          dialogController.selectedWindowType.value ==
+                              type['type'],
+                          () => dialogController.selectedWindowType.value =
+                              type['type'],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                /// Name
+                Text(
+                  'Window Name',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: dialogController.nameController,
+                  decoration: InputDecoration(
+                    hintText: 'Enter window name...',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: const Icon(Icons.label_outline),
+                  ),
+                ),
+                const SizedBox(height: 16),
+
+                /// URL
+                Text(
+                  'URL',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w600),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: dialogController.urlController,
+                  decoration: InputDecoration(
+                    hintText: 'https://example.com',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    prefixIcon: const Icon(Icons.link),
+                  ),
+                  keyboardType: TextInputType.url,
+                ),
+                const SizedBox(height: 16),
+
+                /// Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Get.back(),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Obx(
+                        () => ElevatedButton(
+                          onPressed: dialogController.canCreate
+                              ? dialogController.createWindow
+                              : null,
+                          style: ElevatedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                          child: dialogController.isLoading.value
+                              ? const SizedBox(
+                                  height: 20,
+                                  width: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white),
+                                  ),
+                                )
+                              : const Text('Create Window'),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTypeCard(
+    BuildContext context,
+    Map<String, dynamic> type,
+    bool isSelected,
+    VoidCallback onTap,
+  ) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        width: 120,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? Theme.of(context).primaryColor.withOpacity(0.1)
+              : Colors.grey.withOpacity(0.05),
+          border: Border.all(
+            color: isSelected
+                ? Theme.of(context).primaryColor
+                : Colors.grey.withOpacity(0.3),
+            width: isSelected ? 2 : 1,
+          ),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              type['icon'] as IconData,
+              color: isSelected
+                  ? Theme.of(context).primaryColor
+                  : Colors.grey[600],
+              size: 24,
+            ),
+            const SizedBox(height: 4),
+            Text(
+              type['label'] as String,
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                color: isSelected
+                    ? Theme.of(context).primaryColor
+                    : Colors.grey[700],
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  double _getDialogWidth(BuildContext context) {
+    final w = MediaQuery.of(context).size.width;
+    if (w > 800) return 480; // desktop
+    if (w > 600) return w * 0.75; // tablet
+    return w * 0.85; // mobile
+  }
+
+  double _getDialogHeight(BuildContext context) {
+    final h = MediaQuery.of(context).size.height;
+    return (h * 0.8).clamp(350.0, 550.0);
+  }
+}
+
+// -----------------------------------------------------------------------------
+// Controller for Add-Window dialog
+// -----------------------------------------------------------------------------
+class AddWindowDialogController extends GetxController {
+  // Observable
+  final RxString windowName = ''.obs;
+  final RxString windowUrl = ''.obs;
+  final RxString selectedWindowType = 'web'.obs;
+  final RxBool isLoading = false.obs;
+
+  // Text controllers
+  final nameController = TextEditingController();
+  final urlController = TextEditingController();
+
+  // Available types
+  final List<Map<String, dynamic>> windowTypes = [
+    {
+      'type': 'web',
+      'label': 'Web View',
+      'icon': Icons.web,
+      'description': 'Add a web page or web application',
+    },
+    // Future types can be added here
+  ];
+
+  @override
+  void onInit() {
+    super.onInit();
+
+    selectedWindowType.value = 'web';
+    windowName.value = 'New Web Window';
+    nameController.text = windowName.value;
+
+    nameController.addListener(() => windowName.value = nameController.text);
+    urlController.addListener(() => windowUrl.value = urlController.text);
+  }
+
+  @override
+  void onClose() {
+    nameController.dispose();
+    urlController.dispose();
+    super.onClose();
+  }
+
+  // Validation
+  bool get isValidName => windowName.value.trim().isNotEmpty;
+  bool get isValidUrl {
+    final u = windowUrl.value.trim();
+    return u.isNotEmpty &&
+        (u.startsWith('http://') || u.startsWith('https://'));
+  }
+
+  bool get canCreate => isValidName && isValidUrl && !isLoading.value;
+
+  // Action
+  Future<void> createWindow() async {
+    if (!canCreate) return;
+    isLoading.value = true;
+
+    try {
+      final tilingCtrl = Get.find<TilingWindowController>();
+      switch (selectedWindowType.value) {
+        case 'web':
+          tilingCtrl.addWebViewTile(
+            windowName.value.trim(),
+            windowUrl.value.trim(),
+          );
+          break;
+      }
+
+      Get.snackbar(
+        'Window Created',
+        '${windowName.value} has been added successfully',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.green,
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
+      Get.back();
+    } catch (e) {
+      Get.snackbar(
+        'Error',
+        'Failed to create window: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.red,
+        colorText: Colors.white,
+      );
+    } finally {
+      isLoading.value = false;
+    }
+  }
 }
