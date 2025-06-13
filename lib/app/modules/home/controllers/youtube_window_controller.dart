@@ -1,4 +1,5 @@
 // filepath: lib/app/modules/home/controllers/youtube_window_controller_fixed.dart
+import 'dart:async';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:get/get.dart';
 import '../../../services/window_manager_service.dart';
@@ -27,7 +28,8 @@ class YouTubeWindowController extends WebWindowController {
   final RxBool isFullscreen = false.obs;
 
   // Timer for updating current time
-  RxInt _timeUpdateTimerId = (-1).obs;
+  Timer? _timeUpdateTimer;
+  bool _isDisposed = false;
 
   YouTubeWindowController({
     required String windowName,
@@ -145,17 +147,27 @@ class YouTubeWindowController extends WebWindowController {
   void _startTimeUpdates() {
     _stopTimeUpdates(); // Stop any existing timer
 
-    _timeUpdateTimerId.value = Future.delayed(Duration(milliseconds: 500), () {
-      _updateCurrentTime();
-      if (playerState.value == PLAYING) {
-        _startTimeUpdates(); // Continue updates if still playing
+    _timeUpdateTimer = Timer.periodic(Duration(milliseconds: 500), (timer) {
+      // Check if controller is disposed
+      if (_isDisposed) {
+        timer.cancel();
+        return;
       }
-    }).hashCode;
+
+      _updateCurrentTime();
+
+      // Stop timer if not playing
+      if (playerState.value != PLAYING) {
+        timer.cancel();
+        _timeUpdateTimer = null;
+      }
+    });
   }
 
   // Stop periodic time updates
   void _stopTimeUpdates() {
-    _timeUpdateTimerId.value = -1;
+    _timeUpdateTimer?.cancel();
+    _timeUpdateTimer = null;
   }
 
   // Update video information (title, duration, etc.)
@@ -181,14 +193,18 @@ class YouTubeWindowController extends WebWindowController {
 
   // Update current playback time
   Future<void> _updateCurrentTime() async {
+    if (_isDisposed) return; // Don't update if disposed
+
     try {
       final timeResult = await webViewController.evaluateJavascript(
           source: 'player.getCurrentTime ? player.getCurrentTime() : 0');
-      if (timeResult != null) {
+      if (timeResult != null && !_isDisposed) {
         currentTime.value = (timeResult as num).toInt();
       }
     } catch (e) {
-      print('⚠️ Error updating current time: $e');
+      if (!_isDisposed) {
+        print('⚠️ Error updating current time: $e');
+      }
     }
   }
 
@@ -206,6 +222,7 @@ class YouTubeWindowController extends WebWindowController {
   // Override onClose to ensure proper cleanup
   @override
   void disposeWindow() {
+    _isDisposed = true;
     _stopTimeUpdates();
     super.disposeWindow();
   }

@@ -747,14 +747,21 @@ class TilingWindowController extends GetxController {
       _layout.applyLayout(_containerBounds);
     }
     selectedTile.value = newTile;
-    final controller = ImageWindowController(
-      windowName: newTile.id,
-      imageUrl: primaryUrl,
-      imageUrls: imageUrls,
-      closeCallback: () {
-        Get.find<WindowManagerService>().unregisterWindow(newTile.id);
-      },
-    );
+    final controller = imageUrls.length > 1
+        ? ImageWindowController.createCarousel(
+            windowName: newTile.id,
+            imageUrls: imageUrls,
+            closeCallback: () {
+              Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+            },
+          )
+        : ImageWindowController.createSingle(
+            windowName: newTile.id,
+            imageUrl: primaryUrl,
+            closeCallback: () {
+              Get.find<WindowManagerService>().unregisterWindow(newTile.id);
+            },
+          );
     Get.find<WindowManagerService>().registerWindow(controller);
     _saveWindowState();
     publishOpenWindowsToMqtt();

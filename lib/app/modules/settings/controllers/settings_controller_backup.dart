@@ -25,10 +25,13 @@ class SettingsController extends GetxController {
     if (_mqttService == null) {
       try {
         _mqttService = Get.find<MqttService>();
-        print('✅ MQTT service found and cached');
+        // If we just found the service, set up observers
+        if (_mqttService != null) {
+          _setupMqttObservers();
+        }
       } catch (_) {
-        // Still not available
-        print('⏳ MQTT service not yet available');
+        // Still not available - schedule a retry
+        _scheduleMqttServiceCheck();
       }
     }
     return _mqttService;
@@ -52,6 +55,7 @@ class SettingsController extends GetxController {
   }
 
   Timer? _serviceCheckTimer;
+  Timer? _mqttServiceCheckTimer;
 
   void _scheduleServiceCheck() {
     // Avoid multiple timers
@@ -70,6 +74,41 @@ class SettingsController extends GetxController {
       if (timer.tick > 30) {
         timer.cancel();
       }
+    });
+  }
+
+  void _scheduleMqttServiceCheck() {
+    // Avoid multiple timers
+    if (_mqttServiceCheckTimer?.isActive == true) return;
+    _mqttServiceCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+      try {
+        final service = Get.find<MqttService>();
+        _mqttService = service;
+        _setupMqttObservers();
+        update(); // Trigger UI update
+        timer.cancel();
+        print('✅ MQTT service found and connected to settings controller');
+      } catch (_) {
+        // Service still not available
+        print('⏳ Waiting for MQTT service... (attempt ${timer.tick})');
+      }
+
+      // Stop checking after 30 seconds to avoid infinite polling
+      if (timer.tick > 30) {
+        print('⚠️ MQTT service check timeout after 30 seconds');
+        timer.cancel();
+      }
+    });
+  }
+
+  void _setupMqttObservers() {
+    if (_mqttService == null) return;
+    
+    // Ensure mqttConnected stays in sync with the actual service
+    mqttConnected.value = _mqttService!.isConnected.value;
+    ever(_mqttService!.isConnected, (bool connected) {
+      mqttConnected.value = connected;
+      print('🔄 MQTT connection status updated: $connected');
     });
   }
 
@@ -179,15 +218,20 @@ class SettingsController extends GetxController {
   }
 
   @override
+  @override
   void onInit() {
     super.onInit();
 
-    // Try to find MQTT service (may not be available during tests)
+    // Try to find MQTT service (may not be available during initialization)
     try {
       _mqttService = Get.find<MqttService>();
+      _setupMqttObservers();
+      print('✅ MQTT service found immediately in settings controller');
     } catch (e) {
-      print('MQTT Service not available: $e');
+      print('⏳ MQTT Service not yet available, will retry: $e');
       _mqttService = null;
+      // Schedule checks to find the service when it becomes available
+      _scheduleMqttServiceCheck();
     }
 
     // Try to find SIP service (may not be available during tests)
@@ -210,17 +254,10 @@ class SettingsController extends GetxController {
       // Load hardware acceleration settings
       loadHardwareAccelerationSettings();
 
-      // Auto-connect to MQTT if it was enabled (after a short delay)
-      Future.delayed(Duration(seconds: 1), () => autoConnectMqttIfEnabled());
+      // Auto-connect to MQTT if it was enabled (with a longer delay to ensure service is ready)
+      Future.delayed(Duration(seconds: 3), () => autoConnectMqttIfEnabled());
     });
-
-    // Ensure mqttConnected stays in sync with the actual service
-    if (mqttService != null) {
-      mqttConnected.value = mqttService!.isConnected.value;
-      ever(mqttService!.isConnected, (bool connected) {
-        mqttConnected.value = connected;
-      });
-    }
+  }
 
     // Ensure sipRegistered stays in sync with the actual service
     if (sipService != null) {
@@ -693,38 +730,34 @@ class SettingsController extends GetxController {
   }
 
   void connectMqtt() async {
-    // Try to get MQTT service with retry logic
-    MqttService? service = mqttService;
-
+    // Check if service is available, with retry logic
+    var service = mqttService;
     if (service == null) {
       print('⏳ MQTT Service not immediately available, waiting...');
-
-      // Show user feedback
       Get.snackbar(
         'MQTT Connection',
-        'Waiting for MQTT service to initialize...',
+        'Waiting for MQTT service to be ready...',
         snackPosition: SnackPosition.BOTTOM,
-        duration: Duration(seconds: 3),
+        duration: Duration(seconds: 2),
         backgroundColor: Colors.orange.shade100,
         colorText: Colors.orange.shade800,
       );
-
-      // Wait up to 10 seconds for service to become available
+      
+      // Wait up to 10 seconds for the service to become available
       for (int i = 0; i < 10; i++) {
         await Future.delayed(Duration(seconds: 1));
-        service = mqttService; // Try again
+        service = mqttService;
         if (service != null) {
-          print('✅ MQTT service became available after ${i + 1} second(s)');
+          print('✅ MQTT service became available after ${i + 1} seconds');
           break;
         }
-        print('⏳ Still waiting for MQTT service... (${i + 1}/10)');
       }
-
+      
       if (service == null) {
-        print('❌ MQTT Service still not available after 10 seconds');
+        print('❌ MQTT Service still not available after waiting');
         Get.snackbar(
           'MQTT Error',
-          'MQTT service failed to initialize. Try restarting the app.',
+          'MQTT service is not available. Please restart the app.',
           snackPosition: SnackPosition.BOTTOM,
           duration: Duration(seconds: 5),
           backgroundColor: Colors.red.shade100,
@@ -733,10 +766,10 @@ class SettingsController extends GetxController {
         return;
       }
     }
-
+    
     // Always update the MQTT service device name before connecting
     service.deviceName.value = deviceName.value;
-
+    
     // Only attempt to connect if not already connected
     if (service.isConnected.value) {
       print('MQTT already connected, skipping connection attempt');
@@ -750,10 +783,9 @@ class SettingsController extends GetxController {
       );
       return;
     }
-
-    print(
-        'Attempting to connect to MQTT broker: ${mqttBrokerUrl.value}:${mqttBrokerPort.value}');
-
+    
+    print('Attempting to connect to MQTT broker: ${mqttBrokerUrl.value}:${mqttBrokerPort.value}');
+    
     try {
       final success = await service.connect(
         brokerUrl: mqttBrokerUrl.value,
@@ -761,12 +793,12 @@ class SettingsController extends GetxController {
         username: mqttUsername.value.isNotEmpty ? mqttUsername.value : null,
         password: mqttPassword.value.isNotEmpty ? mqttPassword.value : null,
       );
-
+      
       if (success) {
         mqttConnected.value = true;
         Get.snackbar(
           'MQTT Connected',
-          'Successfully connected to ${mqttBrokerUrl.value}:${mqttBrokerPort.value}',
+          'Connected to ${mqttBrokerUrl.value}:${mqttBrokerPort.value}',
           snackPosition: SnackPosition.BOTTOM,
           duration: Duration(seconds: 3),
           backgroundColor: Colors.green.shade100,
@@ -776,7 +808,7 @@ class SettingsController extends GetxController {
         mqttConnected.value = false;
         Get.snackbar(
           'MQTT Connection Failed',
-          'Failed to connect. Check your broker settings.',
+          'Failed to connect to ${mqttBrokerUrl.value}:${mqttBrokerPort.value}',
           snackPosition: SnackPosition.BOTTOM,
           duration: Duration(seconds: 5),
           backgroundColor: Colors.red.shade100,

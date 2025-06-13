@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 import 'dart:io';
 import '../../services/storage_service.dart';
+import '../../services/storage_backup_service.dart';
+import '../../services/storage_monitor_service.dart';
 import '../../services/platform_sensor_service.dart';
 import '../../services/theme_service.dart';
 import '../../services/mqtt_service_consolidated.dart';
@@ -29,6 +31,13 @@ class InitialBinding extends Bindings {
   Future<void> dependencies() async {
     // Core services first - order matters!
     Get.put<StorageService>(await StorageService().init(), permanent: true);
+
+    // Initialize storage backup and monitoring services
+    Get.put<StorageBackupService>(await StorageBackupService().init(),
+        permanent: true);
+    Get.put<StorageMonitorService>(await StorageMonitorService().init(),
+        permanent: true);
+
     Get.put<ThemeService>(await ThemeService().init(), permanent: true);
     Get.put<PlatformSensorService>(await PlatformSensorService().init(),
         permanent: true); // Core controllers
