@@ -66,7 +66,8 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                         mainAxisAlignment: MainAxisAlignment.center,
                         children: List.generate(4, (index) {
                           return Container(
-                            margin: EdgeInsets.symmetric(horizontal: 8), // Reduced margin
+                            margin: EdgeInsets.symmetric(
+                                horizontal: 8), // Reduced margin
                             width: 18, // Reduced size
                             height: 18, // Reduced size
                             decoration: BoxDecoration(
@@ -77,11 +78,12 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                                       : Colors.blue
                                   : Colors.grey.shade300,
                               border: Border.all(
-                                color: index < controller.enteredPin.value.length
-                                    ? controller.isError.value
-                                        ? Colors.red
-                                        : Colors.blue
-                                    : Colors.grey.shade400,
+                                color:
+                                    index < controller.enteredPin.value.length
+                                        ? controller.isError.value
+                                            ? Colors.red
+                                            : Colors.blue
+                                        : Colors.grey.shade400,
                                 width: 2,
                               ),
                             ),
@@ -91,7 +93,8 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                       SizedBox(height: 16), // Reduced spacing
                       if (controller.isError.value)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 16), // Reduced spacing
+                          padding: const EdgeInsets.only(
+                              bottom: 16), // Reduced spacing
                           child: Text(
                             'Incorrect PIN. Try again (${3 - controller.attempts.value} attempts left)',
                             style: TextStyle(
@@ -115,14 +118,16 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                             fontSize: 20, // Reduced font size
                             fontWeight: FontWeight.w600,
                           ),
-                          enterButtonText: 'OK', // Changed from default "ENTER" to "OK"
+                          enterButtonText:
+                              'OK', // Changed from default "ENTER" to "OK"
                         ),
                       ),
                       SizedBox(height: 16), // Reduced spacing
                       TextButton(
                         onPressed: controller.cancel,
                         style: TextButton.styleFrom(
-                          padding: EdgeInsets.symmetric(horizontal: 20, vertical: 10), // Reduced padding
+                          padding: EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10), // Reduced padding
                         ),
                         child: Text(
                           'Cancel',
