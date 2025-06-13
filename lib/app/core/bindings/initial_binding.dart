@@ -24,6 +24,7 @@ import '../../services/media_hardware_detection.dart';
 import '../../services/android_kiosk_service.dart';
 import '../../services/platform_kiosk_service.dart';
 import '../../services/tts_service.dart';
+import '../../services/person_detection_service.dart';
 import 'package:king_kiosk/notification_system/services/alert_service.dart';
 
 class InitialBinding extends Bindings {
@@ -106,6 +107,17 @@ class InitialBinding extends Bindings {
     Get.putAsync<SipService>(() => sipService.init(), permanent: true);
     Get.put<MqttService>(initializedMqttService, permanent: true);
     print('🟢 [Init] MQTT service registered and ready');
+
+    // Initialize Person Detection Service for object detection and MQTT publishing
+    print('🟢 [Init] Registering Person Detection service...');
+    try {
+      final personDetectionService = PersonDetectionService();
+      Get.put<PersonDetectionService>(personDetectionService, permanent: true);
+      await personDetectionService.onInit(); // Initialize the service
+      print('🟢 [Init] Person Detection service initialized and ready');
+    } catch (e) {
+      print('❌ Error initializing Person Detection service: $e');
+    }
 
     // Register Android Kiosk Service (Android only)
     if (Platform.isAndroid) {

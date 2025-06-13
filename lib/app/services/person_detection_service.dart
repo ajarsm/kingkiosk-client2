@@ -653,10 +653,10 @@ class PersonDetectionService extends GetxService {
       '📊 ML Analysis interval set to: ${analysisInterval.inMilliseconds}ms',
     );
 
-    // Load settings
+    // Load settings - enable by default for MQTT object detection
     isEnabled.value =
         _storageService.read<bool>(AppConstants.keyPersonDetectionEnabled) ??
-            false;
+            true;
 
     // Initialize if enabled
     if (isEnabled.value) {

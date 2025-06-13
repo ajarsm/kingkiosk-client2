@@ -2149,7 +2149,10 @@ class MqttService extends GetxService {
         'longitude',
         'altitude',
         'location_accuracy',
-        'location_status'
+        'location_status',
+        'object_detection',
+        'person_presence',
+        'person_confidence'
       ];
 
       for (final sensor in sensors) {
@@ -2170,17 +2173,131 @@ class MqttService extends GetxService {
     if (!isConnected.value || !haDiscovery.value) return;
 
     try {
-      print(
-          'MQTT DEBUG: Setting up all discovery sensors with debug logging'); // Set up the key sensors one by one with debug logging
+      print('MQTT DEBUG: Setting up all discovery sensors with debug logging');
+
+      // Set up the key sensors one by one with debug logging
       print('MQTT DEBUG: Setting up battery level sensor');
       _setupDiscoverySensorWithDebug(
           'battery', 'Battery Level', 'battery', '%', 'mdi:battery');
       print('MQTT DEBUG: Setting up battery status sensor');
       _setupDiscoverySensorWithDebug(
           'battery_status', 'Battery Status', 'enum', '', 'mdi:battery-alert');
+
+      // Location sensors
+      print('MQTT DEBUG: Setting up location sensors');
+      _setupDiscoverySensorWithDebug(
+          'latitude', 'Latitude', 'none', '°', 'mdi:map-marker');
+      _setupDiscoverySensorWithDebug(
+          'longitude', 'Longitude', 'none', '°', 'mdi:map-marker');
+      _setupDiscoverySensorWithDebug(
+          'altitude', 'Altitude', 'distance', 'm', 'mdi:elevation-rise');
+      _setupDiscoverySensorWithDebug('location_accuracy', 'Location Accuracy',
+          'distance', 'm', 'mdi:crosshairs-gps');
+      _setupDiscoverySensorWithDebug(
+          'location_status', 'Location Status', 'enum', '', 'mdi:map-check');
+
+      // Person Detection Sensors
+      print('MQTT DEBUG: Setting up person detection sensors');
+      _setupPersonDetectionDiscovery();
     } catch (e) {
       print('MQTT DEBUG: Error setting up discovery: $e');
     }
+  }
+
+  /// Set up person detection discovery sensors with JSON value templates
+  void _setupPersonDetectionDiscovery() {
+    // Object Detection sensor (JSON payload)
+    _setupJsonDiscoverySensor(
+      'object_detection',
+      'Object Detection',
+      'kingkiosk/${deviceName.value}/object_detection',
+      '{{ value_json.total_objects }}',
+      icon: 'mdi:eye',
+      attributes: true,
+    );
+
+    // Person Presence sensor (JSON payload)
+    _setupJsonDiscoverySensor(
+      'person_presence',
+      'Person Presence',
+      'kingkiosk/${deviceName.value}/person_presence',
+      '{{ "ON" if value_json.person_present else "OFF" }}',
+      deviceClass: 'occupancy',
+      icon: 'mdi:human',
+      attributes: true,
+    );
+
+    // Person Confidence sensor (JSON payload from person_presence topic)
+    _setupJsonDiscoverySensor(
+      'person_confidence',
+      'Person Confidence',
+      'kingkiosk/${deviceName.value}/person_presence',
+      '{{ (value_json.confidence * 100) | round(1) }}',
+      unit: '%',
+      icon: 'mdi:percent',
+    );
+  }
+
+  /// Set up a JSON-based discovery sensor with value templates
+  void _setupJsonDiscoverySensor(
+    String name,
+    String displayName,
+    String stateTopic,
+    String valueTemplate, {
+    String? deviceClass,
+    String? unit,
+    String? icon,
+    bool attributes = false,
+  }) {
+    final discoveryTopic =
+        'homeassistant/sensor/${deviceName.value}_$name/config';
+
+    final Map<String, dynamic> payloadMap = {
+      "name": displayName,
+      "unique_id": "${deviceName.value}_$name",
+      "state_topic": stateTopic,
+      "value_template": valueTemplate,
+      "icon": icon ?? "mdi:information-outline",
+      "device": {
+        "identifiers": ["${deviceName.value}"],
+        "name": deviceName.value,
+        "model": "King Kiosk",
+        "manufacturer": "King Kiosk"
+      },
+      "availability_topic": "kingkiosk/${deviceName.value}/status",
+      "payload_available": "online",
+      "payload_not_available": "offline"
+    };
+
+    // Add device class if specified
+    if (deviceClass != null && deviceClass.isNotEmpty) {
+      payloadMap["device_class"] = deviceClass;
+    }
+
+    // Add unit if specified
+    if (unit != null && unit.isNotEmpty) {
+      payloadMap["unit_of_measurement"] = unit;
+    }
+
+    // Add JSON attributes topic if requested
+    if (attributes) {
+      payloadMap["json_attributes_topic"] = stateTopic;
+    }
+
+    final payload = jsonEncode(payloadMap);
+    print('MQTT DEBUG: Discovery payload for $name: $payload');
+    print('MQTT DEBUG: Publishing to topic: $discoveryTopic');
+
+    final builder = MqttClientPayloadBuilder();
+    builder.addString(payload);
+
+    _client!.publishMessage(
+      discoveryTopic,
+      MqttQos.atLeastOnce,
+      builder.payload!,
+      retain: true,
+    );
+    print('MQTT DEBUG: Published discovery config for $name');
   }
 
   /// Set up a single discovery sensor with detailed logging
