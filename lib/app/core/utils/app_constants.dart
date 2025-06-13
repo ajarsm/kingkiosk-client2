@@ -14,6 +14,9 @@ class AppConstants {
   // Person Detection Keys
   static const String keyPersonDetectionEnabled = 'personDetectionEnabled';
 
+  // Location Services Keys
+  static const String keyLocationEnabled = 'locationEnabled';
+
   // MQTT Keys
   static const String keyMqttEnabled = 'mqttEnabled';
   static const String keyMqttBrokerUrl = 'mqttBrokerUrl';

@@ -45,6 +45,7 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               _buildThemeToggle(),
               _buildKioskModeToggle(),
               _buildSystemInfoToggle(),
+              _buildLocationServicesToggle(),
               _buildBackgroundSettings(),
             ],
           ), // Web URLs
@@ -277,6 +278,33 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
                 controller.showSystemInfo.value;
           }
         },
+      ),
+    );
+  }
+
+  Widget _buildLocationServicesToggle() {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+      child: ListTile(
+        leading: ShaderMask(
+          shaderCallback: (rect) => LinearGradient(
+            colors: [Colors.green, Colors.teal],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ).createShader(rect),
+          child: Icon(Icons.location_on, color: Colors.white),
+        ),
+        title: Text('Location Services',
+            style: TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Text('Enable location tracking and MQTT publishing'),
+        trailing: Obx(() => Switch(
+              value: controller.locationEnabled.value,
+              onChanged: (value) => controller.toggleLocationEnabled(value),
+            )),
+        onTap: () =>
+            controller.toggleLocationEnabled(!controller.locationEnabled.value),
       ),
     );
   }

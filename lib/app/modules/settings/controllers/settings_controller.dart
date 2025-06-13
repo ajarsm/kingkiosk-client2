@@ -11,6 +11,7 @@ import '../../../services/sip_service.dart';
 import '../../../services/ai_assistant_service.dart';
 import '../../../services/media_hardware_detection.dart';
 import '../../../core/utils/app_constants.dart';
+import '../../../core/utils/permissions_manager.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
 /// Consolidated settings controller that incorporates all fixes
@@ -96,6 +97,9 @@ class SettingsController extends GetxController {
   // AI settings
   final RxBool aiEnabled = false.obs;
   final RxString aiProviderHost = ''.obs;
+
+  // Location settings
+  final RxBool locationEnabled = false.obs;
 
   // App settings
   final RxBool kioskMode = true.obs;
@@ -290,6 +294,10 @@ class SettingsController extends GetxController {
         _storageService.read<bool>(AppConstants.keyAiEnabled) ?? false;
     aiProviderHost.value =
         _storageService.read<String>(AppConstants.keyAiProviderHost) ?? '';
+
+    // Load location settings
+    locationEnabled.value =
+        _storageService.read<bool>(AppConstants.keyLocationEnabled) ?? false;
 
     // Device name: if not set, use hostname
     String? storedDeviceName =
@@ -1036,6 +1044,64 @@ class SettingsController extends GetxController {
     _storageService.flush(); // Force flush for Windows persistence
     if (!value && sipRegistered.value) {
       unregisterSip();
+    }
+  }
+
+  void toggleLocationEnabled(bool value) async {
+    if (value) {
+      // Request permission when enabling
+      try {
+        final permissionResult =
+            await PermissionsManager.requestLocationPermission();
+        if (permissionResult.granted) {
+          locationEnabled.value = true;
+          _storageService.write(AppConstants.keyLocationEnabled, true);
+          Get.snackbar(
+            'Location Services',
+            'Location services enabled successfully',
+            backgroundColor: Colors.green,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+            duration: Duration(seconds: 3),
+          );
+        } else {
+          // Permission denied, keep toggle off
+          locationEnabled.value = false;
+          _storageService.write(AppConstants.keyLocationEnabled, false);
+          Get.snackbar(
+            'Location Permission Required',
+            permissionResult.status,
+            backgroundColor: Colors.orange,
+            colorText: Colors.white,
+            snackPosition: SnackPosition.BOTTOM,
+            duration: Duration(seconds: 5),
+          );
+        }
+      } catch (e) {
+        print('Error requesting location permission: $e');
+        locationEnabled.value = false;
+        _storageService.write(AppConstants.keyLocationEnabled, false);
+        Get.snackbar(
+          'Location Error',
+          'Failed to request location permission: $e',
+          backgroundColor: Colors.red,
+          colorText: Colors.white,
+          snackPosition: SnackPosition.BOTTOM,
+          duration: Duration(seconds: 5),
+        );
+      }
+    } else {
+      // Simply disable when turning off
+      locationEnabled.value = false;
+      _storageService.write(AppConstants.keyLocationEnabled, false);
+      Get.snackbar(
+        'Location Services',
+        'Location services disabled',
+        backgroundColor: Colors.grey,
+        colorText: Colors.white,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: Duration(seconds: 2),
+      );
     }
   }
 
