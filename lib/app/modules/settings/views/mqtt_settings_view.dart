@@ -40,7 +40,7 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
               return Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const SizedBox(height: 16.0),                  // Broker URL
+                  const SizedBox(height: 16.0), // Broker URL
                   TextFormField(
                     decoration: const InputDecoration(
                       labelText: 'MQTT Broker URL',
@@ -49,7 +49,8 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
                     ),
                     initialValue: controller.mqttBrokerUrl.value,
                     onChanged: (url) {
-                      print('🖱️ TextField onChanged callback triggered with: $url');
+                      print(
+                          '🖱️ TextField onChanged callback triggered with: $url');
                       controller.saveMqttBrokerUrl(url);
                     },
                   ),
@@ -128,9 +129,15 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
 
   Widget _buildMqttEnabledSwitch(SettingsControllerFixed controller) {
     return Obx(() => Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Enable MQTT'),
+            Flexible(
+              fit: FlexFit.tight,
+              child: Text(
+                'Enable MQTT',
+                softWrap: true,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             Switch(
               value: controller.mqttEnabled.value,
               onChanged: controller.toggleMqttEnabled,
@@ -141,9 +148,15 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
 
   Widget _buildHomeAssistantSwitch(SettingsControllerFixed controller) {
     return Obx(() => Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text('Home Assistant Discovery'),
+            Flexible(
+              fit: FlexFit.tight,
+              child: Text(
+                'Home Assistant Discovery',
+                softWrap: true,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
             Switch(
               value: controller.mqttHaDiscovery.value,
               onChanged: controller.toggleMqttHaDiscovery,
@@ -153,8 +166,10 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
   }
 
   Widget _buildConnectionButtons(SettingsControllerFixed controller) {
-    return Obx(() => Row(
-          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return Obx(() => Wrap(
+          spacing: 16.0,
+          runSpacing: 8.0,
+          alignment: WrapAlignment.spaceEvenly,
           children: [
             ElevatedButton.icon(
               icon: const Icon(Icons.link),
@@ -167,7 +182,6 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
                   ? null
                   : controller.connectMqtt,
             ),
-            const SizedBox(width: 16.0),
             ElevatedButton.icon(
               icon: const Icon(Icons.link_off),
               label: const Text('Disconnect'),
@@ -179,19 +193,19 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
                   ? controller.disconnectMqtt
                   : null,
             ),
-            const SizedBox(width: 16.0),
             // Connection status indicator
             _buildConnectionIndicator(controller),
           ],
         ));
   }
+
   Widget _buildConnectionIndicator(SettingsControllerFixed controller) {
     return Obx(() {
       // Force refresh connection status when building indicator
       WidgetsBinding.instance.addPostFrameCallback((_) {
         controller.refreshMqttConnectionStatus();
       });
-      
+
       return Container(
         width: 12,
         height: 12,
@@ -200,9 +214,9 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
           color: controller.mqttConnected.value ? Colors.green : Colors.red,
         ),
         child: Tooltip(
-          message: controller.mqttConnected.value 
-            ? 'MQTT Connected' 
-            : 'MQTT Disconnected',
+          message: controller.mqttConnected.value
+              ? 'MQTT Connected'
+              : 'MQTT Disconnected',
         ),
       );
     });
@@ -211,16 +225,24 @@ class MqttSettingsView extends GetView<SettingsControllerFixed> {
   Widget _buildRepublishSensorsButton(SettingsControllerFixed controller) {
     return Padding(
       padding: const EdgeInsets.only(top: 16.0),
-      child: Obx(() => ElevatedButton.icon(
-            icon: const Icon(Icons.refresh),
-            label: const Text('Republish All Sensors'),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.blue[700],
-              foregroundColor: Colors.white,
+      child: Obx(() => SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              icon: const Icon(Icons.refresh),
+              label: const Text(
+                'Republish All Sensors',
+                softWrap: true,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue[700],
+                foregroundColor: Colors.white,
+              ),
+              onPressed: controller.mqttConnected.value
+                  ? controller.forceRepublishSensors
+                  : null,
             ),
-            onPressed: controller.mqttConnected.value
-                ? controller.forceRepublishSensors
-                : null,
           )),
     );
   }

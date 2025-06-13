@@ -296,15 +296,33 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
           ).createShader(rect),
           child: Icon(Icons.location_on, color: Colors.white),
         ),
-        title: Text('Location Services',
-            style: TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text('Enable location tracking and MQTT publishing'),
-        trailing: Obx(() => Switch(
-              value: controller.locationEnabled.value,
-              onChanged: (value) => controller.toggleLocationEnabled(value),
-            )),
-        onTap: () =>
-            controller.toggleLocationEnabled(!controller.locationEnabled.value),
+        title: Text(
+          'Location Services',
+          style: TextStyle(fontWeight: FontWeight.bold),
+          softWrap: true,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        subtitle: Text(
+          'Enable location tracking and MQTT publishing',
+          softWrap: true,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+        ),
+        isThreeLine: true,
+        trailing: Obx(() {
+          return Switch(
+            value: controller.locationEnabled.value,
+            onChanged: (value) {
+              // Prevent rapid toggling by disabling for a moment
+              controller.toggleLocationEnabled(value);
+            },
+          );
+        }),
+        onTap: () {
+          final newValue = !controller.locationEnabled.value;
+          controller.toggleLocationEnabled(newValue);
+        },
       ),
     );
   }
@@ -323,9 +341,18 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               children: [
                 Icon(Icons.wallpaper),
                 SizedBox(width: 8),
-                Text('Root Window Background',
-                    style:
-                        TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                Expanded(
+                  child: Text(
+                    'Root Window Background',
+                    style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                    softWrap: true,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ],
             ),
             Divider(),

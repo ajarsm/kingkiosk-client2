@@ -27,7 +27,14 @@ class CommunicationsSettingsView extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    const Text('Enable Communications Server'),
+                    Flexible(
+                      fit: FlexFit.tight,
+                      child: const Text(
+                        'Enable Communications Server',
+                        softWrap: true,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
                     Switch(
                       value: controller.sipEnabled.value,
                       onChanged: (value) {

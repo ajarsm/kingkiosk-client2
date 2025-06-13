@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'dart:io' show Platform;
 import 'dart:async';
 import 'package:wakelock_plus/wakelock_plus.dart';
+import 'package:geolocator/geolocator.dart';
 import '../../../services/storage_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/theme_service.dart';
@@ -100,6 +101,7 @@ class SettingsController extends GetxController {
 
   // Location settings
   final RxBool locationEnabled = false.obs;
+  final RxBool isRequestingLocationPermission = false.obs;
 
   // App settings
   final RxBool kioskMode = true.obs;
@@ -1048,14 +1050,40 @@ class SettingsController extends GetxController {
   }
 
   void toggleLocationEnabled(bool value) async {
+    print('🗺️ toggleLocationEnabled called with value: $value');
+
+    // Prevent concurrent permission requests
+    if (isRequestingLocationPermission.value) {
+      print('🗺️ Already requesting permission, ignoring call');
+      return;
+    }
+
     if (value) {
       // Request permission when enabling
+      isRequestingLocationPermission.value = true;
       try {
+        print('🗺️ Requesting location permission...');
+
+        // Add a small delay to avoid permission conflicts
+        await Future.delayed(Duration(milliseconds: 500));
+
         final permissionResult =
             await PermissionsManager.requestLocationPermission();
+        print(
+            '🗺️ Permission result: granted=${permissionResult.granted}, status=${permissionResult.status}');
+
         if (permissionResult.granted) {
           locationEnabled.value = true;
           _storageService.write(AppConstants.keyLocationEnabled, true);
+          print('🗺️ Location services enabled and saved to storage');
+
+          // Test location access to ensure it's working
+          try {
+            await _testLocationAccess();
+          } catch (e) {
+            print('🗺️ Warning: Location access test failed: $e');
+          }
+
           Get.snackbar(
             'Location Services',
             'Location services enabled successfully',
@@ -1068,9 +1096,15 @@ class SettingsController extends GetxController {
           // Permission denied, keep toggle off
           locationEnabled.value = false;
           _storageService.write(AppConstants.keyLocationEnabled, false);
+          print('🗺️ Location permission denied, toggle set to false');
+
+          String userMessage = permissionResult.permanentlyDenied
+              ? 'Location permission permanently denied. Please enable in device settings.'
+              : 'Location permission denied. Please allow location access.';
+
           Get.snackbar(
             'Location Permission Required',
-            permissionResult.status,
+            userMessage,
             backgroundColor: Colors.orange,
             colorText: Colors.white,
             snackPosition: SnackPosition.BOTTOM,
@@ -1078,7 +1112,7 @@ class SettingsController extends GetxController {
           );
         }
       } catch (e) {
-        print('Error requesting location permission: $e');
+        print('🗺️ Error requesting location permission: $e');
         locationEnabled.value = false;
         _storageService.write(AppConstants.keyLocationEnabled, false);
         Get.snackbar(
@@ -1089,9 +1123,12 @@ class SettingsController extends GetxController {
           snackPosition: SnackPosition.BOTTOM,
           duration: Duration(seconds: 5),
         );
+      } finally {
+        isRequestingLocationPermission.value = false;
       }
     } else {
       // Simply disable when turning off
+      print('🗺️ Disabling location services');
       locationEnabled.value = false;
       _storageService.write(AppConstants.keyLocationEnabled, false);
       Get.snackbar(
@@ -1102,6 +1139,22 @@ class SettingsController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
         duration: Duration(seconds: 2),
       );
+    }
+  }
+
+  /// Test location access to verify permission is working
+  Future<void> _testLocationAccess() async {
+    try {
+      // Try to get current position with a timeout
+      final position = await Geolocator.getCurrentPosition(
+        desiredAccuracy: LocationAccuracy.low,
+        timeLimit: Duration(seconds: 10),
+      );
+      print(
+          '🗺️ Location test successful: ${position.latitude}, ${position.longitude}');
+    } catch (e) {
+      print('🗺️ Location test failed: $e');
+      throw e;
     }
   }
 
