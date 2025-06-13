@@ -116,12 +116,14 @@ class SettingsLockPinPad extends GetView<SettingsLockPinPadController> {
                           onEnter: controller.onEnter,
                           numberStyle: TextStyle(
                             fontSize: 24,
-                            color: Colors.black,
+                            color: Colors
+                                .black87, // Force dark text for better visibility
                             fontWeight: FontWeight.w600,
                           ),
-                          enterButtonColor: Colors.blue[100],
+                          enterButtonColor: Colors.grey
+                              .shade300, // Light background for better contrast
                           enterButtonText: 'OK',
-                          deleteColor: Colors.black,
+                          deleteColor: Colors.black87, // Dark delete icon
                         ),
                       ),
                     ),

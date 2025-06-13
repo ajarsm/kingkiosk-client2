@@ -521,7 +521,7 @@ class StorageService extends GetxService {
       'platform': kIsWeb ? 'web' : 'desktop',
     };
     
-    await _lockFile!.writeAsString(jsonEncode(lockData));
+    //await _lockFile!.writeAsString(jsonEncode(lockData));
     print('🔒 Application lock acquired (PID: ${lockData['pid']})');
   }
 

@@ -56,7 +56,11 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                         'Enter PIN to continue',
                         style: TextStyle(
                           fontSize: 14, // Reduced font size
-                          color: Colors.grey[600],
+                          color: Theme.of(context)
+                              .textTheme
+                              .bodyMedium
+                              ?.color
+                              ?.withOpacity(0.7),
                         ),
                         textAlign: TextAlign.center,
                       ),
@@ -75,15 +79,21 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                               color: index < controller.enteredPin.value.length
                                   ? controller.isError.value
                                       ? Colors.red
-                                      : Colors.blue
-                                  : Colors.grey.shade300,
+                                      : Theme.of(context).primaryColor
+                                  : Theme.of(context).brightness ==
+                                          Brightness.dark
+                                      ? Colors.grey.shade700
+                                      : Colors.grey.shade300,
                               border: Border.all(
                                 color:
                                     index < controller.enteredPin.value.length
                                         ? controller.isError.value
                                             ? Colors.red
-                                            : Colors.blue
-                                        : Colors.grey.shade400,
+                                            : Theme.of(context).primaryColor
+                                        : Theme.of(context).brightness ==
+                                                Brightness.dark
+                                            ? Colors.grey.shade600
+                                            : Colors.grey.shade400,
                                 width: 2,
                               ),
                             ),
@@ -117,9 +127,14 @@ class SettingsPinDialog extends GetView<SettingsPinDialogController> {
                           numberStyle: TextStyle(
                             fontSize: 20, // Reduced font size
                             fontWeight: FontWeight.w600,
+                            color: Colors
+                                .black87, // Force dark text for better visibility
                           ),
                           enterButtonText:
                               'OK', // Changed from default "ENTER" to "OK"
+                          enterButtonColor: Colors.grey
+                              .shade300, // Light background for better contrast
+                          deleteColor: Colors.black87, // Dark delete icon
                         ),
                       ),
                       SizedBox(height: 16), // Reduced spacing
