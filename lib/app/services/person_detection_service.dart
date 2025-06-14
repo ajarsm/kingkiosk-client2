@@ -585,6 +585,10 @@ class PersonDetectionService extends GetxService {
   final RxBool isPersonPresent = false.obs;
   final RxBool isProcessing = false.obs;
   final RxString lastError = ''.obs;
+  
+  // Initialization state tracking for better coordination
+  final RxBool isInitializing = false.obs;
+  final RxBool isInitialized = false.obs;
 
   final RxDouble confidence = 0.0.obs;
   final RxInt framesProcessed = 0.obs;
@@ -688,21 +692,66 @@ class PersonDetectionService extends GetxService {
         final debugStatuses =
             await PermissionsManager.debugPermissionStatuses();
         print('[PersonDetection] Debug permissions: $debugStatuses');
-
-        // If already granted, proceed directly
+          // If already granted, proceed directly
         if (currentCameraStatus.granted) {
           print(
               '[PersonDetection] Camera permission already granted, proceeding...');
-          final modelInitialized = await _initializeModel();
-          if (modelInitialized) {
-            final detectionStarted = await startDetection();
-            if (detectionStarted) {
-              print('✅ Person detection started with existing permission');
-            } else {
-              print(
-                  '⚠️ Person detection model initialized but failed to start camera');
+          
+          // Set initialization state
+          isInitializing.value = true;
+          isInitialized.value = false;
+          
+          // Enhanced initialization conflict prevention
+          print('⏳ Waiting for camera resource availability...');
+          
+          // Longer delay with retry mechanism for initialization conflicts
+          int maxRetries = 3;
+          bool initializationSuccessful = false;
+          
+          for (int attempt = 1; attempt <= maxRetries && !initializationSuccessful; attempt++) {
+            print('🔄 Initialization attempt $attempt/$maxRetries');
+            
+            // Progressive delay: 1s, 2s, 3s for retries
+            await Future.delayed(Duration(milliseconds: 1000 * attempt));
+            
+            try {
+              final modelInitialized = await _initializeModel();
+              if (modelInitialized) {
+                final detectionStarted = await startDetection();
+                if (detectionStarted) {
+                  print('✅ Person detection started successfully on attempt $attempt');
+                  initializationSuccessful = true;
+                  isInitialized.value = true;
+                } else {
+                  print('⚠️ Detection start failed on attempt $attempt - camera may be busy');
+                  if (attempt < maxRetries) {
+                    print('🔄 Will retry after longer delay...');
+                  }
+                }
+              } else {
+                print('⚠️ Model initialization failed on attempt $attempt');
+                if (attempt < maxRetries) {
+                  print('🔄 Will retry model initialization...');
+                }
+              }
+            } catch (e) {
+              print('❌ Initialization error on attempt $attempt: $e');
+              if (attempt < maxRetries) {
+                print('🔄 Will retry after handling error...');
+              }
             }
           }
+          
+          // Clear initialization state
+          isInitializing.value = false;
+          
+          if (!initializationSuccessful) {
+            print('❌ Failed to initialize person detection after $maxRetries attempts');
+            lastError.value = 'Failed to start person detection - camera may be in use by another component';
+            isEnabled.value = false;
+            isInitialized.value = false;
+          }
+          
           return;
         }
 
@@ -740,17 +789,52 @@ class PersonDetectionService extends GetxService {
           }
           isEnabled.value = false;
           return;
-        }
-        final modelInitialized = await _initializeModel();
-        if (modelInitialized) {
-          final detectionStarted = await startDetection();
-          if (detectionStarted) {
-            print('✅ Person detection restarted via settings');
-          } else {
-            print(
-              '⚠️ Person detection model initialized but failed to start camera via settings',
-            );
+        }        // Use the same robust initialization for newly granted permissions
+        print('⏳ Initializing person detection with newly granted permission...');
+        
+        // Set initialization state
+        isInitializing.value = true;
+        isInitialized.value = false;
+        
+        int maxRetries = 3;
+        bool initializationSuccessful = false;
+        
+        for (int attempt = 1; attempt <= maxRetries && !initializationSuccessful; attempt++) {
+          print('🔄 Permission-granted initialization attempt $attempt/$maxRetries');
+          
+          // Progressive delay for newly granted permissions
+          await Future.delayed(Duration(milliseconds: 500 * attempt));
+          
+          try {
+            final modelInitialized = await _initializeModel();
+            if (modelInitialized) {
+              final detectionStarted = await startDetection();
+              if (detectionStarted) {
+                print('✅ Person detection started successfully with new permission on attempt $attempt');
+                initializationSuccessful = true;
+                isInitialized.value = true;
+              } else {
+                print('⚠️ Detection start failed with new permission on attempt $attempt');
+                if (attempt < maxRetries) {
+                  print('🔄 Will retry camera initialization...');
+                }
+              }
+            } else {
+              print('⚠️ Model initialization failed with new permission on attempt $attempt');
+            }
+          } catch (e) {
+            print('❌ New permission initialization error on attempt $attempt: $e');
           }
+        }
+        
+        // Clear initialization state
+        isInitializing.value = false;
+        
+        if (!initializationSuccessful) {
+          print('❌ Failed to initialize person detection with new permission after $maxRetries attempts');
+          lastError.value = 'Failed to start person detection - please try again';
+          isEnabled.value = false;
+          isInitialized.value = false;
         }
       } else {
         _stopDetection();
@@ -1767,11 +1851,10 @@ class PersonDetectionService extends GetxService {
 
         // Update presence detection
         final wasPersonPresent = isPersonPresent.value;
-        isPersonPresent.value = confidence.value > confidenceThreshold;
-
-        // Publish to MQTT if status changed or periodically for all objects
+        isPersonPresent.value = confidence.value > confidenceThreshold;        // Publish to MQTT if status changed or periodically for all objects
         if (wasPersonPresent != isPersonPresent.value ||
             framesProcessed.value % 20 == 0) {
+          print('🔄 Publishing detection data - status changed: ${wasPersonPresent != isPersonPresent.value}, periodic: ${framesProcessed.value % 20 == 0}');
           _publishAllDetections();
           if (wasPersonPresent != isPersonPresent.value) {
             print(
@@ -2181,16 +2264,17 @@ class PersonDetectionService extends GetxService {
       }
     }
   }
-
   /// Enhanced MQTT publishing for all detected objects
   void _publishAllDetections() {
+    print('🔄 _publishAllDetections() called');
     try {
       if (Get.isRegistered<MqttService>()) {
+        print('✅ MQTT service is registered');
         final mqttService = Get.find<MqttService>();
 
         // Check MQTT connection status
         if (!mqttService.isConnected.value) {
-          print('❌ MQTT not connected - skipping publish');
+          print('❌ MQTT not connected - skipping publish (connection status: ${mqttService.isConnected.value})');
           return;
         }
         print('📡 MQTT connected - publishing detection data');
@@ -2829,7 +2913,7 @@ Uint8List? _generateDebugFrameWithBoxes(
         y1: y1,
         x2: x2,
         y2: y2,
-        color: box.classId ==
+        color: box.classId == 
                 personClassId // Person class ID (0 for MobileNet SSD)
             ? img.ColorRgb8(0, 255, 0) // Green for person
             : img.ColorRgb8(255, 0, 0), // Red for other objects

@@ -138,6 +138,15 @@ class _CameraPreviewWidgetState extends State<CameraPreviewWidget> {
       final isServiceActive = personDetectionService?.isEnabled.value == true &&
           sharedStream != null;
 
+      // NEW: Wait if person detection is initializing
+      int maxInitWaits = 5;
+      int waits = 0;
+      while (personDetectionService?.isInitializing.value == true && waits < maxInitWaits) {
+        print('[CameraPreviewWidget] Person detection is initializing, waiting to avoid camera conflict...');
+        await Future.delayed(Duration(milliseconds: 500));
+        waits++;
+      }
+
       if (isServiceActive) {
         // Use the shared stream from PersonDetectionService
         print(

@@ -20,10 +20,10 @@ import '../../../widgets/settings_pin_dialog.dart';
 /// Consolidated settings controller that incorporates all fixes
 class SettingsController extends GetxController {  // Services
   final StorageService _storageService = Get.find<StorageService>();
-  late MqttService? _mqttService;
-  late SipService? _sipService;
-  late AndroidKioskService? _androidKioskService;
-  late WindowsKioskService? _windowsKioskService;
+  MqttService? _mqttService;
+  SipService? _sipService;
+  AndroidKioskService? _androidKioskService;
+  WindowsKioskService? _windowsKioskService;
 
   // Robust getter for MqttService to handle late registration
   MqttService? get mqttService {
@@ -230,6 +230,26 @@ class SettingsController extends GetxController {  // Services
     } catch (e) {
       print('SIP Service not available: $e');
       _sipService = null;
+    }
+
+    // Try to find Android Kiosk service (platform-specific)
+    if (Platform.isAndroid) {
+      try {
+        _androidKioskService = Get.find<AndroidKioskService>();
+      } catch (e) {
+        print('Android Kiosk Service not available: $e');
+        _androidKioskService = null;
+      }
+    }
+
+    // Try to find Windows Kiosk service (platform-specific)
+    if (Platform.isWindows) {
+      try {
+        _windowsKioskService = Get.find<WindowsKioskService>();
+      } catch (e) {
+        print('Windows Kiosk Service not available: $e');
+        _windowsKioskService = null;
+      }
     }
 
     // Safely load settings on the next event loop
