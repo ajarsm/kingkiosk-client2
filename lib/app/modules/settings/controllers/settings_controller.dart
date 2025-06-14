@@ -11,16 +11,19 @@ import '../../../services/theme_service.dart';
 import '../../../services/sip_service.dart';
 import '../../../services/ai_assistant_service.dart';
 import '../../../services/media_hardware_detection.dart';
+import '../../../services/android_kiosk_service.dart';
+import '../../../services/windows_kiosk_service.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../core/utils/permissions_manager.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
 /// Consolidated settings controller that incorporates all fixes
-class SettingsController extends GetxController {
-  // Services
+class SettingsController extends GetxController {  // Services
   final StorageService _storageService = Get.find<StorageService>();
   late MqttService? _mqttService;
   late SipService? _sipService;
+  late AndroidKioskService? _androidKioskService;
+  late WindowsKioskService? _windowsKioskService;
 
   // Robust getter for MqttService to handle late registration
   MqttService? get mqttService {
@@ -35,7 +38,6 @@ class SettingsController extends GetxController {
     }
     return _mqttService;
   }
-
   // Getter for SipService
   SipService? get sipService {
     if (_sipService == null) {
@@ -51,6 +53,32 @@ class SettingsController extends GetxController {
       }
     }
     return _sipService;
+  }
+
+  // Getter for AndroidKioskService
+  AndroidKioskService? get androidKioskService {
+    if (_androidKioskService == null && Platform.isAndroid) {
+      try {
+        _androidKioskService = Get.find<AndroidKioskService>();
+        print('✅ Android kiosk service found and cached');
+      } catch (_) {
+        print('⏳ Android kiosk service not yet available');
+      }
+    }
+    return _androidKioskService;
+  }
+
+  // Getter for WindowsKioskService
+  WindowsKioskService? get windowsKioskService {
+    if (_windowsKioskService == null && Platform.isWindows) {
+      try {
+        _windowsKioskService = Get.find<WindowsKioskService>();
+        print('✅ Windows kiosk service found and cached');
+      } catch (_) {
+        print('⏳ Windows kiosk service not yet available');
+      }
+    }
+    return _windowsKioskService;
   }
 
   Timer? _serviceCheckTimer;
@@ -510,17 +538,71 @@ class SettingsController extends GetxController {
     _storageService.flush(); // Force flush for Windows persistence
     _applyTheme();
   }
-
-  void toggleKioskMode() {
+  void toggleKioskMode() async {
     kioskMode.value = !kioskMode.value;
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
     _storageService.flush(); // Force flush for Windows persistence
+    
     // Control wakelock based on kiosk mode
     if (kioskMode.value) {
       WakelockPlus.enable();
     } else {
       WakelockPlus.disable();
     }
+
+    // Call platform-specific kiosk services
+    if (Platform.isAndroid && androidKioskService != null) {
+      try {
+        if (kioskMode.value) {
+          print('🔒 Enabling Android kiosk mode...');
+          await androidKioskService!.enableKioskMode();
+        } else {
+          print('🔓 Disabling Android kiosk mode...');
+          await androidKioskService!.disableKioskMode();
+        }
+      } catch (e) {
+        print('❌ Android kiosk mode toggle failed: $e');
+        Get.snackbar(
+          'Kiosk Mode Error',
+          'Failed to toggle Android kiosk mode: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.7),
+          colorText: Colors.white,
+        );
+      }
+    } else if (Platform.isWindows && windowsKioskService != null) {
+      try {
+        if (kioskMode.value) {
+          print('🔒 Enabling Windows kiosk mode...');
+          await windowsKioskService!.enableKioskMode();
+        } else {
+          print('🔓 Disabling Windows kiosk mode...');
+          await windowsKioskService!.disableKioskMode();
+        }
+      } catch (e) {
+        print('❌ Windows kiosk mode toggle failed: $e');
+        Get.snackbar(
+          'Kiosk Mode Error',
+          'Failed to toggle Windows kiosk mode: $e',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withOpacity(0.7),
+          colorText: Colors.white,
+        );
+      }
+    }
+
+    // Show success message
+    Get.snackbar(
+      kioskMode.value ? 'Kiosk Mode Enabled' : 'Kiosk Mode Disabled',
+      kioskMode.value 
+        ? 'Device is now in strict kiosk mode'
+        : 'Kiosk mode has been disabled',
+      snackPosition: SnackPosition.BOTTOM,
+      backgroundColor: kioskMode.value 
+        ? Colors.green.withOpacity(0.7) 
+        : Colors.blue.withOpacity(0.7),
+      colorText: Colors.white,
+    );
   }
 
   void toggleShowSystemInfo() {

@@ -23,10 +23,13 @@ import '../../services/service_initializer.dart';
 import '../../services/person_detection_service.dart';
 import '../../services/media_device_service.dart';
 import '../../services/tts_service.dart';
+import '../../services/android_kiosk_service.dart';
+import '../../services/windows_kiosk_service.dart';
 import '../../core/utils/app_constants.dart';
 import '../../modules/calendar/controllers/calendar_controller.dart';
 import '../../modules/calendar/controllers/calendar_window_controller.dart';
 import '../../modules/home/controllers/tiling_window_controller.dart';
+import 'dart:io' show Platform;
 
 /// Memory-optimized binding that loads only essential services at startup
 /// and uses lazy loading for optional services
@@ -169,11 +172,12 @@ class MemoryOptimizedBinding extends Bindings {
     // Calendar Controllers - Lazy load
     Get.lazyPut<CalendarController>(() => CalendarController(), fenix: true);
     Get.lazyPut<CalendarWindowController>(() => CalendarWindowController(),
-        fenix: true);
-
-    // Home Module Controllers - Lazy load
+        fenix: true);    // Home Module Controllers - Lazy load
     Get.lazyPut<TilingWindowController>(() => TilingWindowController(),
         fenix: true);
+
+    // Kiosk Services - Platform-specific lazy loading
+    _conditionallyLoadKioskServices(storageServiceRef);
 
     // SIP Service - Conditional lazy loading based on settings
     _conditionallyLoadSipService(storageServiceRef);
@@ -269,8 +273,37 @@ class MemoryOptimizedBinding extends Bindings {
         }
       });
     } else {
-      print(
-          '⏭️ Person detection disabled in settings but service is registered for later use');
+      print(          '⏭️ Person detection disabled in settings but service is registered for later use');
+    }
+  }
+
+  /// Conditionally load platform-specific kiosk services
+  void _conditionallyLoadKioskServices(StorageService storageService) {
+    // Android Kiosk Service - only on Android
+    if (Platform.isAndroid) {
+      print('🔒 Loading Android kiosk service');
+      Get.lazyPut<AndroidKioskService>(() {
+        final androidKioskService = AndroidKioskService();
+        // Note: init() is async, handle when service is accessed
+        return androidKioskService;
+      }, fenix: true);
+    }
+
+    // Windows Kiosk Service - only on Windows
+    if (Platform.isWindows) {
+      print('🔒 Loading Windows kiosk service');
+      Get.lazyPut<WindowsKioskService>(() {
+        final windowsKioskService = WindowsKioskService();
+        // Note: init() is async, handle when service is accessed
+        return windowsKioskService;
+      }, fenix: true);
+    }
+
+    final kioskMode = storageService.read<bool>(AppConstants.keyKioskMode) ?? true;
+    if (kioskMode) {
+      print('🔒 Kiosk mode is enabled - services will initialize on first access');
+    } else {
+      print('🔓 Kiosk mode is disabled - services registered but not initialized');
     }
   }
 

@@ -1,0 +1,536 @@
+import 'dart:io';
+import 'dart:ffi';
+import 'package:ffi/ffi.dart';
+import 'package:win32/win32.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+import 'package:window_manager/window_manager.dart';
+import 'storage_service.dart';
+
+/// Security levels for Windows kiosk mode
+enum KioskSecurityLevel { demo, business, enterprise, totalLockdown }
+
+/// Windows-specific enterprise-grade kiosk mode service
+/// Implements maximum security controls comparable to Android kiosk
+/// Provides multiple layers of system lockdown and access prevention
+/// Uses direct Windows API calls via FFI for maximum reliability
+class WindowsKioskService extends GetxService {
+  // Remove method channel - use direct Windows API calls instead
+
+  late final StorageService _storage;
+  static const String _kioskStateKey = 'windows_kiosk_enabled';
+  static const String _kioskConfigKey = 'windows_kiosk_config';
+  static const String _registryBackupKey = 'windows_registry_backup';
+
+  // Observable states for comprehensive monitoring
+  final RxBool _isKioskModeActive = false.obs;
+  final RxBool _isFullscreen = false.obs;
+  final RxBool _isTaskbarHidden = false.obs;
+  final RxBool _isShellReplaced = false.obs;
+  final RxBool _isRegistryLocked = false.obs;
+  final RxBool _isProcessMonitoring = false.obs;
+  final RxBool _areKeyboardShortcutsBlocked = false.obs;
+  final RxBool _isTaskManagerBlocked = false.obs;
+  final RxBool _isDesktopHidden = false.obs;
+  final RxBool _isRestoring = false.obs;
+
+  // Security level tracking
+  final Rx<KioskSecurityLevel> _currentSecurityLevel = KioskSecurityLevel.demo.obs;
+
+  // Getters for state monitoring
+  bool get isKioskModeActive => _isKioskModeActive.value;
+  bool get isFullscreen => _isFullscreen.value;
+  bool get isTaskbarHidden => _isTaskbarHidden.value;
+  bool get isShellReplaced => _isShellReplaced.value;
+  bool get isRegistryLocked => _isRegistryLocked.value;
+  bool get isProcessMonitoring => _isProcessMonitoring.value;
+  bool get areKeyboardShortcutsBlocked => _areKeyboardShortcutsBlocked.value;
+  bool get isTaskManagerBlocked => _isTaskManagerBlocked.value;
+  bool get isDesktopHidden => _isDesktopHidden.value;
+  bool get isRestoring => _isRestoring.value;
+  KioskSecurityLevel get currentSecurityLevel => _currentSecurityLevel.value;
+  @override
+  Future<void> onInit() async {
+    super.onInit();
+    if (Platform.isWindows) {
+      await _initializeStorage();
+      await _autoRestoreKioskState();
+    }
+  }
+
+  Future<void> _initializeStorage() async {
+    _storage = Get.find<StorageService>();
+    print('🔒 Windows kiosk storage initialized');
+  }
+
+  /// Auto-restore kiosk state if it was previously enabled
+  Future<void> _autoRestoreKioskState() async {
+    try {
+      final wasKioskEnabled = _storage.read(_kioskStateKey) ?? false;
+      final savedConfig = _storage.read(_kioskConfigKey) ?? {};
+      
+      if (wasKioskEnabled) {
+        print('🔒 Auto-restoring Windows kiosk mode...');
+        _isRestoring.value = true;
+
+        // Restore the previous security level
+        final levelString = savedConfig['securityLevel'] ?? 'demo';
+        final level = KioskSecurityLevel.values.firstWhere(
+          (e) => e.toString().split('.').last == levelString,
+          orElse: () => KioskSecurityLevel.demo,
+        );
+
+        final restored = await enableKioskMode(securityLevel: level);
+        if (restored) {
+          print('✅ Windows kiosk mode auto-restored successfully');
+        } else {
+          print('❌ Failed to auto-restore Windows kiosk mode');
+          // Clear the saved state if restoration failed
+          _storage.remove(_kioskStateKey);
+          _storage.remove(_kioskConfigKey);
+        }
+
+        _isRestoring.value = false;
+      }
+    } catch (e) {
+      print('🔒 Error during Windows kiosk auto-restore: $e');
+      _isRestoring.value = false;
+    }
+  }
+
+  /// Enable Windows kiosk mode with specified security level
+  Future<bool> enableKioskMode({
+    KioskSecurityLevel securityLevel = KioskSecurityLevel.enterprise,
+  }) async {
+    if (!Platform.isWindows) {
+      print('🔒 Windows kiosk mode is only supported on Windows');
+      return false;
+    }
+
+    try {      print('🔒 Enabling Windows kiosk mode with ${securityLevel.toString().split('.').last} security...');
+
+      _currentSecurityLevel.value = securityLevel;
+      bool success = false;
+
+      switch (securityLevel) {
+        case KioskSecurityLevel.demo:
+          success = await _enableDemoMode();
+          break;
+        case KioskSecurityLevel.business:
+          success = await _enableBusinessMode();
+          break;
+        case KioskSecurityLevel.enterprise:
+          success = await _enableEnterpriseMode();
+          break;
+        case KioskSecurityLevel.totalLockdown:
+          success = await _enableTotalLockdownMode();
+          break;
+      }
+
+      if (success) {
+        _isKioskModeActive.value = true;
+        
+        // Save kiosk state persistently
+        _storage.write(_kioskStateKey, true);
+        _storage.write(_kioskConfigKey, {
+          'securityLevel': securityLevel.toString().split('.').last,
+          'enabledAt': DateTime.now().toIso8601String(),
+          'autoRestore': true,
+        });
+
+        print('✅ Windows kiosk mode enabled successfully (${securityLevel.toString().split('.').last})');
+        return true;
+      } else {
+        print('❌ Failed to enable Windows kiosk mode');
+        return false;
+      }
+    } catch (e) {
+      print('❌ Error enabling Windows kiosk mode: $e');
+      return false;
+    }
+  }
+
+  /// Enable demo mode (basic restrictions)
+  Future<bool> _enableDemoMode() async {
+    try {
+      // Basic fullscreen and window management
+      await windowManager.setFullScreen(true);
+      await windowManager.setAlwaysOnTop(true);
+      
+      _isFullscreen.value = true;
+      return true;
+    } catch (e) {
+      print('❌ Error enabling demo mode: $e');
+      return false;
+    }
+  }
+
+  /// Enable business mode (moderate restrictions)  /// Hide the Windows taskbar
+  Future<bool> _hideTaskbar() async {
+    try {
+      final taskbarHwnd = FindWindow('Shell_TrayWnd'.toNativeUtf16(), nullptr);
+      if (taskbarHwnd != NULL) {
+        ShowWindow(taskbarHwnd, SW_HIDE);
+        _isTaskbarHidden.value = true;
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error hiding taskbar: $e');
+      return false;
+    }
+  }
+
+  /// Show the Windows taskbar
+  Future<bool> _showTaskbar() async {
+    try {
+      final taskbarHwnd = FindWindow('Shell_TrayWnd'.toNativeUtf16(), nullptr);
+      if (taskbarHwnd != NULL) {
+        ShowWindow(taskbarHwnd, SW_SHOW);
+        _isTaskbarHidden.value = false;
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error showing taskbar: $e');
+      return false;
+    }
+  }
+
+  /// Disable Task Manager through registry
+  Future<bool> _disableTaskManager() async {
+    try {
+      final key = calloc<IntPtr>();
+      final result = RegCreateKeyEx(
+        HKEY_CURRENT_USER,
+        'Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'.toNativeUtf16(),
+        0,
+        nullptr,
+        0,
+        KEY_WRITE,
+        nullptr,
+        key,
+        nullptr,
+      );
+      
+      if (result == ERROR_SUCCESS) {
+        final value = 1;
+        final setResult = RegSetValueEx(
+          key.value,
+          'DisableTaskMgr'.toNativeUtf16(),
+          0,
+          REG_DWORD,
+          Pointer.fromAddress(value),
+          sizeOf<Uint32>(),
+        );
+        RegCloseKey(key.value);
+        calloc.free(key);
+        
+        if (setResult == ERROR_SUCCESS) {
+          _isTaskManagerBlocked.value = true;
+          return true;
+        }
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error disabling Task Manager: $e');
+      return false;
+    }
+  }
+
+  /// Enable Task Manager through registry
+  Future<bool> _enableTaskManager() async {
+    try {
+      final key = calloc<IntPtr>();
+      final result = RegOpenKeyEx(
+        HKEY_CURRENT_USER,
+        'Software\\Microsoft\\Windows\\CurrentVersion\\Policies\\System'.toNativeUtf16(),
+        0,
+        KEY_WRITE,
+        key,
+      );
+      
+      if (result == ERROR_SUCCESS) {
+        RegDeleteValue(key.value, 'DisableTaskMgr'.toNativeUtf16());
+        RegCloseKey(key.value);
+        calloc.free(key);
+        _isTaskManagerBlocked.value = false;
+        return true;
+      }
+      return false;
+    } catch (e) {
+      print('❌ Error enabling Task Manager: $e');
+      return false;
+    }
+  }
+
+  /// Enable enterprise mode (high security)
+  Future<bool> _enableEnterpriseMode() async {
+    try {
+      // Business mode features
+      await _enableBusinessMode();
+      
+      // Additional enterprise restrictions
+      await _channel.invokeMethod('blockAllKeyboardShortcuts');
+      await _channel.invokeMethod('hideDesktop');
+      await _channel.invokeMethod('disableRegistryAccess');
+      await _channel.invokeMethod('enableProcessMonitoring');
+      await _channel.invokeMethod('blockSystemAccess');
+      
+      _isDesktopHidden.value = true;
+      _isRegistryLocked.value = true;
+      _isProcessMonitoring.value = true;
+      
+      return true;
+    } catch (e) {
+      print('❌ Error enabling enterprise mode: $e');
+      return false;
+    }
+  }
+
+  /// Enable total lockdown mode (maximum security)
+  Future<bool> _enableTotalLockdownMode() async {
+    try {
+      // Enterprise mode features
+      await _enableEnterpriseMode();
+      
+      // Maximum security restrictions
+      await _channel.invokeMethod('replaceSystemShell');
+      await _channel.invokeMethod('lockRegistryCompletely');
+      await _channel.invokeMethod('disableAllSystemFunctions');
+      await _channel.invokeMethod('enableAdvancedProcessMonitoring');
+      await _channel.invokeMethod('blockAllExternalAccess');
+      
+      _isShellReplaced.value = true;
+      
+      return true;    } catch (e) {
+      print('❌ Error enabling total lockdown mode: $e');
+      return false;
+    }
+  }/// Disable Windows kiosk mode and restore normal functionality
+  Future<bool> disableKioskMode() async {
+    if (!Platform.isWindows) return false;
+
+    try {
+      print('🔒 Disabling Windows kiosk mode...');
+
+      // Perform comprehensive cleanup based on current security level
+      await _performComprehensiveCleanup();
+
+      // Clear persistent state
+      _storage.remove(_kioskStateKey);
+      _storage.remove(_kioskConfigKey);
+
+      // Reset all observable states
+      _isKioskModeActive.value = false;
+      _isFullscreen.value = false;
+      _isTaskbarHidden.value = false;
+      _isShellReplaced.value = false;
+      _isRegistryLocked.value = false;
+      _isProcessMonitoring.value = false;
+      _areKeyboardShortcutsBlocked.value = false;
+      _isTaskManagerBlocked.value = false;
+      _isDesktopHidden.value = false;
+      _currentSecurityLevel.value = KioskSecurityLevel.demo;
+
+      print('✅ Windows kiosk mode disabled successfully');
+      return true;
+    } catch (e) {
+      print('❌ Error disabling Windows kiosk mode: $e');
+      return false;
+    }
+  }
+
+  /// Perform comprehensive cleanup based on security level
+  Future<void> _performComprehensiveCleanup() async {
+    try {
+      print('🔒 Performing comprehensive Windows kiosk cleanup...');
+
+      // Always perform basic cleanup
+      await windowManager.setFullScreen(false);
+      await windowManager.setAlwaysOnTop(false);
+      await windowManager.setSkipTaskbar(false);
+
+      // Restore taskbar
+      await _channel.invokeMethod('showTaskbar');
+
+      // Unblock keyboard shortcuts
+      await _channel.invokeMethod('unblockAllKeyboardShortcuts');
+
+      // Enable Task Manager
+      await _channel.invokeMethod('enableTaskManager');
+
+      // Security level specific cleanup
+      switch (_currentSecurityLevel.value) {
+        case KioskSecurityLevel.totalLockdown:
+          await _channel.invokeMethod('restoreSystemShell');
+          await _channel.invokeMethod('unlockRegistryCompletely');
+          await _channel.invokeMethod('enableAllSystemFunctions');
+          await _channel.invokeMethod('disableAdvancedProcessMonitoring');
+          await _channel.invokeMethod('unblockAllExternalAccess');
+          continue enterprise;
+
+        enterprise:
+        case KioskSecurityLevel.enterprise:
+          await _channel.invokeMethod('showDesktop');
+          await _channel.invokeMethod('enableRegistryAccess');
+          await _channel.invokeMethod('disableProcessMonitoring');
+          await _channel.invokeMethod('unblockSystemAccess');
+          continue business;
+
+        business:
+        case KioskSecurityLevel.business:
+          // Business and demo cleanup is already handled above
+          break;
+
+        case KioskSecurityLevel.demo:
+          // Demo cleanup is already handled above
+          break;
+      }
+
+      print('✅ Comprehensive cleanup completed');
+    } catch (e) {
+      print('❌ Error during comprehensive cleanup: $e');
+    }
+  }
+
+  /// Force cleanup of any residual kiosk state (emergency recovery)
+  Future<bool> forceCleanupKioskState() async {
+    try {
+      print('🔒 Force cleaning up all Windows kiosk state...');
+
+      // Perform comprehensive cleanup
+      await _performComprehensiveCleanup();
+
+      // Clear all persistent state
+      _storage.remove(_kioskStateKey);
+      _storage.remove(_kioskConfigKey);
+      _storage.remove(_registryBackupKey);
+
+      // Reset all observable states
+      _isKioskModeActive.value = false;
+      _isFullscreen.value = false;
+      _isTaskbarHidden.value = false;
+      _isShellReplaced.value = false;
+      _isRegistryLocked.value = false;
+      _isProcessMonitoring.value = false;
+      _areKeyboardShortcutsBlocked.value = false;
+      _isTaskManagerBlocked.value = false;
+      _isDesktopHidden.value = false;
+      _isRestoring.value = false;
+      _currentSecurityLevel.value = KioskSecurityLevel.demo;
+
+      // Force disable any remaining native kiosk features
+      await _channel.invokeMethod('forceDisableAllKioskFeatures');
+
+      print('✅ Force cleanup completed');
+      return true;
+    } catch (e) {
+      print('❌ Failed to force cleanup Windows kiosk state: $e');
+      return false;
+    }
+  }
+
+  /// Get comprehensive kiosk status information
+  Map<String, dynamic> getKioskStatus() {
+    try {
+      return {
+        'isKioskActive': _isKioskModeActive.value,
+        'securityLevel': _currentSecurityLevel.value.toString().split('.').last,
+        'isFullscreen': _isFullscreen.value,
+        'isTaskbarHidden': _isTaskbarHidden.value,
+        'isShellReplaced': _isShellReplaced.value,
+        'isRegistryLocked': _isRegistryLocked.value,
+        'isProcessMonitoring': _isProcessMonitoring.value,
+        'areKeyboardShortcutsBlocked': _areKeyboardShortcutsBlocked.value,
+        'isTaskManagerBlocked': _isTaskManagerBlocked.value,
+        'isDesktopHidden': _isDesktopHidden.value,
+        'isRestoring': _isRestoring.value,
+      };
+    } catch (e) {
+      print('❌ Failed to get Windows kiosk status: $e');
+      return {
+        'isKioskActive': false,
+        'securityLevel': 'demo',
+        'isFullscreen': false,
+        'isTaskbarHidden': false,
+        'isShellReplaced': false,
+        'isRegistryLocked': false,
+        'isProcessMonitoring': false,
+        'areKeyboardShortcutsBlocked': false,
+        'isTaskManagerBlocked': false,
+        'isDesktopHidden': false,
+        'isRestoring': false,
+      };
+    }
+  }
+
+  /// Enable maximum security mode (enterprise + total lockdown)
+  Future<bool> enableMaximumSecurity() async {
+    return await enableKioskMode(securityLevel: KioskSecurityLevel.totalLockdown);
+  }
+
+  /// Quick enable for business environments
+  Future<bool> enableBusinessKiosk() async {
+    return await enableKioskMode(securityLevel: KioskSecurityLevel.business);
+  }
+
+  /// Demo mode for testing and demonstrations
+  Future<bool> enableDemoKiosk() async {
+    return await enableKioskMode(securityLevel: KioskSecurityLevel.demo);
+  }
+
+  /// Check if the system has admin privileges for full kiosk functionality
+  Future<bool> hasAdminPrivileges() async {
+    try {
+      return await _channel.invokeMethod('hasAdminPrivileges') ?? false;
+    } catch (e) {
+      print('❌ Error checking admin privileges: $e');
+      return false;
+    }
+  }
+
+  /// Request admin privileges if not already granted
+  Future<bool> requestAdminPrivileges() async {
+    try {
+      return await _channel.invokeMethod('requestAdminPrivileges') ?? false;
+    } catch (e) {
+      print('❌ Error requesting admin privileges: $e');
+      return false;
+    }
+  }
+
+  /// Show setup instructions for Windows kiosk mode
+  void showSetupInstructions() {
+    Get.dialog(
+      AlertDialog(
+        title: const Text('🔒 Windows Kiosk Setup'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('For maximum kiosk security:'),
+            const SizedBox(height: 16),
+            const Text('1. Run as Administrator'),
+            const Text('2. Grant registry permissions'),
+            const Text('3. Configure Windows policies'),
+            const Text('4. Set up auto-startup'),
+            const SizedBox(height: 16),
+            const Text('Security Levels:'),
+            const Text('• Demo: Basic fullscreen'),
+            const Text('• Business: + Taskbar/shortcuts blocked'),
+            const Text('• Enterprise: + Registry/system locked'),
+            const Text('• Total Lockdown: + Shell replacement'),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Got it'),
+          ),
+        ],
+      ),
+    );
+  }
+}

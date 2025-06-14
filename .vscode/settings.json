@@ -8,6 +8,7 @@
 "editor.smoothScrolling": false,
 "editor.renderWhitespace": "none",
 "editor.minimap.enabled": false,
-"editor.codeLens": false
+"editor.codeLens": false,
+"cmake.sourceDirectory": "C:/Users/rsm75/dev/kingkiosk-client2/linux"
 
 }

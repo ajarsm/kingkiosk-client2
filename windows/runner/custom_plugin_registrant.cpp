@@ -1,6 +1,7 @@
 #include "custom_plugin_registrant.h"
-#include <flutter/plugin_registrar_windows.h>
 
 void RegisterCustomPlugins(flutter::FlutterEngine* engine) {
-  // No custom plugins to register
+  // For now, we'll register the plugin manually in the Dart code
+  // This avoids complex C++ registration issues
+  // The WindowsKioskService will handle the method channel registration
 }
