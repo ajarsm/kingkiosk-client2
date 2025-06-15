@@ -80,7 +80,8 @@ class SettingsController extends GetxController {
   void _scheduleMqttServiceCheck() {
     // Avoid multiple timers
     if (_mqttServiceCheckTimer?.isActive == true) return;
-    _mqttServiceCheckTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+    _mqttServiceCheckTimer =
+        Timer.periodic(const Duration(seconds: 1), (timer) {
       try {
         final service = Get.find<MqttService>();
         _mqttService = service;
@@ -103,7 +104,7 @@ class SettingsController extends GetxController {
 
   void _setupMqttObservers() {
     if (_mqttService == null) return;
-    
+
     // Ensure mqttConnected stays in sync with the actual service
     mqttConnected.value = _mqttService!.isConnected.value;
     ever(_mqttService!.isConnected, (bool connected) {
@@ -256,16 +257,15 @@ class SettingsController extends GetxController {
 
       // Auto-connect to MQTT if it was enabled (with a longer delay to ensure service is ready)
       Future.delayed(Duration(seconds: 3), () => autoConnectMqttIfEnabled());
-    });
-  }
 
-    // Ensure sipRegistered stays in sync with the actual service
-    if (sipService != null) {
-      sipRegistered.value = sipService!.isRegistered.value;
-      ever(sipService!.isRegistered, (bool registered) {
-        sipRegistered.value = registered;
-      });
-    }
+      // Ensure sipRegistered stays in sync with the actual service
+      if (sipService != null) {
+        sipRegistered.value = sipService!.isRegistered.value;
+        ever(sipService!.isRegistered, (bool registered) {
+          sipRegistered.value = registered;
+        });
+      }
+    });
   }
 
   @override
@@ -742,7 +742,7 @@ class SettingsController extends GetxController {
         backgroundColor: Colors.orange.shade100,
         colorText: Colors.orange.shade800,
       );
-      
+
       // Wait up to 10 seconds for the service to become available
       for (int i = 0; i < 10; i++) {
         await Future.delayed(Duration(seconds: 1));
@@ -752,7 +752,7 @@ class SettingsController extends GetxController {
           break;
         }
       }
-      
+
       if (service == null) {
         print('❌ MQTT Service still not available after waiting');
         Get.snackbar(
@@ -766,10 +766,10 @@ class SettingsController extends GetxController {
         return;
       }
     }
-    
+
     // Always update the MQTT service device name before connecting
     service.deviceName.value = deviceName.value;
-    
+
     // Only attempt to connect if not already connected
     if (service.isConnected.value) {
       print('MQTT already connected, skipping connection attempt');
@@ -783,9 +783,10 @@ class SettingsController extends GetxController {
       );
       return;
     }
-    
-    print('Attempting to connect to MQTT broker: ${mqttBrokerUrl.value}:${mqttBrokerPort.value}');
-    
+
+    print(
+        'Attempting to connect to MQTT broker: ${mqttBrokerUrl.value}:${mqttBrokerPort.value}');
+
     try {
       final success = await service.connect(
         brokerUrl: mqttBrokerUrl.value,
@@ -793,7 +794,7 @@ class SettingsController extends GetxController {
         username: mqttUsername.value.isNotEmpty ? mqttUsername.value : null,
         password: mqttPassword.value.isNotEmpty ? mqttPassword.value : null,
       );
-      
+
       if (success) {
         mqttConnected.value = true;
         Get.snackbar(

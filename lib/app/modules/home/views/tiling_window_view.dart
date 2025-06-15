@@ -18,6 +18,7 @@ import '../../../services/ai_assistant_service.dart';
 import '../../../services/mqtt_service_consolidated.dart';
 import '../../../services/platform_sensor_service.dart';
 import '../../../services/window_manager_service.dart';
+import '../../../widgets/window_inspector_widget.dart';
 import '../controllers/tiling_window_controller.dart';
 import '../controllers/web_window_controller.dart';
 import '../widgets/auto_hide_title_bar.dart';
@@ -550,7 +551,15 @@ class TilingWindowViewState extends State<TilingWindowView> {
                   locked: locked,
                 ),
                 const SizedBox(width: 16),
-                // 2. Window-mode toggle
+                // 2. Windows Inspector button
+                _buildToolbarButton(
+                  icon: Icons.view_list,
+                  label: 'Windows',
+                  onPressed: locked ? null : _showWindowInspector,
+                  locked: locked,
+                ),
+                const SizedBox(width: 16),
+                // 3. Window-mode toggle
                 Obx(
                   () => _buildToolbarButton(
                     icon: controller.tilingMode.value
@@ -622,6 +631,13 @@ class TilingWindowViewState extends State<TilingWindowView> {
   void _showAddWindowDialog() {
     Get.dialog(
       const _AddWindowDialog(),
+      barrierDismissible: true,
+    );
+  }
+
+  void _showWindowInspector() {
+    Get.dialog(
+      const WindowInspectorWidget(),
       barrierDismissible: true,
     );
   }
