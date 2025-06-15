@@ -21,6 +21,10 @@ class SettingsControllerFixed extends SettingsController {
   final RxString backgroundImagePath = ''.obs;
   final RxString backgroundWebUrl = ''.obs;
 
+  // Auto-lock settings
+  final RxBool autoLockEnabled = false.obs;
+  final RxDouble autoLockTimeout = 5.0.obs; // minutes
+
   @override
   void onInit() {
     super.onInit();
@@ -39,6 +43,12 @@ class SettingsControllerFixed extends SettingsController {
     backgroundWebUrl.value =
         storageService.read<String>('backgroundWebUrl') ?? '';
 
+    // Load auto-lock settings from storage
+    autoLockEnabled.value =
+        storageService.read<bool>(AppConstants.keyAutoLockEnabled) ?? false;
+    autoLockTimeout.value =
+        storageService.read<double>(AppConstants.keyAutoLockTimeout) ?? 5.0;
+
     // Listen for changes and save to storage
     ever(backgroundType, (String type) {
       storageService.write('backgroundType', type);
@@ -53,6 +63,17 @@ class SettingsControllerFixed extends SettingsController {
     ever(backgroundWebUrl, (String url) {
       storageService.write('backgroundWebUrl', url);
       print('✅ Background web URL saved: $url');
+    });
+
+    // Listen for auto-lock changes and save to storage
+    ever(autoLockEnabled, (bool enabled) {
+      storageService.write(AppConstants.keyAutoLockEnabled, enabled);
+      print('✅ Auto-lock enabled saved: $enabled');
+    });
+
+    ever(autoLockTimeout, (double timeout) {
+      storageService.write(AppConstants.keyAutoLockTimeout, timeout);
+      print('✅ Auto-lock timeout saved: $timeout minutes');
     });
 
     // Listen for changes, sync with PersonDetectionService and save to storage
@@ -599,6 +620,53 @@ class SettingsControllerFixed extends SettingsController {
             '🔄 Force refreshing MQTT status: was ${mqttConnected.value}, now $actualStatus');
         mqttConnected.value = actualStatus;
       }
+    }
+  }
+
+  // Auto-lock methods
+  void toggleAutoLockEnabled(bool enabled) {
+    autoLockEnabled.value = enabled;
+    print('🔒 Auto-lock ${enabled ? 'enabled' : 'disabled'}');
+    // Restart monitoring if enabled and we have a settings controller
+    if (enabled && Get.isRegistered<SettingsController>()) {
+      final settingsController = Get.find<SettingsController>();
+      settingsController.recordUserInteraction();
+      Future.delayed(Duration(milliseconds: 500), () {
+        settingsController.startAutoLockMonitoring();
+      });
+    }
+
+    Get.snackbar(
+      'Auto-lock',
+      enabled ? 'Auto-lock enabled' : 'Auto-lock disabled',
+      backgroundColor: enabled
+          ? Colors.green.withOpacity(0.8)
+          : Colors.orange.withOpacity(0.8),
+      colorText: Colors.white,
+      duration: const Duration(seconds: 2),
+    );
+  }
+
+  void setAutoLockTimeout(double minutes) {
+    if (minutes > 0 && minutes <= 60) {
+      autoLockTimeout.value = minutes;
+      print('🔒 Auto-lock timeout set to ${minutes} minutes');
+      // Restart monitoring with new timeout if enabled
+      if (autoLockEnabled.value && Get.isRegistered<SettingsController>()) {
+        final settingsController = Get.find<SettingsController>();
+        settingsController.recordUserInteraction();
+        Future.delayed(Duration(milliseconds: 500), () {
+          settingsController.startAutoLockMonitoring();
+        });
+      }
+
+      Get.snackbar(
+        'Auto-lock Timeout',
+        'Set to ${minutes} minutes',
+        backgroundColor: Colors.blue.withOpacity(0.8),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 2),
+      );
     }
   }
 

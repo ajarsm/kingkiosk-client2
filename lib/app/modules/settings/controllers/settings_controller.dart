@@ -15,10 +15,12 @@ import '../../../services/android_kiosk_service.dart';
 import '../../../services/windows_kiosk_service.dart';
 import '../../../core/utils/app_constants.dart';
 import '../../../core/utils/permissions_manager.dart';
+import '../../../modules/settings/controllers/settings_controller_compat.dart';
 import '../../../widgets/settings_pin_dialog.dart';
 
 /// Consolidated settings controller that incorporates all fixes
-class SettingsController extends GetxController {  // Services
+class SettingsController extends GetxController {
+  // Services
   final StorageService _storageService = Get.find<StorageService>();
   MqttService? _mqttService;
   SipService? _sipService;
@@ -38,6 +40,7 @@ class SettingsController extends GetxController {  // Services
     }
     return _mqttService;
   }
+
   // Getter for SipService
   SipService? get sipService {
     if (_sipService == null) {
@@ -144,8 +147,20 @@ class SettingsController extends GetxController {  // Services
   // Settings lock state
   final RxBool isSettingsLocked = true.obs;
 
-  void lockSettings() => isSettingsLocked.value = true;
-  void unlockSettings() => isSettingsLocked.value = false;
+  // Auto-lock functionality
+  Timer? _autoLockTimer;
+  DateTime? _lastInteractionTime;
+
+  void lockSettings() {
+    isSettingsLocked.value = true;
+    _stopAutoLockTimer(); // Stop monitoring when manually locked
+  }
+
+  void unlockSettings() {
+    isSettingsLocked.value = false;
+    recordUserInteraction(); // Start monitoring again when unlocked
+    startAutoLockMonitoring();
+  }
 
   // Show PIN dialog for settings access
   void showSettingsPinDialog({required VoidCallback onSuccess}) {
@@ -266,6 +281,9 @@ class SettingsController extends GetxController {  // Services
 
       // Auto-connect to MQTT if it was enabled (after a short delay)
       Future.delayed(Duration(seconds: 1), () => autoConnectMqttIfEnabled());
+
+      // Start auto-lock monitoring
+      startAutoLockMonitoring();
     });
 
     // Ensure mqttConnected stays in sync with the actual service
@@ -285,8 +303,80 @@ class SettingsController extends GetxController {  // Services
     }
   }
 
+  // Auto-lock functionality methods
+  void startAutoLockMonitoring() {
+    // Check if we have the auto-lock settings in the compat controller
+    if (!Get.isRegistered<SettingsControllerFixed>()) {
+      print(
+          '⚠️ SettingsControllerFixed not registered, cannot start auto-lock monitoring');
+      return;
+    }
+
+    final settingsController = Get.find<SettingsControllerFixed>();
+    if (!settingsController.autoLockEnabled.value) {
+      print('ℹ️ Auto-lock is disabled, not starting monitoring');
+      return;
+    }
+
+    print(
+        '🔒 Starting auto-lock monitoring with timeout: ${settingsController.autoLockTimeout.value} minutes');
+    _stopAutoLockTimer();
+    _lastInteractionTime = DateTime.now();
+
+    _autoLockTimer = Timer.periodic(Duration(seconds: 5), (_) {
+      _checkAutoLock();
+    });
+  }
+
+  void _stopAutoLockTimer() {
+    _autoLockTimer?.cancel();
+    _autoLockTimer = null;
+    print('🔒 Auto-lock timer stopped');
+  }
+
+  void _checkAutoLock() {
+    if (!Get.isRegistered<SettingsControllerFixed>()) return;
+
+    final settingsController = Get.find<SettingsControllerFixed>();
+    if (!settingsController.autoLockEnabled.value) return;
+    if (isSettingsLocked.value) return; // Already locked
+
+    final timeout = settingsController.autoLockTimeout.value;
+    if (timeout <= 0) return;
+
+    final now = DateTime.now();
+    final lastInteraction = _lastInteractionTime ?? now;
+    final timeSinceLastInteraction = now.difference(lastInteraction);
+
+    // Convert timeout from minutes to duration
+    final timeoutDuration =
+        Duration(milliseconds: (timeout * 60 * 1000).round());
+
+    print(
+        '🔒 Auto-lock check: ${timeSinceLastInteraction.inSeconds}s since last interaction, timeout: ${timeoutDuration.inSeconds}s');
+
+    if (timeSinceLastInteraction >= timeoutDuration) {
+      print('🔒 Auto-locking due to inactivity!');
+      lockSettings();
+      Get.snackbar(
+        'Auto-locked',
+        'Settings locked due to inactivity',
+        backgroundColor: Colors.orange.withOpacity(0.8),
+        colorText: Colors.white,
+        duration: const Duration(seconds: 3),
+        snackPosition: SnackPosition.TOP,
+      );
+    }
+  }
+
+  void recordUserInteraction() {
+    _lastInteractionTime = DateTime.now();
+    print('👆 User interaction recorded at ${_lastInteractionTime}');
+  }
+
   @override
   void onClose() {
+    _stopAutoLockTimer();
     // Dispose text controllers
     mqttBrokerUrlController.dispose();
     mqttUsernameController.dispose();
@@ -558,11 +648,12 @@ class SettingsController extends GetxController {  // Services
     _storageService.flush(); // Force flush for Windows persistence
     _applyTheme();
   }
+
   void toggleKioskMode() async {
     kioskMode.value = !kioskMode.value;
     _storageService.write(AppConstants.keyKioskMode, kioskMode.value);
     _storageService.flush(); // Force flush for Windows persistence
-    
+
     // Control wakelock based on kiosk mode
     if (kioskMode.value) {
       WakelockPlus.enable();
@@ -614,13 +705,13 @@ class SettingsController extends GetxController {  // Services
     // Show success message
     Get.snackbar(
       kioskMode.value ? 'Kiosk Mode Enabled' : 'Kiosk Mode Disabled',
-      kioskMode.value 
-        ? 'Device is now in strict kiosk mode'
-        : 'Kiosk mode has been disabled',
+      kioskMode.value
+          ? 'Device is now in strict kiosk mode'
+          : 'Kiosk mode has been disabled',
       snackPosition: SnackPosition.BOTTOM,
-      backgroundColor: kioskMode.value 
-        ? Colors.green.withOpacity(0.7) 
-        : Colors.blue.withOpacity(0.7),
+      backgroundColor: kioskMode.value
+          ? Colors.green.withOpacity(0.7)
+          : Colors.blue.withOpacity(0.7),
       colorText: Colors.white,
     );
   }

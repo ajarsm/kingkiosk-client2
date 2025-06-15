@@ -46,6 +46,7 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
               _buildKioskModeToggle(),
               _buildSystemInfoToggle(),
               _buildLocationServicesToggle(),
+              _buildAutoLockSettings(),
               _buildBackgroundSettings(),
             ],
           ), // Web URLs
@@ -323,6 +324,153 @@ class SettingsViewFixed extends GetView<SettingsControllerFixed> {
           final newValue = !controller.locationEnabled.value;
           controller.toggleLocationEnabled(newValue);
         },
+      ),
+    );
+  }
+
+  Widget _buildAutoLockSettings() {
+    return Card(
+      elevation: 8,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      margin: EdgeInsets.symmetric(vertical: 10, horizontal: 0),
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                ShaderMask(
+                  shaderCallback: (rect) => LinearGradient(
+                    colors: [Colors.orange, Colors.deepOrange],
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                  ).createShader(rect),
+                  child: Icon(Icons.lock_clock, color: Colors.white),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Auto-lock Settings',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
+            ),
+            Divider(),
+            SizedBox(height: 12),
+
+            // Auto-lock toggle
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Enable Auto-lock',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Obx(() => Switch(
+                      value: controller.autoLockEnabled.value,
+                      onChanged: controller.toggleAutoLockEnabled,
+                    )),
+              ],
+            ),
+
+            SizedBox(height: 16),
+
+            // Timeout setting (only shown when auto-lock is enabled)
+            Obx(() {
+              if (!controller.autoLockEnabled.value) {
+                return SizedBox.shrink();
+              }
+
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Auto-lock Timeout',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                    ),
+                  ),
+                  SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          initialValue:
+                              controller.autoLockTimeout.value.toString(),
+                          decoration: InputDecoration(
+                            labelText: 'Minutes',
+                            hintText: 'e.g., 5.0 or 0.5',
+                            border: OutlineInputBorder(),
+                            suffixText: 'min',
+                          ),
+                          keyboardType:
+                              TextInputType.numberWithOptions(decimal: true),
+                          onChanged: (value) {
+                            final timeout = double.tryParse(value);
+                            if (timeout != null &&
+                                timeout > 0 &&
+                                timeout <= 60) {
+                              controller.setAutoLockTimeout(timeout);
+                            }
+                          },
+                        ),
+                      ),
+                      SizedBox(width: 16),
+                      // Quick preset buttons
+                      Column(
+                        children: [
+                          SizedBox(
+                            width: 60,
+                            height: 32,
+                            child: ElevatedButton(
+                              onPressed: () =>
+                                  controller.setAutoLockTimeout(0.5),
+                              child:
+                                  Text('0.5', style: TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          SizedBox(
+                            width: 60,
+                            height: 32,
+                            child: ElevatedButton(
+                              onPressed: () =>
+                                  controller.setAutoLockTimeout(1.0),
+                              child: Text('1', style: TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          SizedBox(
+                            width: 60,
+                            height: 32,
+                            child: ElevatedButton(
+                              onPressed: () =>
+                                  controller.setAutoLockTimeout(5.0),
+                              child: Text('5', style: TextStyle(fontSize: 12)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 8),
+                  Text(
+                    'The app will automatically lock after ${controller.autoLockTimeout.value} minutes of inactivity.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey[600],
+                    ),
+                  ),
+                ],
+              );
+            }),
+          ],
+        ),
       ),
     );
   }

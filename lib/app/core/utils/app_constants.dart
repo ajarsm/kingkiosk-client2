@@ -17,6 +17,10 @@ class AppConstants {
   // Location Services Keys
   static const String keyLocationEnabled = 'locationEnabled';
 
+  // Auto-lock Keys
+  static const String keyAutoLockEnabled = 'autoLockEnabled';
+  static const String keyAutoLockTimeout = 'autoLockTimeout'; // in minutes
+
   // MQTT Keys
   static const String keyMqttEnabled = 'mqttEnabled';
   static const String keyMqttBrokerUrl = 'mqttBrokerUrl';
